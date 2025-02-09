@@ -1,0 +1,13 @@
+flask
+flask-socketio
+websockets
+asyncio
+kafka-python
+gunicorn
+websocket-client
+python-socketio
+requests
+gevent
+Flask-SQLAlchemy==3.0.3
+psycopg2-binary==2.9.6
+flask-cors

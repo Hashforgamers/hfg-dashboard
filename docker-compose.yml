@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  dashboard_service:
+    build: .
+    ports:
+      - "5056:5056"
+    environment:
+      - FLASK_APP=run.py
+      - FLASK_RUN_HOST=0.0.0.0
+      - DEBUG_MODE=true
+      - BOOKING_WS_URL=ws://127.0.0.1:5054  # Connect to existing booking service
+      - WS_HOST=0.0.0.0
+      - WS_PORT=6789
+      - DATABASE_URI=postgresql://neondb_owner:Od9UnVJ2Wvfr@ep-rapid-lake-a8yqbhfk.eastus2.azure.neon.tech/neondb?sslmode=require
+    volumes:
+      - .:/app
+    command: ["python", "run.py"]

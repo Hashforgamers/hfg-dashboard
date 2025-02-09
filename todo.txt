@@ -1,0 +1,17 @@
+write dashboard service hfg-dashboard-service 
+-- app
+-- controller
+-- cerdentials
+-- db
+--migration
+--models
+-- service
+-- .gitignore 
+-- docker-compose.yml
+-- Dockerfile
+-- requirements.txt
+-- run.py
+write things in above directoris and file system 
+
+my dashboard service will gonna have 
+1. game management section will have 
