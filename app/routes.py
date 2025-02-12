@@ -197,21 +197,18 @@ def delete_console(vendor_id, console_id):
             # Commit slot updates first
             db.session.commit()
 
-            # Refresh materialized view for this vendor
-            view_exists_query = text("""
-                SELECT to_regclass(:view_name);
+            # Update the standard table VENDOR_{vendor_id}_SLOT
+            table_name = f"VENDOR_{vendor_id}_SLOT"
+            update_query = text(f"""
+                UPDATE {table_name}
+                SET available_slot = available_slot - 1,
+                    is_available = CASE WHEN available_slot - 1 > 0 THEN TRUE ELSE FALSE END
+                WHERE slot_id IN (
+                    SELECT id FROM slots WHERE gaming_type_id = :available_game_id
+                );
             """)
-            view_exists = db.session.execute(view_exists_query, {"view_name": f"VENDOR_{vendor_id}_SLOT"}).fetchone()
-
-            if view_exists[0] is not None:
-                # If the view exists, refresh it
-                current_app.logger.info(f"Refreshing materialized view VENDOR_{vendor_id}_SLOT")
-                refresh_query = text(f"REFRESH MATERIALIZED VIEW VENDOR_{vendor_id}_SLOT")
-                db.session.execute(refresh_query)
-                db.session.commit()
-            else:
-                current_app.logger.info(f"Materialized view VENDOR_{vendor_id}_SLOT does not exist.")
-            
+            db.session.execute(update_query, {"available_game_id": available_game_id})
+            db.session.commit()
 
         # Delete Console
         db.session.delete(console)
