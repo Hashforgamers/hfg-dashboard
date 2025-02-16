@@ -29,7 +29,7 @@ def get_transaction_report(to_date, from_date, vendor_id):
         
         transactions = Transaction.query.filter(
             Transaction.vendor_id == vendor_id and
-            cast(Transaction.booking_date, Date).between(from_date, to_date)
+            cast(Transaction.booked_date, Date).between(from_date, to_date)
         ).all()
 
         
@@ -38,7 +38,7 @@ def get_transaction_report(to_date, from_date, vendor_id):
         # Format response data
         result = [{
             "id": txn.id,
-            "slotDate": txn.booking_date.strftime("%Y-%m-%d"),
+            "slotDate": txn.booked_date.strftime("%Y-%m-%d"),
             "slotTime": txn.booking_time.strftime("%I:%M %p"),
             "userName": txn.user_name,
             "amount": txn.amount,
@@ -105,52 +105,6 @@ def get_consoles(vendor_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-# @dashboard_service.route('/console/<int:console_id>', methods=['DELETE'])
-# def delete_console(console_id):
-#     try:
-#         console = Console.query.get(console_id)
-#         if not console:
-#             return jsonify({"error": "Console not found"}), 404
-
-#         # ✅ Fetch the associated available_game_id
-#         available_game_entry = db.session.execute(
-#             available_game_console.select().where(available_game_console.c.console_id == console_id)
-#         ).fetchone()
-
-#         available_game_id = available_game_entry[0] if available_game_entry else None
-
-#         # ✅ Delete related entries from dependent tables (if cascade is not applied)
-#         if console.hardware_specifications:
-#             db.session.delete(console.hardware_specifications)
-#         if console.maintenance_status:
-#             db.session.delete(console.maintenance_status)
-#         if console.price_and_cost:
-#             db.session.delete(console.price_and_cost)
-#         if console.additional_details:
-#             db.session.delete(console.additional_details)
-
-#         # ✅ Remove Console Associations from available_game_console
-#         db.session.execute(
-#             available_game_console.delete().where(available_game_console.c.console_id == console_id)
-#         )
-
-#         # ✅ Delete Console
-#         db.session.delete(console)
-
-#         # ✅ Perform decrement in total_slot of AvailableGame
-#         if available_game_id:
-#             available_game = AvailableGame.query.get(available_game_id)
-#             if available_game and available_game.total_slot > 0:
-#                 available_game.total_slot -= 1
-
-#         db.session.commit()
-#         return jsonify({"message": "Console deleted successfully, and total_slot updated"}), 200
-
-#     except Exception as e:
-#         db.session.rollback()
-#         return jsonify({"error": str(e)}), 500
-
 @dashboard_service.route('/console/<int:vendor_id>/<int:console_id>', methods=['DELETE'])
 def delete_console(vendor_id, console_id):
     try:
@@ -162,7 +116,6 @@ def delete_console(vendor_id, console_id):
         available_game_entry = db.session.execute(
             available_game_console.select().where(available_game_console.c.console_id == console_id)
         ).fetchone()
-
         available_game_id = available_game_entry[0] if available_game_entry else None
 
         # Delete related entries from dependent tables (if cascade is not applied)
@@ -210,13 +163,22 @@ def delete_console(vendor_id, console_id):
             db.session.execute(update_query, {"available_game_id": available_game_id})
             db.session.commit()
 
+        # ✅ Remove Console from the dynamic VENDOR_{vendor_id}_CONSOLE_AVAILABILITY table
+        availability_table = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
+        delete_availability_query = text(f"""
+            DELETE FROM {availability_table}
+            WHERE console_id = :console_id
+        """)
+        db.session.execute(delete_availability_query, {"console_id": console_id})
+        db.session.commit()
+
         # Delete Console
         db.session.delete(console)
 
         # Commit all changes
         db.session.commit()
 
-        return jsonify({"message": "Console deleted successfully, and total_slot updated"}), 200
+        return jsonify({"message": "Console deleted successfully, availability updated"}), 200
 
     except Exception as e:
         db.session.rollback()

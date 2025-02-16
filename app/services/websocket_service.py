@@ -3,6 +3,7 @@ import socketio
 import json
 import threading
 from flask import Flask, current_app
+import os 
 
 from flask_socketio import SocketIO
 
@@ -13,7 +14,8 @@ def connect_to_5054(app):
     with app.app_context():
         try:
             app.logger.info("Connecting to Flask-SocketIO ws://127.0.0.1:5054")
-            socketio_client.connect("wss://hfg-booking.onrender.com")  # Ensure correct address
+            socket_url=os.getenv("BOOKING_WS_URL", "wss://hfg-booking.onrender.com")
+            socketio_client.connect(socket_url)  # Ensure correct address
             
             # ✅ Wait for connection
             timeout = 5  # Max wait time in seconds
