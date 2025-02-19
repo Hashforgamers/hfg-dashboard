@@ -6,11 +6,12 @@ class HardwareSpecification(db.Model):
     __tablename__ = 'hardware_specifications'
     
     id = Column(Integer, primary_key=True)
-    processor_type = Column(String(100), nullable=False)
-    graphics_card = Column(String(100), nullable=False)
-    ram_size = Column(String(50), nullable=False)
-    storage_capacity = Column(String(50), nullable=False)
+    processor_type = Column(String(100), nullable=True)
+    graphics_card = Column(String(100), nullable=True)
+    ram_size = Column(String(50), nullable=True)
+    storage_capacity = Column(String(50), nullable=True)
     connectivity = Column(String(200), nullable=True)
+    console_model_type = Column(String(200), nullable=True)
     
     # Foreign key and relationship to Console
     console_id = Column(Integer, ForeignKey('consoles.id'), nullable=False)

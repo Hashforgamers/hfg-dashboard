@@ -75,7 +75,7 @@ def add_console():
         return jsonify({"error": str(e)}), 500
 
 
-@dashboard_service.route('/getConsoles/<int:vendor_id>', methods=['GET'])
+@dashboard_service.route('/getConsoles/vendor/<int:vendor_id>', methods=['GET'])
 def get_consoles(vendor_id):
     try:
         # Fetch available games associated with the given vendor ID
@@ -97,6 +97,7 @@ def get_consoles(vendor_id):
                     "ram": console.hardware_specifications.ram_size if console.hardware_specifications else "N/A",
                     "storage": console.hardware_specifications.storage_capacity if console.hardware_specifications else "N/A",
                     "status": console.maintenance_status.available_status if console.maintenance_status else "Unknown",
+                    "consoleModelType":console.hardware_specifications.console_model_type if console.hardware_specifications else "N/A",
                 }
                 consoles.append(console_data)
 
@@ -185,8 +186,8 @@ def delete_console(vendor_id, console_id):
         current_app.logger.error(f"Error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-@dashboard_service.route('/console/update', methods=['PUT'])
-def update_console():
+@dashboard_service.route('/console/update/vendor/<vendor_id>', methods=['PUT'])
+def update_console(vendor_id):
     try:
         data = request.get_json()
         console_id = data.get("consoleId")
@@ -214,10 +215,31 @@ def update_console():
         hardware_spec.graphics_card = console_details.get("gpu", hardware_spec.graphics_card)
         hardware_spec.ram_size = console_details.get("ram", hardware_spec.ram_size)
         hardware_spec.storage_capacity = console_details.get("storage", hardware_spec.storage_capacity)
+        hardware_spec.console_model_type = console_details.get("consoleModelType", hardware_spec.console_model_type)
 
         # ✅ Fetch or Update Maintenance Status
         if console.maintenance_status:
+             # ✅ Define the dynamic console availability table name
+            console_table_name = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
             console.maintenance_status.available_status = console_details.get("status", console.maintenance_status.available_status)
+            if console.maintenance_status.available_status != "available":
+                # ✅ Update the status to false (occupied)
+                sql_update_status = text(f"""
+                    UPDATE {console_table_name}
+                    SET is_available = FALSE
+                    WHERE console_id = :console_id
+                """)
+            else:
+                # ✅ Update the status to false (occupied)
+                sql_update_status = text(f"""
+                    UPDATE {console_table_name}
+                    SET is_available = TRUE
+                    WHERE console_id = :console_id
+                """)
+
+            db.session.execute(sql_update_status, {
+                "console_id": console_id
+            })
 
         # ✅ Commit Changes
         db.session.commit()
@@ -228,51 +250,127 @@ def update_console():
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
-@dashboard_service.route('/updateDeviceStatus/consoleTypeId/<gameid>/console/<console_id>/vendor/<vendor_id>', methods=['POST'])
-def update_console_status():
+@dashboard_service.route('/getAllDevice/consoleTypeId/<gameid>/vendor/<vendor_id>', methods=['GET'])
+def get_device_for_console_type(gameid, vendor_id):
     try:
-        # Retrieve data from the request
-        status = request.json.get("status")  # Assume status is passed as part of the request
-        game_id = gameid
-        console_id = console_id
-        vendor_id = vendor_id
-        
-        # Define the dynamic console availability table name
+        # ✅ Define the dynamic console availability table name
         console_table_name = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
 
-        if status == "occupied":
-            # ✅ Update Console Availability to Occupied
-            sql_update_console_status = text(f"""
-                UPDATE {console_table_name}
-                SET is_available = FALSE
-                WHERE vendor_id = :vendor_id
-                AND console_id = :console_id
-                AND game_id = :game_id;
-            """)
-            db.session.execute(sql_update_console_status, {
-                "vendor_id": vendor_id,
-                "console_id": console_id,
-                "game_id": game_id
-            })
-            
-        elif status == "available":
-            # ✅ Insert Console Availability Data (if it doesn't already exist)
-            sql_insert_console_availability = text(f"""
-                INSERT INTO {console_table_name} (vendor_id, console_id, game_id, is_available)
-                VALUES (:vendor_id, :console_id, :game_id, TRUE)
-                ON CONFLICT (vendor_id, console_id, game_id) 
-                DO UPDATE SET is_available = TRUE;  -- Update to available if already exists
-            """)
-            db.session.execute(sql_insert_console_availability, {
-                "vendor_id": vendor_id,
-                "console_id": console_id,
-                "game_id": game_id
-            })
+        # ✅ SQL query to fetch console details
+        sql_query = text(f"""
+            SELECT ca.console_id, c.model_number, c.brand, ca.is_available
+            FROM {console_table_name} ca
+            JOIN consoles c ON ca.console_id = c.id
+            WHERE ca.game_id = :game_id
+        """)
 
-        # Commit the changes
+        # ✅ Execute the query
+        result = db.session.execute(sql_query, {"game_id": gameid}).fetchall()
+
+        # ✅ Format the response
+        devices = [
+            {
+                "consoleId": row.console_id,
+                "consoleModelNumber": row.model_number,
+                "brand": row.brand,
+                "is_available": row.is_available
+            }
+            for row in result
+        ]
+
+        return jsonify(devices), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@dashboard_service.route('/updateDeviceStatus/consoleTypeId/<gameid>/console/<console_id>/vendor/<vendor_id>', methods=['POST'])
+def update_console_status(gameid, console_id, vendor_id):
+    try:
+        # ✅ Define the dynamic console availability table name
+        console_table_name = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
+
+        # ✅ Check if the console is available
+        sql_check_availability = text(f"""
+            SELECT is_available FROM {console_table_name}
+            WHERE console_id = :console_id AND game_id = :game_id
+        """)
+
+        result = db.session.execute(sql_check_availability, {
+            "console_id": console_id,
+            "game_id": gameid
+        }).fetchone()
+
+        if not result:
+            return jsonify({"error": "Console not found in the availability table"}), 404
+
+        is_available = result.is_available
+
+        if not is_available:
+            return jsonify({"error": "Console is already in use"}), 400
+
+        # ✅ Update the status to false (occupied)
+        sql_update_status = text(f"""
+            UPDATE {console_table_name}
+            SET is_available = FALSE
+            WHERE console_id = :console_id AND game_id = :game_id
+        """)
+
+        db.session.execute(sql_update_status, {
+            "console_id": console_id,
+            "game_id": gameid
+        })
+
+        # ✅ Commit the changes
         db.session.commit()
-        return {"message": "Console status updated successfully!"}, 200
+
+        return jsonify({"message": "Console status updated successfully!"}), 200
 
     except Exception as e:
         db.session.rollback()
-        return {"error": str(e)}, 500
+        return jsonify({"error": str(e)}), 500
+
+@dashboard_service.route('/releaseDevice/consoleTypeId/<gameid>/console/<console_id>/vendor/<vendor_id>', methods=['POST'])
+def release_console(gameid, console_id, vendor_id):
+    try:
+        # ✅ Define the dynamic console availability table name
+        console_table_name = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
+
+        # ✅ Check if the console exists in the table
+        sql_check_console = text(f"""
+            SELECT is_available FROM {console_table_name}
+            WHERE console_id = :console_id AND game_id = :game_id
+        """)
+
+        result = db.session.execute(sql_check_console, {
+            "console_id": console_id,
+            "game_id": gameid
+        }).fetchone()
+
+        if not result:
+            return jsonify({"error": "Console not found in the availability table"}), 404
+
+        is_available = result.is_available
+
+        if is_available:
+            return jsonify({"message": "Console is already available"}), 200
+
+        # ✅ Update the status to TRUE (available)
+        sql_update_status = text(f"""
+            UPDATE {console_table_name}
+            SET is_available = TRUE
+            WHERE console_id = :console_id AND game_id = :game_id
+        """)
+
+        db.session.execute(sql_update_status, {
+            "console_id": console_id,
+            "game_id": gameid
+        })
+
+        # ✅ Commit the changes
+        db.session.commit()
+
+        return jsonify({"message": "Console released successfully!"}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500

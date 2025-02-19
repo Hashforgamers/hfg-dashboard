@@ -44,6 +44,7 @@ class ConsoleService:
                 ram_size=hardware_data["ramSize"],
                 storage_capacity=hardware_data["storageCapacity"],
                 connectivity=hardware_data["connectivity"],
+                console_model_type=hardware_data["consoleModelType"]
             )
             db.session.add(hardware_spec)
 
