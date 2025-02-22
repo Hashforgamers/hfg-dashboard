@@ -374,3 +374,49 @@ def release_console(gameid, console_id, vendor_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
+
+
+@dashboard_service.route('/getAllDevice/vendor/<vendor_id>', methods=['GET'])
+def get_all_device_for_vendor(vendor_id):
+    try:
+        # ✅ Define the dynamic console availability table name
+        console_table_name = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
+
+        # ✅ SQL query to fetch console details
+        sql_query = text(f"""
+            SELECT ca.console_id, c.model_number, c.brand, ca.is_available
+            FROM {console_table_name} ca
+            JOIN consoles c ON ca.console_id = c.id
+            WHERE ca.vendor_id = :vendor_id
+        """)
+
+        # ✅ Execute the query
+        result = db.session.execute(sql_query, {"vendor_id": vendor_id}).fetchall()
+
+        devices = []
+
+        for row in result:
+            # Fetch the single associated available_game_id for this console_id
+            game_query = text("""
+                SELECT available_game_id 
+                FROM available_game_console 
+                WHERE console_id = :console_id
+                LIMIT 1  -- Since each console is mapped to only one game
+            """)
+            game_result = db.session.execute(game_query, {"console_id": row.console_id}).fetchone()
+
+            # Extract single game ID (or set None if not found)
+            game_id = game_result[0] if game_result else None
+
+            devices.append({
+                "consoleId": row.console_id,
+                "consoleModelNumber": row.model_number,
+                "brand": row.brand,
+                "is_available": row.is_available,
+                "console_type_id": game_id  # Single available_game_id
+            })
+
+        return jsonify(devices), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
