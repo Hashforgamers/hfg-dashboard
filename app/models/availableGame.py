@@ -23,5 +23,8 @@ class AvailableGame(db.Model):
     # Foreign key to Console
     consoles = relationship('Console', secondary=available_game_console, back_populates='available_games')
 
+    # Relationship with Booking (one-to-many)
+    bookings = relationship('Booking', back_populates='game', cascade="all, delete-orphan")
+
     def __repr__(self):
         return f"<AvailableGame game_name={self.game_name} vendor_id={self.vendor_id}>"
