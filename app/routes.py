@@ -286,8 +286,8 @@ def get_device_for_console_type(gameid, vendor_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@dashboard_service.route('/updateDeviceStatus/consoleTypeId/<gameid>/console/<console_id>/vendor/<vendor_id>', methods=['POST'])
-def update_console_status(gameid, console_id, vendor_id):
+@dashboard_service.route('/updateDeviceStatus/consoleTypeId/<gameid>/console/<console_id>/bookingId/<booking_id>/vendor/<vendor_id>', methods=['POST'])
+def update_console_status(gameid, console_id, booking_id, vendor_id):
     try:
         # ✅ Define the dynamic console availability table name
         console_table_name = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
@@ -327,13 +327,14 @@ def update_console_status(gameid, console_id, vendor_id):
         # ✅ Update book_status from "upcoming" to "current"
         sql_update_booking_status = text(f"""
             UPDATE {booking_table_name}
-            SET book_status = 'current'
-            WHERE console_id = :console_id AND game_id = :game_id AND book_status = 'upcoming'
+            SET book_status = 'current', console_id = :console_id
+            WHERE book_id = :booking_id AND game_id = :game_id AND book_status = 'upcoming'
         """)
 
         db.session.execute(sql_update_booking_status, {
             "console_id": console_id,
-            "game_id": gameid
+            "game_id": gameid,
+            "booking_id":booking_id
         })
 
         # ✅ Commit the changes
