@@ -1,18 +1,21 @@
 from flask import Blueprint, request, jsonify, current_app
-from datetime import datetime
+from datetime import datetime,timedelta
 from .models.transaction import Transaction
 from app.extension.extensions import db
-from sqlalchemy import cast, Date, text
+from sqlalchemy import cast, Date, text, func
 from app.services.console_service import ConsoleService
 
 from .models.console import Console
 from .models.availableGame import AvailableGame, available_game_console
+from .models.booking import Booking
 
 from .models.hardwareSpecification import HardwareSpecification
 from .models.maintenanceStatus import MaintenanceStatus
 from .models.priceAndCost import PriceAndCost
 from .models.slot import Slot
 from .models.additionalDetails import AdditionalDetails
+from sqlalchemy.orm import joinedload
+
 
 dashboard_service = Blueprint("dashboard_service", __name__)
 
@@ -288,6 +291,7 @@ def update_console_status(gameid, console_id, vendor_id):
     try:
         # ✅ Define the dynamic console availability table name
         console_table_name = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
+        booking_table_name = f"VENDOR_{vendor_id}_BOOKINGS"
 
         # ✅ Check if the console is available
         sql_check_availability = text(f"""
@@ -308,7 +312,7 @@ def update_console_status(gameid, console_id, vendor_id):
         if not is_available:
             return jsonify({"error": "Console is already in use"}), 400
 
-        # ✅ Update the status to false (occupied)
+        # ✅ Update the console status to FALSE (occupied)
         sql_update_status = text(f"""
             UPDATE {console_table_name}
             SET is_available = FALSE
@@ -320,10 +324,22 @@ def update_console_status(gameid, console_id, vendor_id):
             "game_id": gameid
         })
 
+        # ✅ Update book_status from "upcoming" to "current"
+        sql_update_booking_status = text(f"""
+            UPDATE {booking_table_name}
+            SET book_status = 'current'
+            WHERE console_id = :console_id AND game_id = :game_id AND book_status = 'upcoming'
+        """)
+
+        db.session.execute(sql_update_booking_status, {
+            "console_id": console_id,
+            "game_id": gameid
+        })
+
         # ✅ Commit the changes
         db.session.commit()
 
-        return jsonify({"message": "Console status updated successfully!"}), 200
+        return jsonify({"message": "Console status and booking status updated successfully!"}), 200
 
     except Exception as e:
         db.session.rollback()
@@ -418,5 +434,109 @@ def get_all_device_for_vendor(vendor_id):
 
         return jsonify(devices), 200
 
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@dashboard_service.route('/getLandingPage/vendor/<int:vendor_id>', methods=['GET'])
+def get_landing_page_vendor(vendor_id):
+    """Fetches vendor dashboard data including stats, booking stats, upcoming bookings, and current slots."""
+    try:
+        table_name = f"VENDOR_{vendor_id}_DASHBOARD"
+        today = datetime.utcnow().date()
+        
+        # Fetch transaction stats
+        today_earnings = db.session.query(func.sum(Transaction.amount)).filter(
+            Transaction.vendor_id == vendor_id, Transaction.booked_date == today).scalar() or 0
+        today_bookings = db.session.query(func.count(Transaction.id)).filter(
+            Transaction.vendor_id == vendor_id, Transaction.booked_date == today).scalar() or 0
+        pending_amount = db.session.query(func.sum(Transaction.amount)).filter(
+            Transaction.vendor_id == vendor_id, Transaction.settlement_status == 'pending').scalar() or 0
+        cleared_amount = today_earnings - pending_amount
+        
+        # Fetch bookings from vendor-specific dashboard table
+        sql_fetch_bookings = text(f"""
+            SELECT username, user_id, start_time, end_time, date, book_id, game_id, game_name, console_id, status, book_status
+            FROM {table_name}
+        """)
+        result = db.session.execute(sql_fetch_bookings).fetchall()
+        
+        upcoming_bookings = []
+        current_slots = []
+        
+        for row in result:
+            booking_data = {
+                "bookingId": row.book_id,
+                "username": row.username,
+                "game": row.game_name,
+                "consoleType": f"Console-{row.console_id}",
+                "time": f"{row.start_time.strftime('%I:%M %p')} - {row.end_time.strftime('%I:%M %p')}",
+                "status": "Confirmed" if row.status != 'pending_verified' else "Pending",
+                "game_id":row.game_id,
+                "date":row.date,
+            }
+            
+            slot_data = {
+                "slotId": row.book_id,
+                "startTime": row.start_time.strftime('%I:%M %p'),
+                "endTime": row.end_time.strftime('%I:%M %p'),
+                "status": "Booked" if row.status != 'pending_verified' else "Available",
+                "consoleType": f"Console-{row.console_id}",
+                "consoleNumber": str(row.console_id),
+                "username": row.username,
+                "game_id":row.game_id,
+                "date":row.date,
+            }
+            
+            if row.book_status == "upcoming":
+                upcoming_bookings.append(booking_data)
+            elif row.book_status == "current":
+                current_slots.append(slot_data)
+        
+        # Compute booking statistics
+        total_bookings = db.session.query(func.count(Booking.id)).filter_by().scalar() or 0
+        completed_bookings = db.session.query(func.count(Booking.id)).filter_by(status='completed').scalar() or 0
+        cancelled_bookings = db.session.query(func.count(Booking.id)).filter_by(status='cancelled').scalar() or 0
+        rescheduled_bookings = db.session.query(func.count(Booking.id)).filter_by(status='rescheduled').scalar() or 0
+        
+        # Calculate average booking duration (assume per-day average over past week)
+        total_slots = db.session.query(func.count(Slot.id)).scalar() or 1  # Avoid division by zero
+        average_booking_duration = f"{round((total_slots * 30) / 60)} min"  # Assuming 30 min per slot
+        
+        # Calculate peak booking hours from past transactions
+        peak_hours = (
+            db.session.query(
+                func.to_char(Transaction.booking_time, 'HH24'),  # Use TO_CHAR to extract the hour
+                func.count(Transaction.id)
+            )
+            .group_by(func.to_char(Transaction.booking_time, 'HH24'))
+            .order_by(func.count(Transaction.id).desc())
+            .limit(3)
+            .all()
+        )
+        
+        peak_booking_hours = [f"{int(hour)}:00 - {int(hour)+1}:00" for hour, _ in peak_hours]
+        
+        return jsonify({
+            "vendorId":vendor_id,
+            "stats": {
+                "todayEarnings": today_earnings,
+                "todayEarningsChange": -12,  # Placeholder value
+                "todayBookings": today_bookings,
+                "todayBookingsChange": 8,  # Placeholder value
+                "pendingAmount": pending_amount,
+                "clearedAmount": cleared_amount
+            },
+            "bookingStats": {
+                "totalBookings": total_bookings,
+                "completedBookings": completed_bookings,
+                "cancelledBookings": cancelled_bookings,
+                "rescheduledBookings": rescheduled_bookings,
+                "averageBookingDuration": average_booking_duration,
+                "peakBookingHours": peak_booking_hours
+            },
+            "upcomingBookings": upcoming_bookings,
+            "currentSlots": current_slots
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
