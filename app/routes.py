@@ -291,7 +291,7 @@ def update_console_status(gameid, console_id, vendor_id):
     try:
         # ✅ Define the dynamic console availability table name
         console_table_name = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
-        booking_table_name = f"VENDOR_{vendor_id}_BOOKINGS"
+        booking_table_name = f"VENDOR_{vendor_id}_DASHBOARD"
 
         # ✅ Check if the console is available
         sql_check_availability = text(f"""
