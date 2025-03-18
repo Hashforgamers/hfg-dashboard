@@ -351,6 +351,7 @@ def release_console(gameid, console_id, vendor_id):
     try:
         # ✅ Define the dynamic console availability table name
         console_table_name = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
+        booking_table_name = f"VENDOR_{vendor_id}_DASHBOARD"
 
         # ✅ Check if the console exists in the table
         sql_check_console = text(f"""
@@ -379,6 +380,18 @@ def release_console(gameid, console_id, vendor_id):
         """)
 
         db.session.execute(sql_update_status, {
+            "console_id": console_id,
+            "game_id": gameid
+        })
+
+         # ✅ Update book_status from "upcoming" to "current"
+        sql_update_booking_status = text(f"""
+            UPDATE {booking_table_name}
+            SET book_status = 'completed'
+            WHERE console_id = :console_id AND game_id = :game_id AND book_status = 'current'
+        """)
+
+        db.session.execute(sql_update_booking_status, {
             "console_id": console_id,
             "game_id": gameid
         })
