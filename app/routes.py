@@ -430,7 +430,7 @@ def get_all_device_for_vendor(vendor_id):
 
         # ✅ SQL query to fetch console details
         sql_query = text(f"""
-            SELECT ca.console_id, c.model_number, c.brand, ca.is_available
+            SELECT ca.console_id, c.model_number, c.brand, ca.is_available, ca.game_id
             FROM {console_table_name} ca
             JOIN consoles c ON ca.console_id = c.id
             WHERE ca.vendor_id = :vendor_id
@@ -442,30 +442,23 @@ def get_all_device_for_vendor(vendor_id):
         devices = []
 
         for row in result:
-            # Fetch the single associated available_game_id for this console_id
-            game_query = text("""
-                SELECT available_game_id 
-                FROM available_game_console 
-                WHERE console_id = :console_id
-                LIMIT 1  -- Since each console is mapped to only one game
-            """)
-            game_result = db.session.execute(game_query, {"console_id": row.console_id}).fetchone()
-
-            # Extract single game ID (or set None if not found)
-            game_id = game_result[0] if game_result else None
+            # Fetch the related AvailableGame instance by game_id
+            game = AvailableGame.query.filter_by(id=row.game_id).first()
 
             devices.append({
                 "consoleId": row.console_id,
                 "consoleModelNumber": row.model_number,
                 "brand": row.brand,
                 "is_available": row.is_available,
-                "console_type_id": game_id  # Single available_game_id
+                "consoleTypeName": game.game_name if game else "Unknown",  # If game exists, use game_name
+                "console_type_id": row.game_id  # Include game_id as consoleTypeId
             })
 
         return jsonify(devices), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 
 @dashboard_service.route('/getLandingPage/vendor/<int:vendor_id>', methods=['GET'])
