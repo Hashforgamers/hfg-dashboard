@@ -110,7 +110,7 @@ def get_consoles(vendor_id):
                     "gpu": console.hardware_specifications.graphics_card if console.hardware_specifications else "N/A",
                     "ram": console.hardware_specifications.ram_size if console.hardware_specifications else "N/A",
                     "storage": console.hardware_specifications.storage_capacity if console.hardware_specifications else "N/A",
-                    "status": available_status if available_status else "Unknown",
+                    "status": available_status,
                     "consoleModelType": console.hardware_specifications.console_model_type if console.hardware_specifications else "N/A",
                 }
 
