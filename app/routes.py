@@ -81,6 +81,7 @@ def add_console():
 @dashboard_service.route('/getConsoles/vendor/<int:vendor_id>', methods=['GET'])
 def get_consoles(vendor_id):
     try:
+        availability_table = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
         # Fetch available games associated with the given vendor ID
         available_games = AvailableGame.query.filter_by(vendor_id=vendor_id).all()
 
@@ -88,6 +89,16 @@ def get_consoles(vendor_id):
         consoles = []
         for game in available_games:
             for console in game.consoles:
+                # Get availability status for each console
+                availability_query = text(f"""
+                SELECT is_available 
+                FROM {availability_table} 
+                WHERE console_id = :console_id
+                """)
+                result = db.session.execute(availability_query, {"console_id": console.id})
+                available_status = result.scalar()  # Get the first value of the result, which is `is_available`
+
+                # Prepare the console data
                 console_data = {
                     "id": console.id,
                     "type": console.console_type,
@@ -99,9 +110,11 @@ def get_consoles(vendor_id):
                     "gpu": console.hardware_specifications.graphics_card if console.hardware_specifications else "N/A",
                     "ram": console.hardware_specifications.ram_size if console.hardware_specifications else "N/A",
                     "storage": console.hardware_specifications.storage_capacity if console.hardware_specifications else "N/A",
-                    "status": console.maintenance_status.available_status if console.maintenance_status else "Unknown",
-                    "consoleModelType":console.hardware_specifications.console_model_type if console.hardware_specifications else "N/A",
+                    "status": available_status if available_status else "Unknown",
+                    "consoleModelType": console.hardware_specifications.console_model_type if console.hardware_specifications else "N/A",
                 }
+
+                # Append the console data to the list
                 consoles.append(console_data)
 
         return jsonify(consoles), 200
@@ -388,7 +401,7 @@ def release_console(gameid, console_id, vendor_id):
         sql_update_booking_status = text(f"""
             UPDATE {booking_table_name}
             SET book_status = 'completed'
-            WHERE console_id = :console_id AND game_id = :game_id AND book_status = 'current'
+            WHERE console_id = :console_id AND book_status = 'current'
         """)
 
         db.session.execute(sql_update_booking_status, {
