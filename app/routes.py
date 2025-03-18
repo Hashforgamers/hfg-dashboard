@@ -274,7 +274,7 @@ def get_device_for_console_type(gameid, vendor_id):
 
         # ✅ SQL query to fetch console details
         sql_query = text(f"""
-            SELECT ca.console_id, c.model_number, c.brand, ca.is_available
+            SELECT ca.console_id, c.model_number, c.brand, ca.is_available, ca.game_id
             FROM {console_table_name} ca
             JOIN consoles c ON ca.console_id = c.id
             WHERE ca.game_id = :game_id
@@ -284,15 +284,18 @@ def get_device_for_console_type(gameid, vendor_id):
         result = db.session.execute(sql_query, {"game_id": gameid}).fetchall()
 
         # ✅ Format the response
-        devices = [
-            {
+        devices = []
+        for row in result:
+            # Fetch the related AvailableGame instance by game_id
+            game = AvailableGame.query.filter_by(id=row.game_id).first()
+            
+            devices.append({
                 "consoleId": row.console_id,
                 "consoleModelNumber": row.model_number,
                 "brand": row.brand,
-                "is_available": row.is_available
-            }
-            for row in result
-        ]
+                "is_available": row.is_available,
+                "consoleTypeName": game.game_name if game else "Unknown"  # If game exists, use game_name
+            })
 
         return jsonify(devices), 200
 
