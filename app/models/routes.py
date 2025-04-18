@@ -17,7 +17,7 @@ from .models.additionalDetails import AdditionalDetails
 from sqlalchemy.orm import joinedload
 
 from app.models.vendor import Vendor  # adjust import as per your structure
-from app.models.uploadedImage import Image
+from app.models.image import Image
 from app.models.documentSubmitted import DocumentSubmitted
 from app.models.timing import Timing
 from app.models.openingDay import OpeningDay
@@ -591,26 +591,26 @@ def get_vendor_dashboard(vendor_id):
         ],
         "cafeProfile": {
             "name": vendor.cafe_name,
-            "avatar": vendor.images[0].path if vendor.images else "",
+            "avatar": vendor.images[0].url if vendor.images else "",
             "membershipStatus": "Premium Member",  # hardcoded; change if needed
-            "website": "www.demo.com",
+            "website": vendor.contact_info.website if vendor.contact_info else "",
             "email": vendor.contact_info.email if vendor.contact_info else "",
         },
         "cafeGallery": {
-            "images": [img.path for img in vendor.images]
+            "images": [img.url for img in vendor.images]
         },
         "businessDetails": {
-            "businessName": "Game Cafe",
-            "businessType": "Cafe",
+            "businessName": vendor.business_registration.business_name if vendor.business_registration else "",
+            "businessType": vendor.business_registration.business_type if vendor.business_registration else "",
             "phone": vendor.contact_info.phone if vendor.contact_info else "",
-            "website": "www.mail.com",
-            "address": vendor.physical_address.addressLine1 if vendor.physical_address else ""
+            "website": vendor.contact_info.website if vendor.contact_info else "",
+            "address": vendor.physical_address.full_address if vendor.physical_address else ""
         },
         "operatingHours": [
             {
                 "day": opening_day.day,
-                "open": "09:00",
-                "close": "18:00"
+                "open": opening_day.open_time.strftime('%H:%M'),
+                "close": opening_day.close_time.strftime('%H:%M')
             } for opening_day in vendor.opening_days
         ],
         "billingDetails": {
