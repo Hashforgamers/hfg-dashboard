@@ -576,7 +576,7 @@ def get_vendor_dashboard(vendor_id):
         joinedload(Vendor.timing),
         joinedload(Vendor.opening_days),
         joinedload(Vendor.images),
-        joinedload(Vendor.documents_submitted)
+        joinedload(Vendor.documents)
     ).filter_by(id=vendor_id).first()
 
     if not vendor:
@@ -626,10 +626,10 @@ def get_vendor_dashboard(vendor_id):
         },
         "verifiedDocuments": [
             {
-                "name": doc.name,
+                "name": doc.document_type,
                 "status": doc.status,
-                "expiry": doc.expiry.strftime('%Y-%m-%d') if doc.expiry else None
-            } for doc in vendor.documents_submitted
+                "expiry": None  # Your new model doesn’t include expiry
+            } for doc in vendor.documents
         ]
     }
 

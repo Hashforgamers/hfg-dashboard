@@ -10,6 +10,7 @@ from app.models.businessRegistration import BusinessRegistration
 from app.models.timing import Timing
 from app.models.amenity import Amenity
 from app.models.physicalAddress import PhysicalAddress
+from app.models.document import Document
 
 class Vendor(db.Model):
     __tablename__ = 'vendors'
@@ -77,6 +78,10 @@ class Vendor(db.Model):
         back_populates='vendor',
         cascade="all, delete-orphan"
     )
+
+    # In vendor.py
+    documents = db.relationship("Document", back_populates="vendor", cascade="all, delete-orphan")
+
 
     # Relationship to Image (new addition)
     images = relationship(
