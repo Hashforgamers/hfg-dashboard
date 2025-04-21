@@ -17,12 +17,14 @@ class ContactInfo(db.Model):
         "User",  # ← STRING REFERENCE
         primaryjoin="and_(foreign(ContactInfo.parent_id) == User.id, ContactInfo.parent_type == 'user')",
         back_populates="contact_info",
-        uselist=False
+        uselist=False,
+        viewonly=True
     )
 
     vendor = relationship(
         "Vendor",
         primaryjoin="and_(foreign(ContactInfo.parent_id) == Vendor.id, ContactInfo.parent_type == 'vendor')",
         back_populates="contact_info",
-        uselist=False
+        uselist=False,
+        overlaps="contact_info"
     )

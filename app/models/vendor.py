@@ -50,7 +50,8 @@ class Vendor(db.Model):
         ),
         back_populates="vendor",
         uselist=False,
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
+        overlaps="contact_info"
     )
 
     __mapper_args__ = {
