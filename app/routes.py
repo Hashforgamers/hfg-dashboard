@@ -13,6 +13,7 @@ from .models.hardwareSpecification import HardwareSpecification
 from .models.maintenanceStatus import MaintenanceStatus
 from .models.priceAndCost import PriceAndCost
 from .models.slot import Slot
+from .models.user import User
 from .models.additionalDetails import AdditionalDetails
 from sqlalchemy.orm import joinedload
 
@@ -566,7 +567,6 @@ def get_landing_page_vendor(vendor_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
 @dashboard_service.route('/vendor/<int:vendor_id>/dashboard', methods=['GET'])
 def get_vendor_dashboard(vendor_id):
     vendor = db.session.query(Vendor).options(
@@ -634,3 +634,157 @@ def get_vendor_dashboard(vendor_id):
     }
 
     return jsonify(payload), 200
+
+# @dashboard_service.route('/vendor/<int:vendor_id>/knowYourGamer', methods=['GET'])
+# def get_your_gamers(vendor_id):
+#     try:
+#         # Step 1: Get all transactions for the vendor
+#         transactions = Transaction.query.filter_by(vendor_id=vendor_id).all()
+#         if not transactions:
+#             return jsonify([])
+
+#         # Prepare dynamic table name
+#         promo_table = f"VENDOR_{vendor_id}_PROMO_DETAIL"
+
+#         # Aggregation dictionary
+#         user_summary = {}
+
+#         for trans in transactions:
+#             user_id = trans.user_id
+#             user_name = trans.user_name
+#             booking_id = trans.booking_id
+#             amount = trans.amount
+#             booked_date = trans.booked_date
+
+#             # Fetch user's booking
+#             booking = Booking.query.filter_by(id=booking_id).first()
+#             if not booking:
+#                 continue
+
+#             # Initialize summary if user not processed yet
+#             if user_id not in user_summary:
+#                 user_summary[user_id] = {
+#                     "id": user_id,
+#                     "name": user_name,
+#                     "contact": "N/A",  # You can pull from user model if needed
+#                     "totalSlots": 0,
+#                     "totalAmount": 0.0,
+#                     "promoCodesUsed": 0,
+#                     "discountAvailed": 0.0,
+#                     "lastVisit": booked_date,
+#                     "membershipTier": "Silver",  # Optional logic later
+#                     "notes": "N/A"
+#                 }
+
+#             user_summary[user_id]["totalSlots"] += 1
+#             user_summary[user_id]["totalAmount"] += amount
+#             user_summary[user_id]["lastVisit"] = max(user_summary[user_id]["lastVisit"], booked_date)
+
+#             # Promo data for this transaction
+#             sql = text(f"SELECT discount_applied FROM {promo_table} WHERE transaction_id = :trans_id")
+#             promo_result = db.session.execute(sql, {"trans_id": trans.id}).fetchone()
+
+#             if promo_result:
+#                 user_summary[user_id]["promoCodesUsed"] += 1
+#                 user_summary[user_id]["discountAvailed"] += promo_result[0]
+
+#         # Final list formatting
+#         result = []
+#         for user in user_summary.values():
+#             total_amount = user["totalAmount"]
+#             total_slots = user["totalSlots"]
+#             discount = user["discountAvailed"]
+#             net = total_amount - discount
+
+#             user["averagePerSlot"] = round(total_amount / total_slots) if total_slots else 0
+#             user["netRevenue"] = net
+
+#             # Optional: Set membership tier logic
+#             if total_slots > 50:
+#                 user["membershipTier"] = "Platinum"
+#             elif total_slots > 30:
+#                 user["membershipTier"] = "Gold"
+
+#             result.append(user)
+
+#         return jsonify(result), 200
+
+#     except Exception as e:
+#         current_app.logger.error(f"Error generating Know Your Gamer: {e}")
+#         return jsonify({"message": "Internal server error", "error": str(e)}), 500
+
+
+@dashboard_service.route('/vendor/<int:vendor_id>/knowYourGamer', methods=['GET'])
+def get_your_gamers(vendor_id):
+    try:
+        transactions = Transaction.query.filter_by(vendor_id=vendor_id).all()
+        if not transactions:
+            return jsonify([])
+
+        promo_table = f"VENDOR_{vendor_id}_PROMO_DETAIL"
+        user_summary = {}
+
+        for trans in transactions:
+            user_id = trans.user_id
+            booking_id = trans.booking_id
+            amount = trans.amount
+            booked_date = trans.booked_date
+
+            user_obj = User.query.filter_by(id=user_id).first()
+            booking = Booking.query.filter_by(id=booking_id).first()
+
+            if not user_obj or not booking:
+                continue
+
+            contact_info = user_obj.contact_info
+            phone = contact_info.phone if contact_info else "N/A"
+
+            if user_id not in user_summary:
+                user_summary[user_id] = {
+                    "id": user_id,
+                    "name": user_obj.name,
+                    "contact": phone,
+                    "totalSlots": 0,
+                    "totalAmount": 0.0,
+                    "promoCodesUsed": 0,
+                    "discountAvailed": 0.0,
+                    "lastVisit": booked_date,
+                    "membershipTier": "Silver",
+                    "notes": "N/A"
+                }
+
+            user_summary[user_id]["totalSlots"] += 1
+            user_summary[user_id]["totalAmount"] += amount
+            user_summary[user_id]["lastVisit"] = max(user_summary[user_id]["lastVisit"], booked_date)
+
+            # Promo Code Data
+            sql = text(f"SELECT discount_applied FROM {promo_table} WHERE transaction_id = :trans_id")
+            promo_result = db.session.execute(sql, {"trans_id": trans.id}).fetchone()
+
+            if promo_result:
+                user_summary[user_id]["promoCodesUsed"] += 1
+                user_summary[user_id]["discountAvailed"] += promo_result[0]
+
+        # Format result
+        result = []
+        for user in user_summary.values():
+            total_amount = user["totalAmount"]
+            total_slots = user["totalSlots"]
+            discount = user["discountAvailed"]
+            net = total_amount - discount
+
+            user["averagePerSlot"] = round(total_amount / total_slots) if total_slots else 0
+            user["netRevenue"] = net
+
+            if total_slots > 50:
+                user["membershipTier"] = "Platinum"
+            elif total_slots > 30:
+                user["membershipTier"] = "Gold"
+
+            result.append(user)
+
+        return jsonify(result), 200
+
+    except Exception as e:
+        current_app.logger.error(f"Error generating Know Your Gamer: {e}")
+        return jsonify({"message": "Internal server error", "error": str(e)}), 500

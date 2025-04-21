@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, ForeignKey, DateTime
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, foreign
 from app.extension.extensions import db
 from datetime import datetime
 from app.models.documentSubmitted import DocumentSubmitted
@@ -11,6 +11,7 @@ from app.models.timing import Timing
 from app.models.amenity import Amenity
 from app.models.physicalAddress import PhysicalAddress
 from app.models.document import Document
+from sqlalchemy.sql import and_
 
 class Vendor(db.Model):
     __tablename__ = 'vendors'
@@ -43,9 +44,13 @@ class Vendor(db.Model):
     # Relationship to ContactInfo
     contact_info = relationship(
         "ContactInfo",
-        back_populates="vendor",  # Ensure this matches the relationship in ContactInfo
+        primaryjoin=and_(
+            foreign(ContactInfo.parent_id) == id,
+            ContactInfo.parent_type == 'vendor'
+        ),
+        back_populates="vendor",
         uselist=False,
-        cascade="all, delete"
+        cascade="all, delete-orphan"
     )
 
     __mapper_args__ = {
