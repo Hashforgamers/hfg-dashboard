@@ -55,7 +55,9 @@ def get_transaction_report(to_date, from_date, vendor_id):
             "amount": txn.amount,
             "modeOfPayment": txn.mode_of_payment,
             "bookingType": txn.booking_type,
-            "settlementStatus": txn.settlement_status
+            "settlementStatus": txn.settlement_status,
+            "userId":txn.user_id,
+            "bookedOn":txn.booked_date
         } for txn in transactions]
         
         return jsonify(result), 200
@@ -709,101 +711,6 @@ def get_your_gamers(vendor_id):
     except Exception as e:
         current_app.logger.error(f"Error generating Know Your Gamer: {e}")
         return jsonify({"message": "Internal server error", "error": str(e)}), 500
-
-# @dashboard_service.route('/vendor/<int:vendor_id>/knowYourGamer/stats', methods=['GET'])
-# def get_your_gamers_stats(vendor_id):
-#     try:
-#         # Dynamic Promo Table name based on vendor_id
-#         promo_table = f"VENDOR_{vendor_id}_PROMO_DETAIL"
-        
-#         # Start a transaction
-#         with db.session.begin():
-#             # 1. Total Gamers (distinct users who have made bookings)
-#             total_gamers = db.session.query(func.count(func.distinct(Transaction.user_id)))\
-#                 .filter(Transaction.vendor_id == vendor_id).scalar()
-
-#             # 2. Average Revenue (total revenue / total slots)
-#             total_revenue = db.session.query(func.sum(Transaction.amount))\
-#                 .filter(Transaction.vendor_id == vendor_id).scalar() or 0
-#             total_slots = db.session.query(func.count(Booking.id))\
-#                 .join(Slot, Booking.slot_id == Slot.id)\
-#                 .filter(Slot.vendor_id == vendor_id).scalar() or 1  # Prevent division by zero
-#             average_revenue = total_revenue / total_slots
-
-#             # 3. Premium Members (number of distinct users with premium membership)
-#             premium_members = db.session.query(func.count(func.distinct(Transaction.user_id)))\
-#                 .filter(Transaction.vendor_id == vendor_id, Transaction.amount > 1000).scalar()  # Assuming premium users are those who spent > 1000
-
-#             # 4. Average Session Time (average time between bookings, in hours)
-#             session_times = db.session.query(Booking.slot_id, func.min(Booking.booking_date).label('min_time'), func.max(Booking.booking_date).label('max_time'))\
-#                 .join(Slot, Booking.slot_id == Slot.id)\
-#                 .filter(Slot.vendor_id == vendor_id)\
-#                 .group_by(Booking.slot_id).all()
-
-#             total_session_time = 0
-#             total_sessions = 0
-#             for session in session_times:
-#                 start_time = session.min_time
-#                 end_time = session.max_time
-#                 session_duration = (end_time - start_time).total_seconds() / 3600  # in hours
-#                 total_session_time += session_duration
-#                 total_sessions += 1
-
-#             avg_session_time = total_session_time / total_sessions if total_sessions > 0 else 0
-
-#             # 5. Revenue Growth (comparing current month revenue vs previous month)
-#             current_month_start = datetime(datetime.now().year, datetime.now().month, 1)
-#             previous_month_start = (current_month_start - timedelta(days=1)).replace(day=1)
-#             previous_month_end = current_month_start - timedelta(days=1)
-
-#             current_month_revenue = db.session.query(func.sum(Transaction.amount))\
-#                 .filter(Transaction.vendor_id == vendor_id, Transaction.booking_date >= current_month_start).scalar() or 0
-#             previous_month_revenue = db.session.query(func.sum(Transaction.amount))\
-#                 .filter(Transaction.vendor_id == vendor_id, Transaction.booking_date >= previous_month_start, Transaction.booking_date <= previous_month_end).scalar() or 0
-
-#             revenue_growth = ((current_month_revenue - previous_month_revenue) / previous_month_revenue) * 100 if previous_month_revenue else 0
-#             revenue_growth = f"+{revenue_growth:.2f}%" if revenue_growth >= 0 else f"{revenue_growth:.2f}%"
-
-#             # 6. Members Growth (comparing current month premium members vs previous month)
-#             current_month_premium = db.session.query(func.count(func.distinct(Transaction.user_id)))\
-#                 .filter(Transaction.vendor_id == vendor_id, Transaction.amount > 1000, Transaction.booking_date >= current_month_start).scalar() or 0
-#             previous_month_premium = db.session.query(func.count(func.distinct(Transaction.user_id)))\
-#                 .filter(Transaction.vendor_id == vendor_id, Transaction.amount > 1000, Transaction.booking_date >= previous_month_start, Transaction.booking_date <= previous_month_end).scalar() or 0
-
-#             members_growth = ((current_month_premium - previous_month_premium) / previous_month_premium) * 100 if previous_month_premium else 0
-#             members_growth = f"+{members_growth:.2f}%" if members_growth >= 0 else f"{members_growth:.2f}%"
-
-#             # 7. Session Growth (comparing current month sessions vs previous month)
-#             current_month_sessions = db.session.query(func.count(Booking.id))\
-#                 .join(Slot, Booking.slot_id == Slot.id)\
-#                 .filter(Slot.vendor_id == vendor_id, Booking.booking_date >= current_month_start).scalar() or 0
-#             previous_month_sessions = db.session.query(func.count(Booking.id))\
-#                 .join(Slot, Booking.slot_id == Slot.id)\
-#                 .filter(Slot.vendor_id == vendor_id, Booking.booking_date >= previous_month_start, Booking.booking_date <= previous_month_end).scalar() or 0
-
-#             session_growth = ((current_month_sessions - previous_month_sessions) / previous_month_sessions) * 100 if previous_month_sessions else 0
-#             session_growth = f"+{session_growth:.2f}%" if session_growth >= 0 else f"{session_growth:.2f}%"
-
-#             # 8. Discount Applied from Promo (sum of all discounts applied in vendor-specific promo table)
-#             promo_discount = db.session.execute(
-#                 text(f"SELECT SUM(discount_applied) FROM {promo_table}")
-#             ).scalar() or 0
-
-#         # Return stats as JSON response
-#         return jsonify({
-#             "totalGamers": total_gamers,
-#             "averageRevenue": average_revenue,
-#             "premiumMembers": premium_members,
-#             "avgSessionTime": f"{avg_session_time:.1f} hrs" if avg_session_time > 0 else "N/A",
-#             "revenueGrowth": revenue_growth,
-#             "membersGrowth": members_growth,
-#             "sessionGrowth": session_growth,
-#             "promoDiscountApplied": promo_discount
-#         })
-
-#     except Exception as e:
-#         db.session.rollback()
-#         return jsonify({"error": str(e)}), 500
 
 @dashboard_service.route('/vendor/<int:vendor_id>/knowYourGamer/stats', methods=['GET'])
 def get_your_gamers_stats(vendor_id):
