@@ -496,6 +496,7 @@ def get_landing_page_vendor(vendor_id):
             booking_data = {
                 "bookingId": row.book_id,
                 "username": row.username,
+                "userId":row.user_id,
                 "game": row.game_name,
                 "consoleType": f"Console-{row.console_id}",
                 "time": f"{row.start_time.strftime('%I:%M %p')} - {row.end_time.strftime('%I:%M %p')}",
@@ -512,6 +513,7 @@ def get_landing_page_vendor(vendor_id):
                 "consoleType": f"Console-{row.console_id}",
                 "consoleNumber": str(row.console_id),
                 "username": row.username,
+                "userId":row.user_id,
                 "game_id":row.game_id,
                 "date":row.date,
             }
