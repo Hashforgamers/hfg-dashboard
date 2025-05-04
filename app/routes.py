@@ -370,6 +370,75 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
+@dashboard_service.route('/assignConsoleToMultipleBookings', methods=['POST'])
+def assign_console_to_multiple_bookings():
+    try:
+        data = request.get_json()
+        console_id = data.get('console_id')
+        game_id = data.get('game_id')
+        booking_ids = data.get('booking_ids')  # List[int]
+        vendor_id = data.get('vendor_id')
+
+        if not all([console_id, game_id, booking_ids, vendor_id]):
+            return jsonify({"error": "Missing required fields"}), 400
+
+        if not isinstance(booking_ids, list) or not all(isinstance(bid, int) for bid in booking_ids):
+            return jsonify({"error": "booking_ids must be a list of integers"}), 400
+
+        # Dynamic table names
+        console_table_name = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
+        booking_table_name = f"VENDOR_{vendor_id}_DASHBOARD"
+
+        # ✅ Check if the console is currently available
+        sql_check_availability = text(f"""
+            SELECT is_available FROM {console_table_name}
+            WHERE console_id = :console_id AND game_id = :game_id
+        """)
+
+        result = db.session.execute(sql_check_availability, {
+            "console_id": console_id,
+            "game_id": game_id
+        }).fetchone()
+
+        if not result:
+            return jsonify({"error": "Console not found"}), 404
+
+        if not result.is_available:
+            return jsonify({"error": "Console is already in use"}), 400
+
+        # ✅ Mark the console as unavailable
+        sql_update_console_status = text(f"""
+            UPDATE {console_table_name}
+            SET is_available = FALSE
+            WHERE console_id = :console_id AND game_id = :game_id
+        """)
+
+        db.session.execute(sql_update_console_status, {
+            "console_id": console_id,
+            "game_id": game_id
+        })
+
+        # ✅ Update multiple bookings to status 'current' and assign the console
+        sql_update_bookings = text(f"""
+            UPDATE {booking_table_name}
+            SET book_status = 'current', console_id = :console_id
+            WHERE book_id = ANY(:booking_ids) AND game_id = :game_id AND book_status = 'upcoming'
+        """)
+
+        db.session.execute(sql_update_bookings, {
+            "console_id": console_id,
+            "game_id": game_id,
+            "booking_ids": booking_ids
+        })
+
+        db.session.commit()
+
+        return jsonify({"message": "Console assigned to multiple bookings successfully."}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
 @dashboard_service.route('/releaseDevice/consoleTypeId/<gameid>/console/<console_id>/vendor/<vendor_id>', methods=['POST'])
 def release_console(gameid, console_id, vendor_id):
     try:
