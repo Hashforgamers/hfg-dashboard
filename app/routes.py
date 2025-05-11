@@ -553,9 +553,23 @@ def get_landing_page_vendor(vendor_id):
         
         # Fetch bookings from vendor-specific dashboard table
         sql_fetch_bookings = text(f"""
-            SELECT username, user_id, start_time, end_time, date, book_id, game_id, game_name, console_id, status, book_status
-            FROM {table_name}
+            SELECT 
+                b.username, 
+                b.user_id, 
+                b.start_time, 
+                b.end_time, 
+                b.date, 
+                b.book_id, 
+                b.game_id, 
+                b.game_name, 
+                b.console_id, 
+                b.status, 
+                b.book_status,
+                ag.single_slot_price
+            FROM {table_name} b
+            JOIN available_games ag ON b.game_id = ag.id
         """)
+
         result = db.session.execute(sql_fetch_bookings).fetchall()
         
         upcoming_bookings = []
@@ -572,6 +586,7 @@ def get_landing_page_vendor(vendor_id):
                 "status": "Confirmed" if row.status != 'pending_verified' else "Pending",
                 "game_id":row.game_id,
                 "date":row.date,
+                "slot_price": row.single_slot_price,
             }
             
             slot_data = {
@@ -585,6 +600,7 @@ def get_landing_page_vendor(vendor_id):
                 "userId":row.user_id,
                 "game_id":row.game_id,
                 "date":row.date,
+                "slot_price": row.single_slot_price,
             }
             
             if row.book_status == "upcoming":
