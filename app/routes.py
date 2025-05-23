@@ -28,19 +28,23 @@ from app.models.businessRegistration import BusinessRegistration
 dashboard_service = Blueprint("dashboard_service", __name__)
 
 @dashboard_service.route('/transactionReport/<int:vendor_id>/<string:to_date>/<string:from_date>', methods=['GET'])
-def get_transaction_report(vendor_id, to_date, from_date):
+def get_transaction_report(to_date, from_date, vendor_id):
     try:
-        # Parse date strings
+        # Convert date parameters to datetime objects
         to_date = datetime.strptime(to_date, "%Y%m%d").date()
-        from_date = datetime.utcnow().date() if from_date.lower() == "null" else datetime.strptime(from_date, "%Y%m%d").date()
 
-        # Fetch transactions
+        if not from_date or from_date.lower() == "null":
+            from_date = datetime.utcnow().date()
+        else:
+            from_date = datetime.strptime(from_date, "%Y%m%d").date()
+
         transactions = Transaction.query.filter(
-            Transaction.vendor_id == vendor_id,
+            Transaction.vendor_id == vendor_id and
             cast(Transaction.booked_date, Date).between(from_date, to_date)
         ).all()
 
-        current_app.logger.info(f"Found {len(transactions)} transactions for vendor {vendor_id} from {from_date} to {to_date}")
+
+        current_app.logger.info(f"transactions {transactions} {to_date} {from_date}")
 
         # Format response data
         result = [{
@@ -52,15 +56,13 @@ def get_transaction_report(vendor_id, to_date, from_date):
             "modeOfPayment": txn.mode_of_payment,
             "bookingType": txn.booking_type,
             "settlementStatus": txn.settlement_status,
-            "userId": txn.user_id,
-            "bookedOn": txn.booked_date
+            "userId":txn.user_id,
+            "bookedOn":txn.booked_date
         } for txn in transactions]
-
+        
         return jsonify(result), 200
-
     except Exception as e:
-        current_app.logger.error(f"Error fetching transaction report: {str(e)}")
-        return jsonify({"error": "Failed to fetch transaction report", "details": str(e)}), 500
+        return jsonify({"error": str(e)}), 500
 
 @dashboard_service.route('/db-check', methods=['GET'])
 def check_db_connection():
