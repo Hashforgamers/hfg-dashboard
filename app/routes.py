@@ -806,59 +806,50 @@ def get_vendor_dashboard(vendor_id):
 @dashboard_service.route('/vendor/<int:vendor_id>/knowYourGamer', methods=['GET'])
 def get_your_gamers(vendor_id):
     try:
-        dashboard_table = f"VENDOR_{vendor_id}_DASHBOARD"
-        promo_table = f"VENDOR_{vendor_id}_PROMO_DETAIL"
-
-        # Fetch all dashboard data
-        dashboard_sql = text(f"""
-            SELECT user_id, username, date AS booked_date, book_id, book_status, game_name
-            FROM {dashboard_table}
-        """)
-        dashboard_rows = db.session.execute(dashboard_sql).fetchall()
-
-        if not dashboard_rows:
+        transactions = Transaction.query.filter_by(vendor_id=vendor_id).all()
+        if not transactions:
             return jsonify([])
 
-        # Fetch promo data mapped by transaction_id
-        promo_sql = text(f"""
+        # Prepare sets for bulk fetch
+        user_ids = list({t.user_id for t in transactions})
+        booking_ids = list({t.booking_id for t in transactions})
+        trans_ids = list({t.id for t in transactions})
+        promo_table = f"VENDOR_{vendor_id}_PROMO_DETAIL"
+
+        # Bulk fetch users and bookings
+        users = {u.id: u for u in User.query.filter(User.id.in_(user_ids)).all()}
+        bookings = {b.id: b for b in Booking.query.filter(Booking.id.in_(booking_ids)).all()}
+
+        # Bulk fetch promo data
+        promo_results = db.session.execute(text(f"""
             SELECT transaction_id, discount_applied
             FROM {promo_table}
-        """)
-        promo_data = db.session.execute(promo_sql).fetchall()
-        promo_map = {}
-        for row in promo_data:
-            promo_map[row.transaction_id] = row.discount_applied
+            WHERE transaction_id IN :ids
+        """), {"ids": tuple(trans_ids)}).fetchall()
 
-        # Fetch transaction data once
-        transactions = Transaction.query.filter_by(vendor_id=vendor_id).all()
-        transaction_map = {t.booking_id: t for t in transactions}
+        promo_dict = {row.transaction_id: row.discount_applied for row in promo_results}
 
-        # Preload user info
-        user_ids = list({row.user_id for row in dashboard_rows})
-        users = User.query.filter(User.id.in_(user_ids)).all()
-        user_map = {u.id: u for u in users}
+        # Start building user summary
+        user_summary = {}
 
-        result = {}
-        for row in dashboard_rows:
-            user_id = row.user_id
-            book_id = row.book_id
-            booked_date = row.booked_date
-            username = row.username
+        for trans in transactions:
+            user_id = trans.user_id
+            booking_id = trans.booking_id
+            amount = trans.amount or 0.0
+            booked_date = trans.booked_date
 
-            user_obj = user_map.get(user_id)
-            trans_obj = transaction_map.get(book_id)
+            user_obj = users.get(user_id)
+            booking = bookings.get(booking_id)
 
-            if not user_obj or not trans_obj:
+            if not user_obj or not booking:
                 continue
 
             phone = user_obj.contact_info.phone if user_obj.contact_info else "N/A"
-            amount = trans_obj.amount or 0.0
-            discount = float(promo_map.get(trans_obj.id, 0.0))
 
-            if user_id not in result:
-                result[user_id] = {
+            if user_id not in user_summary:
+                user_summary[user_id] = {
                     "id": user_id,
-                    "name": username,
+                    "name": user_obj.name,
                     "contact": phone,
                     "totalSlots": 0,
                     "totalAmount": 0.0,
@@ -869,35 +860,38 @@ def get_your_gamers(vendor_id):
                     "notes": "N/A"
                 }
 
-            result[user_id]["totalSlots"] += 1
-            result[user_id]["totalAmount"] += amount
-            result[user_id]["discountAvailed"] += discount
-            result[user_id]["lastVisit"] = max(result[user_id]["lastVisit"], booked_date)
-            if discount > 0:
-                result[user_id]["promoCodesUsed"] += 1
+            summary = user_summary[user_id]
+            summary["totalSlots"] += 1
+            summary["totalAmount"] += amount
+            summary["lastVisit"] = max(summary["lastVisit"], booked_date)
 
-        # Final calculation
-        response = []
-        for user in result.values():
-            total = user["totalAmount"]
-            slots = user["totalSlots"]
+            discount = promo_dict.get(trans.id)
+            if discount:
+                summary["promoCodesUsed"] += 1
+                summary["discountAvailed"] += float(discount)
+
+        # Final formatting
+        result = []
+        for user in user_summary.values():
+            total_amount = user["totalAmount"]
+            total_slots = user["totalSlots"]
             discount = user["discountAvailed"]
-            net = total - discount
+            net = total_amount - discount
 
-            user["averagePerSlot"] = round(total / slots) if slots else 0
-            user["netRevenue"] = net
+            user["averagePerSlot"] = round(total_amount / total_slots) if total_slots else 0
+            user["netRevenue"] = round(net)
 
-            if slots > 50:
+            if total_slots > 10:
                 user["membershipTier"] = "Platinum"
-            elif slots > 30:
+            elif total_slots > 5:
                 user["membershipTier"] = "Gold"
 
-            response.append(user)
+            result.append(user)
 
-        return jsonify(response), 200
+        return jsonify(result), 200
 
     except Exception as e:
-        current_app.logger.error(f"Error in optimized Know Your Gamer: {e}")
+        current_app.logger.error(f"Error generating Know Your Gamer: {e}")
         return jsonify({"message": "Internal server error", "error": str(e)}), 500
 
 
