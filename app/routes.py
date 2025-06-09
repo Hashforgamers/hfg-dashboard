@@ -565,9 +565,11 @@ def get_landing_page_vendor(vendor_id):
                 b.console_id, 
                 b.status, 
                 b.book_status,
-                ag.single_slot_price
+                ag.single_slot_price,
+                d.slot_id
             FROM {table_name} b
             JOIN available_games ag ON b.game_id = ag.id
+            JOIN bookings d ON b.book_id = d.id
         """)
 
         result = db.session.execute(sql_fetch_bookings).fetchall()
@@ -577,6 +579,7 @@ def get_landing_page_vendor(vendor_id):
         
         for row in result:
             booking_data = {
+                "slotId": row.slot_id,
                 "bookingId": row.book_id,
                 "username": row.username,
                 "userId":row.user_id,
@@ -590,11 +593,12 @@ def get_landing_page_vendor(vendor_id):
             }
             
             slot_data = {
-                "slotId": row.book_id,
+                "slotId": row.slot_id,
+                "bookId" : row.book_id,
                 "startTime": row.start_time.strftime('%I:%M %p'),
                 "endTime": row.end_time.strftime('%I:%M %p'),
                 "status": "Booked" if row.status != 'pending_verified' else "Available",
-                "consoleType": f"Console-{row.console_id}",
+                "consoleType": f"HASH{row.console_id}",
                 "consoleNumber": str(row.console_id),
                 "username": row.username,
                 "userId":row.user_id,
