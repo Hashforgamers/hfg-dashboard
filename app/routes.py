@@ -302,7 +302,8 @@ def get_device_for_console_type(gameid, vendor_id):
                 "consoleModelNumber": row.model_number,
                 "brand": row.brand,
                 "is_available": row.is_available,
-                "consoleTypeName": game.game_name if game else "Unknown"  # If game exists, use game_name
+                "consoleTypeName": game.game_name if game else "Unknown",  # If game exists, use game_name
+                "consolePrice": game.single_slot_price
             })
 
         return jsonify(devices), 200
@@ -893,7 +894,6 @@ def get_your_gamers(vendor_id):
     except Exception as e:
         current_app.logger.error(f"Error generating Know Your Gamer: {e}")
         return jsonify({"message": "Internal server error", "error": str(e)}), 500
-
 
 @dashboard_service.route('/vendor/<int:vendor_id>/knowYourGamer/stats', methods=['GET'])
 def get_your_gamers_stats(vendor_id):
