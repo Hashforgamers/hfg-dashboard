@@ -528,7 +528,8 @@ def get_all_device_for_vendor(vendor_id):
                 "brand": row.brand,
                 "is_available": row.is_available,
                 "consoleTypeName": game.game_name if game else "Unknown",  # If game exists, use game_name
-                "console_type_id": row.game_id  # Include game_id as consoleTypeId
+                "console_type_id": row.game_id,  # Include game_id as consoleTypeId
+                "consolePrice": game.single_slot_price
             })
 
         return jsonify(devices), 200
