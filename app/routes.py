@@ -86,6 +86,62 @@ def add_console():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@console_bp.route("/console/<int:console_id>", methods=["GET"])
+def get_console(console_id):
+    result, status_code = ConsoleService.get_console_details(console_id)
+    return jsonify(result), status_code
+
+@dashboard_service.route("/vendor/<int:vendor_id>/console-pricing", methods=["GET"])
+def get_console_pricing(vendor_id):
+    try:
+        available_games = AvailableGame.query.filter_by(vendor_id=vendor_id).all()
+
+        if not available_games:
+            return jsonify({"message": "No games found for this vendor"}), 404
+
+        pricing_data = {}
+        for game in available_games:
+            for console in game.consoles:
+                pricing_data[console.type] = {
+                    "value": game.single_slot_price
+                }
+
+        return jsonify({"data": pricing_data}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@dashboard_service.route("/vendor/<int:vendor_id>/console-pricing", methods=["POST"])
+def update_console_pricing(vendor_id):
+    try:
+        data = request.get_json()
+        updated_prices = data.get("updatedPrices", {})
+
+        if not updated_prices:
+            return jsonify({"error": "No prices provided"}), 400
+
+        updated_count = 0
+
+        # Iterate over each console type and update associated games
+        for console_type, new_price in updated_prices.items():
+            games = AvailableGame.query \
+                .join(AvailableGame.consoles) \
+                .filter(
+                    AvailableGame.vendor_id == vendor_id,
+                    Console.type == console_type
+                ).all()
+
+            for game in games:
+                game.single_slot_price = new_price
+                updated_count += 1
+
+        db.session.commit()
+        return jsonify({"success": True, "message": f"{updated_count} pricing records updated."}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
 @dashboard_service.route('/getConsoles/vendor/<int:vendor_id>', methods=['GET'])
 def get_consoles(vendor_id):
     try:
