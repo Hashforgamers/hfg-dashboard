@@ -86,7 +86,7 @@ def add_console():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@console_bp.route("/console/<int:console_id>", methods=["GET"])
+@dashboard_service.route("/console/<int:console_id>", methods=["GET"])
 def get_console(console_id):
     result, status_code = ConsoleService.get_console_details(console_id)
     return jsonify(result), status_code
