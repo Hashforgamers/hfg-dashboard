@@ -101,12 +101,9 @@ def get_console_pricing(vendor_id):
 
         pricing_data = {}
         for game in available_games:
-            for console in game.consoles:
-                pricing_data[console.type] = {
-                    "value": game.single_slot_price
-                }
+            pricing_data[game.game_name] = game.single_slot_price  # Use correct field name and just value
 
-        return jsonify({"data": pricing_data}), 200
+        return jsonify(pricing_data), 200  # return dict directly (matches frontend expectation)
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -115,23 +112,17 @@ def get_console_pricing(vendor_id):
 def update_console_pricing(vendor_id):
     try:
         data = request.get_json()
-        updated_prices = data.get("updatedPrices", {})
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
 
-        if not updated_prices:
-            return jsonify({"error": "No prices provided"}), 400
+        # Expecting data like: { "ps5": 20, "xbox": 15, "pc": 10 }
+        updated_prices = data
 
         updated_count = 0
 
-        # Iterate over each console type and update associated games
-        for console_type, new_price in updated_prices.items():
-            games = AvailableGame.query \
-                .join(AvailableGame.consoles) \
-                .filter(
-                    AvailableGame.vendor_id == vendor_id,
-                    Console.type == console_type
-                ).all()
-
-            for game in games:
+        for game_name, new_price in updated_prices.items():
+            game = AvailableGame.query.filter_by(vendor_id=vendor_id, game_name=game_name).first()
+            if game:
                 game.single_slot_price = new_price
                 updated_count += 1
 
