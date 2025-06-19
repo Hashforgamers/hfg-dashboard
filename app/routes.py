@@ -603,7 +603,7 @@ def get_landing_page_vendor(vendor_id):
         # Fetch bookings from vendor-specific dashboard table
         sql_fetch_bookings = text(f"""
             SELECT 
-                b.username, 
+                COALESCE(b.username, u.name) AS username, 
                 b.user_id, 
                 b.start_time, 
                 b.end_time, 
@@ -619,8 +619,9 @@ def get_landing_page_vendor(vendor_id):
             FROM {table_name} b
             JOIN available_games ag ON b.game_id = ag.id
             JOIN bookings d ON b.book_id = d.id
+            LEFT JOIN users u ON b.user_id = u.id
         """)
-
+        
         result = db.session.execute(sql_fetch_bookings).fetchall()
         
         upcoming_bookings = []
