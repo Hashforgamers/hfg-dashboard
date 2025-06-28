@@ -183,3 +183,73 @@ class ConsoleService:
         except Exception as e:
             db.session.rollback()
             return {"error": str(e)}, 500
+
+    @staticmethod
+    def get_console_details(console_id):
+        try:
+            # Fetch Console with related info
+            console = db.session.query(Console).filter_by(id=console_id).first()
+            if not console:
+                return {"error": "Console not found"}, 404
+
+            # Assuming your Console model has relationships set up for these:
+            hardware = getattr(console, "hardware_specification", None)
+            maintenance = getattr(console, "maintenance_status", None)
+            price = getattr(console, "price_and_cost", None)
+            additional = getattr(console, "additional_details", None)
+
+            # Many-to-many relationship to AvailableGame
+            available_games = [
+                {
+                    "id": game.id,
+                    "game_name": game.game_name,
+                    "total_slot": game.total_slot,
+                    "single_slot_price": game.single_slot_price
+                }
+                for game in getattr(console, "available_games", [])
+            ]
+
+            result = {
+                "console": {
+                    "id": console.id,
+                    "console_number": console.console_number,
+                    "model_number": console.model_number,
+                    "serial_number": console.serial_number,
+                    "brand": console.brand,
+                    "console_type": console.console_type,
+                    "release_date": console.release_date.isoformat() if console.release_date else None,
+                    "description": console.description,
+                },
+                "hardwareSpecification": {
+                    "processorType": hardware.processor_type if hardware else None,
+                    "graphicsCard": hardware.graphics_card if hardware else None,
+                    "ramSize": hardware.ram_size if hardware else None,
+                    "storageCapacity": hardware.storage_capacity if hardware else None,
+                    "connectivity": hardware.connectivity if hardware else None,
+                    "consoleModelType": hardware.console_model_type if hardware else None,
+                },
+                "maintenanceStatus": {
+                    "availableStatus": maintenance.available_status if maintenance else None,
+                    "condition": maintenance.condition if maintenance else None,
+                    "lastMaintenance": maintenance.last_maintenance.isoformat() if maintenance and maintenance.last_maintenance else None,
+                    "nextMaintenance": maintenance.next_maintenance.isoformat() if maintenance and maintenance.next_maintenance else None,
+                    "maintenanceNotes": maintenance.maintenance_notes if maintenance else None,
+                },
+                "priceAndCost": {
+                    "price": price.price if price else None,
+                    "rentalPrice": price.rental_price if price else None,
+                    "warrantyPeriod": price.warranty_period if price else None,
+                    "insuranceStatus": price.insurance_status if price else None,
+                },
+                "additionalDetails": {
+                    "supportedGames": additional.supported_games if additional else None,
+                    "accessories": additional.accessories if additional else None,
+                },
+                "availableGames": available_games
+            }
+
+            return result, 200
+
+        except Exception as e:
+            current_app.logger.error(f"Error in get_console_details: {e}")
+            return {"error": "An error occurred while fetching console details"}, 500

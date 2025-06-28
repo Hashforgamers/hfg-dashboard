@@ -32,18 +32,18 @@ def get_transaction_report(to_date, from_date, vendor_id):
     try:
         # Convert date parameters to datetime objects
         to_date = datetime.strptime(to_date, "%Y%m%d").date()
-        
+
         if not from_date or from_date.lower() == "null":
             from_date = datetime.utcnow().date()
         else:
             from_date = datetime.strptime(from_date, "%Y%m%d").date()
-        
+
         transactions = Transaction.query.filter(
             Transaction.vendor_id == vendor_id and
             cast(Transaction.booked_date, Date).between(from_date, to_date)
         ).all()
 
-        
+
         current_app.logger.info(f"transactions {transactions} {to_date} {from_date}")
 
         # Format response data
@@ -51,7 +51,7 @@ def get_transaction_report(to_date, from_date, vendor_id):
             "id": txn.id,
             "slotDate": txn.booked_date.strftime("%Y-%m-%d"),
             "slotTime": txn.booking_time.strftime("%I:%M %p"),
-            "userName": txn.user_name,
+            "userName": User.query.filter(User.id == txn.user_id).first().name if txn.user_id else None,
             "amount": txn.amount,
             "modeOfPayment": txn.mode_of_payment,
             "bookingType": txn.booking_type,
@@ -84,6 +84,53 @@ def add_console():
         return jsonify(response), status
 
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@dashboard_service.route("/console/<int:console_id>", methods=["GET"])
+def get_console(console_id):
+    result, status_code = ConsoleService.get_console_details(console_id)
+    return jsonify(result), status_code
+
+@dashboard_service.route("/vendor/<int:vendor_id>/console-pricing", methods=["GET"])
+def get_console_pricing(vendor_id):
+    try:
+        available_games = AvailableGame.query.filter_by(vendor_id=vendor_id).all()
+
+        if not available_games:
+            return jsonify({"message": "No games found for this vendor"}), 404
+
+        pricing_data = {}
+        for game in available_games:
+            pricing_data[game.game_name] = game.single_slot_price  # Use correct field name and just value
+
+        return jsonify(pricing_data), 200  # return dict directly (matches frontend expectation)
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@dashboard_service.route("/vendor/<int:vendor_id>/console-pricing", methods=["POST"])
+def update_console_pricing(vendor_id):
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+
+        # Expecting data like: { "ps5": 20, "xbox": 15, "pc": 10 }
+        updated_prices = data
+
+        updated_count = 0
+
+        for game_name, new_price in updated_prices.items():
+            game = AvailableGame.query.filter_by(vendor_id=vendor_id, game_name=game_name).first()
+            if game:
+                game.single_slot_price = new_price
+                updated_count += 1
+
+        db.session.commit()
+        return jsonify({"success": True, "message": f"{updated_count} pricing records updated."}), 200
+
+    except Exception as e:
+        db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
 @dashboard_service.route('/getConsoles/vendor/<int:vendor_id>', methods=['GET'])
@@ -302,7 +349,8 @@ def get_device_for_console_type(gameid, vendor_id):
                 "consoleModelNumber": row.model_number,
                 "brand": row.brand,
                 "is_available": row.is_available,
-                "consoleTypeName": game.game_name if game else "Unknown"  # If game exists, use game_name
+                "consoleTypeName": game.game_name if game else "Unknown",  # If game exists, use game_name
+                "consolePrice": game.single_slot_price
             })
 
         return jsonify(devices), 200
@@ -527,7 +575,8 @@ def get_all_device_for_vendor(vendor_id):
                 "brand": row.brand,
                 "is_available": row.is_available,
                 "consoleTypeName": game.game_name if game else "Unknown",  # If game exists, use game_name
-                "console_type_id": row.game_id  # Include game_id as consoleTypeId
+                "console_type_id": row.game_id,  # Include game_id as consoleTypeId
+                "consolePrice": game.single_slot_price
             })
 
         return jsonify(devices), 200
@@ -554,7 +603,7 @@ def get_landing_page_vendor(vendor_id):
         # Fetch bookings from vendor-specific dashboard table
         sql_fetch_bookings = text(f"""
             SELECT 
-                b.username, 
+                COALESCE(b.username, u.name) AS username, 
                 b.user_id, 
                 b.start_time, 
                 b.end_time, 
@@ -565,11 +614,14 @@ def get_landing_page_vendor(vendor_id):
                 b.console_id, 
                 b.status, 
                 b.book_status,
-                ag.single_slot_price
+                ag.single_slot_price,
+                d.slot_id
             FROM {table_name} b
             JOIN available_games ag ON b.game_id = ag.id
+            JOIN bookings d ON b.book_id = d.id
+            LEFT JOIN users u ON b.user_id = u.id
         """)
-
+        
         result = db.session.execute(sql_fetch_bookings).fetchall()
         
         upcoming_bookings = []
@@ -577,6 +629,7 @@ def get_landing_page_vendor(vendor_id):
         
         for row in result:
             booking_data = {
+                "slotId": row.slot_id,
                 "bookingId": row.book_id,
                 "username": row.username,
                 "userId":row.user_id,
@@ -590,11 +643,12 @@ def get_landing_page_vendor(vendor_id):
             }
             
             slot_data = {
-                "slotId": row.book_id,
+                "slotId": row.slot_id,
+                "bookId" : row.book_id,
                 "startTime": row.start_time.strftime('%I:%M %p'),
                 "endTime": row.end_time.strftime('%I:%M %p'),
                 "status": "Booked" if row.status != 'pending_verified' else "Available",
-                "consoleType": f"Console-{row.console_id}",
+                "consoleType": f"HASH{row.console_id}",
                 "consoleNumber": str(row.console_id),
                 "username": row.username,
                 "userId":row.user_id,
@@ -724,6 +778,81 @@ def get_vendor_dashboard(vendor_id):
 
     return jsonify(payload), 200
 
+# @dashboard_service.route('/vendor/<int:vendor_id>/knowYourGamer', methods=['GET'])
+# def get_your_gamers(vendor_id):
+#     try:
+#         transactions = Transaction.query.filter_by(vendor_id=vendor_id).all()
+#         if not transactions:
+#             return jsonify([])
+
+#         promo_table = f"VENDOR_{vendor_id}_PROMO_DETAIL"
+#         user_summary = {}
+
+#         for trans in transactions:
+#             user_id = trans.user_id
+#             booking_id = trans.booking_id
+#             amount = trans.amount
+#             booked_date = trans.booked_date
+
+#             user_obj = User.query.filter_by(id=user_id).first()
+#             booking = Booking.query.filter_by(id=booking_id).first()
+
+#             if not user_obj or not booking:
+#                 continue
+
+#             contact_info = user_obj.contact_info
+#             phone = contact_info.phone if contact_info else "N/A"
+
+#             if user_id not in user_summary:
+#                 user_summary[user_id] = {
+#                     "id": user_id,
+#                     "name": user_obj.name,
+#                     "contact": phone,
+#                     "totalSlots": 0,
+#                     "totalAmount": 0.0,
+#                     "promoCodesUsed": 0,
+#                     "discountAvailed": 0.0,
+#                     "lastVisit": booked_date,
+#                     "membershipTier": "Silver",
+#                     "notes": "N/A"
+#                 }
+
+#             user_summary[user_id]["totalSlots"] += 1
+#             user_summary[user_id]["totalAmount"] += amount
+#             user_summary[user_id]["lastVisit"] = max(user_summary[user_id]["lastVisit"], booked_date)
+
+#             # Promo Code Data
+#             sql = text(f"SELECT discount_applied FROM {promo_table} WHERE transaction_id = :trans_id")
+#             promo_result = db.session.execute(sql, {"trans_id": trans.id}).fetchone()
+
+#             if promo_result:
+#                 user_summary[user_id]["promoCodesUsed"] += 1
+#                 user_summary[user_id]["discountAvailed"] += promo_result[0]
+
+#         # Format result
+#         result = []
+#         for user in user_summary.values():
+#             total_amount = user["totalAmount"]
+#             total_slots = user["totalSlots"]
+#             discount = user["discountAvailed"]
+#             net = total_amount - discount
+
+#             user["averagePerSlot"] = round(total_amount / total_slots) if total_slots else 0
+#             user["netRevenue"] = net
+
+#             if total_slots > 50:
+#                 user["membershipTier"] = "Platinum"
+#             elif total_slots > 30:
+#                 user["membershipTier"] = "Gold"
+
+#             result.append(user)
+
+#         return jsonify(result), 200
+
+#     except Exception as e:
+#         current_app.logger.error(f"Error generating Know Your Gamer: {e}")
+#         return jsonify({"message": "Internal server error", "error": str(e)}), 500
+
 @dashboard_service.route('/vendor/<int:vendor_id>/knowYourGamer', methods=['GET'])
 def get_your_gamers(vendor_id):
     try:
@@ -731,23 +860,41 @@ def get_your_gamers(vendor_id):
         if not transactions:
             return jsonify([])
 
+        # Prepare sets for bulk fetch
+        user_ids = list({t.user_id for t in transactions})
+        booking_ids = list({t.booking_id for t in transactions})
+        trans_ids = list({t.id for t in transactions})
         promo_table = f"VENDOR_{vendor_id}_PROMO_DETAIL"
+
+        # Bulk fetch users and bookings
+        users = {u.id: u for u in User.query.filter(User.id.in_(user_ids)).all()}
+        bookings = {b.id: b for b in Booking.query.filter(Booking.id.in_(booking_ids)).all()}
+
+        # Bulk fetch promo data
+        promo_results = db.session.execute(text(f"""
+            SELECT transaction_id, discount_applied
+            FROM {promo_table}
+            WHERE transaction_id IN :ids
+        """), {"ids": tuple(trans_ids)}).fetchall()
+
+        promo_dict = {row.transaction_id: row.discount_applied for row in promo_results}
+
+        # Start building user summary
         user_summary = {}
 
         for trans in transactions:
             user_id = trans.user_id
             booking_id = trans.booking_id
-            amount = trans.amount
+            amount = trans.amount or 0.0
             booked_date = trans.booked_date
 
-            user_obj = User.query.filter_by(id=user_id).first()
-            booking = Booking.query.filter_by(id=booking_id).first()
+            user_obj = users.get(user_id)
+            booking = bookings.get(booking_id)
 
             if not user_obj or not booking:
                 continue
 
-            contact_info = user_obj.contact_info
-            phone = contact_info.phone if contact_info else "N/A"
+            phone = user_obj.contact_info.phone if user_obj.contact_info else "N/A"
 
             if user_id not in user_summary:
                 user_summary[user_id] = {
@@ -763,19 +910,17 @@ def get_your_gamers(vendor_id):
                     "notes": "N/A"
                 }
 
-            user_summary[user_id]["totalSlots"] += 1
-            user_summary[user_id]["totalAmount"] += amount
-            user_summary[user_id]["lastVisit"] = max(user_summary[user_id]["lastVisit"], booked_date)
+            summary = user_summary[user_id]
+            summary["totalSlots"] += 1
+            summary["totalAmount"] += amount
+            summary["lastVisit"] = max(summary["lastVisit"], booked_date)
 
-            # Promo Code Data
-            sql = text(f"SELECT discount_applied FROM {promo_table} WHERE transaction_id = :trans_id")
-            promo_result = db.session.execute(sql, {"trans_id": trans.id}).fetchone()
+            discount = promo_dict.get(trans.id)
+            if discount:
+                summary["promoCodesUsed"] += 1
+                summary["discountAvailed"] += float(discount)
 
-            if promo_result:
-                user_summary[user_id]["promoCodesUsed"] += 1
-                user_summary[user_id]["discountAvailed"] += promo_result[0]
-
-        # Format result
+        # Final formatting
         result = []
         for user in user_summary.values():
             total_amount = user["totalAmount"]
@@ -784,11 +929,11 @@ def get_your_gamers(vendor_id):
             net = total_amount - discount
 
             user["averagePerSlot"] = round(total_amount / total_slots) if total_slots else 0
-            user["netRevenue"] = net
+            user["netRevenue"] = round(net)
 
-            if total_slots > 50:
+            if total_slots > 10:
                 user["membershipTier"] = "Platinum"
-            elif total_slots > 30:
+            elif total_slots > 5:
                 user["membershipTier"] = "Gold"
 
             result.append(user)
