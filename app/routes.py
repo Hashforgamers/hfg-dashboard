@@ -28,6 +28,7 @@ from app.models.timing import Timing
 from app.models.openingDay import OpeningDay
 from app.models.contactInfo import ContactInfo
 from app.models.businessRegistration import BusinessRegistration
+from app.models.vendorAccount import VendorAccount
 
 dashboard_service = Blueprint("dashboard_service", __name__)
 
@@ -1063,14 +1064,22 @@ def get_your_gamers_stats(vendor_id):
 
 @dashboard_service.route('/vendor/master', methods=['GET'])
 def get_master_stats():
-    # pull email from query string
     email = request.args.get("email_id", type=str)
 
-    # find the vendor_id (0 for “all vendors”)
-    contact_info = ContactInfo.query.filter(
-        and_(ContactInfo.email == email, ContactInfo.parent_type == 'vendor')
-    ).first()
-    vendor_id = contact_info.parent_id if contact_info else 0
+    if not email:
+        return jsonify({"error": "Missing email_id parameter"}), 400
+
+    # Get VendorAccount by email
+    vendor_account = VendorAccount.query.filter_by(email=email).first()
+
+    if not vendor_account:
+        return jsonify({"error": "No vendor account found for this email"}), 404
+
+    # Get all vendor IDs under this VendorAccount
+    vendor_ids = [vendor.id for vendor in vendor_account.vendors]
+
+    if not vendor_ids:
+        return jsonify({"error": "No vendors linked to this account"}), 404
 
     def get_date_range(period):
         today = datetime.utcnow().date()
@@ -1086,7 +1095,7 @@ def get_master_stats():
     for period in ["Yearly", "Monthly", "Weekly"]:
         start_date, end_date = get_date_range(period)
 
-        # Revenue and Bookings
+        # Revenue & Bookings
         revenue_query = (
             db.session.query(
                 Vendor.cafe_name.label("cafe"),
@@ -1094,13 +1103,11 @@ def get_master_stats():
                 func.count(Transaction.id).label("bookings")
             )
             .join(Vendor, Vendor.id == Transaction.vendor_id)
+            .filter(Transaction.vendor_id.in_(vendor_ids))
             .filter(Transaction.booking_date.between(start_date, end_date))
+            .group_by(Vendor.cafe_name)
+            .all()
         )
-
-        if vendor_id != 0:
-            revenue_query = revenue_query.filter(Transaction.vendor_id == vendor_id)
-
-        revenue_query = revenue_query.group_by(Vendor.cafe_name).all()
 
         revenue_by_cafe = []
         bookings_by_cafe = []
@@ -1108,9 +1115,9 @@ def get_master_stats():
         master_bookings = 0
 
         for row in revenue_query:
-            revenue_by_cafe.append({"cafe": row.cafe, "revenue": row.revenue})
+            revenue_by_cafe.append({"cafe": row.cafe, "revenue": float(row.revenue)})
             bookings_by_cafe.append({"cafe": row.cafe, "bookings": row.bookings})
-            master_revenue += row.revenue
+            master_revenue += float(row.revenue)
             master_bookings += row.bookings
 
         revenue_by_cafe.append({"cafe": "Master Analytics", "revenue": master_revenue})
@@ -1126,13 +1133,11 @@ def get_master_stats():
             .join(AvailableGame, AvailableGame.vendor_id == Vendor.id)
             .join(Booking, Booking.game_id == AvailableGame.id)
             .join(Transaction, Transaction.booking_id == Booking.id)
+            .filter(Vendor.id.in_(vendor_ids))
             .filter(Transaction.booking_date.between(start_date, end_date))
+            .group_by(Vendor.cafe_name, AvailableGame.game_name)
+            .all()
         )
-
-        if vendor_id != 0:
-            top_games_query = top_games_query.filter(Vendor.id == vendor_id)
-
-        top_games_query = top_games_query.group_by(Vendor.cafe_name, AvailableGame.game_name).all()
 
         games_by_cafe = defaultdict(list)
         master_game_counts = defaultdict(int)
@@ -1142,7 +1147,8 @@ def get_master_stats():
             master_game_counts[row.game] += row.plays
 
         games_by_cafe["Master Analytics"] = [
-            {"game": k, "plays": v} for k, v in sorted(master_game_counts.items(), key=lambda x: -x[1])
+            {"game": game, "plays": plays}
+            for game, plays in sorted(master_game_counts.items(), key=lambda x: -x[1])
         ]
 
         # Payment Modes
@@ -1153,13 +1159,11 @@ def get_master_stats():
                 func.count(Transaction.id).label("count")
             )
             .join(Vendor, Vendor.id == Transaction.vendor_id)
+            .filter(Transaction.vendor_id.in_(vendor_ids))
             .filter(Transaction.booking_date.between(start_date, end_date))
+            .group_by(Vendor.cafe_name, Transaction.mode_of_payment)
+            .all()
         )
-
-        if vendor_id != 0:
-            payment_query = payment_query.filter(Transaction.vendor_id == vendor_id)
-
-        payment_query = payment_query.group_by(Vendor.cafe_name, Transaction.mode_of_payment).all()
 
         payment_modes = defaultdict(list)
         master_payments = defaultdict(int)
@@ -1169,14 +1173,15 @@ def get_master_stats():
             master_payments[row.mode] += row.count
 
         payment_modes["Master Analytics"] = [
-            {"mode": k, "count": v} for k, v in master_payments.items()
+            {"mode": mode, "count": count}
+            for mode, count in master_payments.items()
         ]
 
         analytics[period] = {
             "revenueByCafe": revenue_by_cafe,
             "bookingsByCafe": bookings_by_cafe,
             "topGames": dict(games_by_cafe),
-            "paymentModes": dict(payment_modes)
+            "paymentModes": dict(payment_modes),
         }
 
     return jsonify(analytics)
