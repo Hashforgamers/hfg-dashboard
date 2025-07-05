@@ -16,6 +16,8 @@ from .models.slot import Slot
 from .models.user import User
 from .models.additionalDetails import AdditionalDetails
 from sqlalchemy.orm import joinedload
+from collections import defaultdict
+
 
 from app.models.vendor import Vendor  # adjust import as per your structure
 from app.models.uploadedImage import Image
