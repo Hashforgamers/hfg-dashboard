@@ -1112,7 +1112,7 @@ def get_master_stats(vendor_id):
             )
             .join(AvailableGame, AvailableGame.vendor_id == Vendor.id)
             .join(Booking, Booking.game_id == AvailableGame.id)
-            .join(Transaction, Transaction.id == Booking.transaction_id)
+            .join(Transaction, Transaction.booking_id == Booking.id)
             .filter(Transaction.booking_date.between(start_date, end_date))
         )
 
