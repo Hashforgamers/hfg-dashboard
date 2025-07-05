@@ -1059,8 +1059,17 @@ def get_your_gamers_stats(vendor_id):
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
-@dashboard_service.route('/vendor/<int:vendor_id>/master', methods=['GET'])
-def get_master_stats(vendor_id):
+@dashboard_service.route('/vendor/master', methods=['GET'])
+def get_master_stats():
+    # pull email from query string
+    email = request.args.get("email_id", type=str)
+
+    # find the vendor_id (0 for “all vendors”)
+    contact_info = ContactInfo.query.filter(
+        and_(ContactInfo.email == email, ContactInfo.parent_type == 'vendor')
+    ).first()
+    vendor_id = contact_info.parent_id if contact_info else 0
+
     def get_date_range(period):
         today = datetime.utcnow().date()
         if period == "Weekly":
