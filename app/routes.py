@@ -1087,7 +1087,7 @@ def get_master_stats(vendor_id):
         if vendor_id != 0:
             revenue_query = revenue_query.filter(Transaction.vendor_id == vendor_id)
 
-        revenue_query = revenue_query.group_by(Vendor.name).all()
+        revenue_query = revenue_query.group_by(Vendor.cafe_name).all()
 
         revenue_by_cafe = []
         bookings_by_cafe = []
@@ -1106,7 +1106,7 @@ def get_master_stats(vendor_id):
         # Top Games
         top_games_query = (
             db.session.query(
-                Vendor.name.label("cafe"),
+                Vendor.cafe_name.label("cafe"),
                 AvailableGame.game_name.label("game"),
                 func.count(Booking.id).label("plays")
             )
@@ -1119,7 +1119,7 @@ def get_master_stats(vendor_id):
         if vendor_id != 0:
             top_games_query = top_games_query.filter(Vendor.id == vendor_id)
 
-        top_games_query = top_games_query.group_by(Vendor.name, AvailableGame.game_name).all()
+        top_games_query = top_games_query.group_by(Vendor.cafe_name, AvailableGame.game_name).all()
 
         games_by_cafe = defaultdict(list)
         master_game_counts = defaultdict(int)
@@ -1135,7 +1135,7 @@ def get_master_stats(vendor_id):
         # Payment Modes
         payment_query = (
             db.session.query(
-                Vendor.name.label("cafe"),
+                Vendor.cafe_name.label("cafe"),
                 Transaction.mode_of_payment.label("mode"),
                 func.count(Transaction.id).label("count")
             )
@@ -1146,7 +1146,7 @@ def get_master_stats(vendor_id):
         if vendor_id != 0:
             payment_query = payment_query.filter(Transaction.vendor_id == vendor_id)
 
-        payment_query = payment_query.group_by(Vendor.name, Transaction.mode_of_payment).all()
+        payment_query = payment_query.group_by(Vendor.cafe_name, Transaction.mode_of_payment).all()
 
         payment_modes = defaultdict(list)
         master_payments = defaultdict(int)
