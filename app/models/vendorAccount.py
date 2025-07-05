@@ -13,4 +13,9 @@ class VendorAccount(db.Model):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # One-to-many relationship to Vendor
-    vendors = relationship('Vendor', back_populates='account', cascade='all, delete-orphan')
+    vendors = relationship(
+        'Vendor',
+        back_populates='account',
+        cascade='all, delete-orphan',
+        foreign_keys='Vendor.account_id'  # optional but can solve ambiguous cases
+    )
