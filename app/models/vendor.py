@@ -12,6 +12,7 @@ from app.models.amenity import Amenity
 from app.models.physicalAddress import PhysicalAddress
 from app.models.document import Document
 from sqlalchemy.sql import and_
+from app.models.vendorAccount import VendorAccount
 
 class Vendor(db.Model):
     __tablename__ = 'vendors'
