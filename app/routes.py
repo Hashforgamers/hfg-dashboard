@@ -1076,7 +1076,7 @@ def get_master_stats(vendor_id):
         # Revenue and Bookings
         revenue_query = (
             db.session.query(
-                Vendor.name.label("cafe"),
+                Vendor.cafe_name.label("cafe"),
                 func.sum(Transaction.amount).label("revenue"),
                 func.count(Transaction.id).label("bookings")
             )
