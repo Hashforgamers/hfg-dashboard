@@ -17,6 +17,8 @@ from .models.user import User
 from .models.additionalDetails import AdditionalDetails
 from sqlalchemy.orm import joinedload
 from collections import defaultdict
+from sqlalchemy import and_
+
 
 
 from app.models.vendor import Vendor  # adjust import as per your structure
