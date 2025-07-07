@@ -16,6 +16,10 @@ from .models.slot import Slot
 from .models.user import User
 from .models.additionalDetails import AdditionalDetails
 from sqlalchemy.orm import joinedload
+from collections import defaultdict
+from sqlalchemy import and_
+
+
 
 from app.models.vendor import Vendor  # adjust import as per your structure
 from app.models.uploadedImage import Image
@@ -24,6 +28,7 @@ from app.models.timing import Timing
 from app.models.openingDay import OpeningDay
 from app.models.contactInfo import ContactInfo
 from app.models.businessRegistration import BusinessRegistration
+from app.models.vendorAccount import VendorAccount
 
 dashboard_service = Blueprint("dashboard_service", __name__)
 
@@ -1056,3 +1061,127 @@ def get_your_gamers_stats(vendor_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
+
+@dashboard_service.route('/vendor/master', methods=['GET'])
+def get_master_stats():
+    email = request.args.get("email_id", type=str)
+
+    if not email:
+        return jsonify({"error": "Missing email_id parameter"}), 400
+
+    # Get VendorAccount by email
+    vendor_account = VendorAccount.query.filter_by(email=email).first()
+
+    if not vendor_account:
+        return jsonify({"error": "No vendor account found for this email"}), 404
+
+    # Get all vendor IDs under this VendorAccount
+    vendor_ids = [vendor.id for vendor in vendor_account.vendors]
+
+    if not vendor_ids:
+        return jsonify({"error": "No vendors linked to this account"}), 404
+
+    def get_date_range(period):
+        today = datetime.utcnow().date()
+        if period == "Weekly":
+            return today - timedelta(days=7), today
+        elif period == "Monthly":
+            return today.replace(day=1), today
+        elif period == "Yearly":
+            return today.replace(month=1, day=1), today
+
+    analytics = {}
+
+    for period in ["Yearly", "Monthly", "Weekly"]:
+        start_date, end_date = get_date_range(period)
+
+        # Revenue & Bookings
+        revenue_query = (
+            db.session.query(
+                Vendor.cafe_name.label("cafe"),
+                func.sum(Transaction.amount).label("revenue"),
+                func.count(Transaction.id).label("bookings")
+            )
+            .join(Vendor, Vendor.id == Transaction.vendor_id)
+            .filter(Transaction.vendor_id.in_(vendor_ids))
+            .filter(Transaction.booking_date.between(start_date, end_date))
+            .group_by(Vendor.cafe_name)
+            .all()
+        )
+
+        revenue_by_cafe = []
+        bookings_by_cafe = []
+        master_revenue = 0
+        master_bookings = 0
+
+        for row in revenue_query:
+            revenue_by_cafe.append({"cafe": row.cafe, "revenue": float(row.revenue)})
+            bookings_by_cafe.append({"cafe": row.cafe, "bookings": row.bookings})
+            master_revenue += float(row.revenue)
+            master_bookings += row.bookings
+
+        revenue_by_cafe.append({"cafe": "Master Analytics", "revenue": master_revenue})
+        bookings_by_cafe.append({"cafe": "Master Analytics", "bookings": master_bookings})
+
+        # Top Games
+        top_games_query = (
+            db.session.query(
+                Vendor.cafe_name.label("cafe"),
+                AvailableGame.game_name.label("game"),
+                func.count(Booking.id).label("plays")
+            )
+            .join(AvailableGame, AvailableGame.vendor_id == Vendor.id)
+            .join(Booking, Booking.game_id == AvailableGame.id)
+            .join(Transaction, Transaction.booking_id == Booking.id)
+            .filter(Vendor.id.in_(vendor_ids))
+            .filter(Transaction.booking_date.between(start_date, end_date))
+            .group_by(Vendor.cafe_name, AvailableGame.game_name)
+            .all()
+        )
+
+        games_by_cafe = defaultdict(list)
+        master_game_counts = defaultdict(int)
+
+        for row in top_games_query:
+            games_by_cafe[row.cafe].append({"game": row.game, "plays": row.plays})
+            master_game_counts[row.game] += row.plays
+
+        games_by_cafe["Master Analytics"] = [
+            {"game": game, "plays": plays}
+            for game, plays in sorted(master_game_counts.items(), key=lambda x: -x[1])
+        ]
+
+        # Payment Modes
+        payment_query = (
+            db.session.query(
+                Vendor.cafe_name.label("cafe"),
+                Transaction.mode_of_payment.label("mode"),
+                func.count(Transaction.id).label("count")
+            )
+            .join(Vendor, Vendor.id == Transaction.vendor_id)
+            .filter(Transaction.vendor_id.in_(vendor_ids))
+            .filter(Transaction.booking_date.between(start_date, end_date))
+            .group_by(Vendor.cafe_name, Transaction.mode_of_payment)
+            .all()
+        )
+
+        payment_modes = defaultdict(list)
+        master_payments = defaultdict(int)
+
+        for row in payment_query:
+            payment_modes[row.cafe].append({"mode": row.mode, "count": row.count})
+            master_payments[row.mode] += row.count
+
+        payment_modes["Master Analytics"] = [
+            {"mode": mode, "count": count}
+            for mode, count in master_payments.items()
+        ]
+
+        analytics[period] = {
+            "revenueByCafe": revenue_by_cafe,
+            "bookingsByCafe": bookings_by_cafe,
+            "topGames": dict(games_by_cafe),
+            "paymentModes": dict(payment_modes),
+        }
+
+    return jsonify(analytics)

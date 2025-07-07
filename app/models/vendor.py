@@ -12,6 +12,7 @@ from app.models.amenity import Amenity
 from app.models.physicalAddress import PhysicalAddress
 from app.models.document import Document
 from sqlalchemy.sql import and_
+from app.models.vendorAccount import VendorAccount
 
 class Vendor(db.Model):
     __tablename__ = 'vendors'
@@ -84,6 +85,10 @@ class Vendor(db.Model):
         back_populates='vendor',
         cascade="all, delete-orphan"
     )
+
+    # In Vendor model
+    account_id = Column(Integer, ForeignKey('vendor_accounts.id'), nullable=True)
+    account = relationship('VendorAccount', back_populates='vendors')
 
     # In vendor.py
     documents = db.relationship("Document", back_populates="vendor", cascade="all, delete-orphan")
