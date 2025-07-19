@@ -193,7 +193,7 @@ class ConsoleService:
                 return {"error": "Console not found"}, 404
 
             # Assuming your Console model has relationships set up for these:
-            hardware = getattr(console, "hardware_specification", None)
+            hardware = getattr(console, "hardware_specifications", None)
             maintenance = getattr(console, "maintenance_status", None)
             price = getattr(console, "price_and_cost", None)
             additional = getattr(console, "additional_details", None)
