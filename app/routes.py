@@ -1247,3 +1247,104 @@ def add_extra_service_menu(vendor_id, category_id):
     return jsonify({"id": menu.id, "name": menu.name, "price": menu.price, "description": menu.description}), 201
 
 # Update and delete endpoints similarly for categories and menus...
+# Update category
+@dashboard_service.route('/vendor/<int:vendor_id>/extras/category/<int:category_id>', methods=['PUT'])
+def update_extra_service_category(vendor_id, category_id):
+    try:
+        data = request.get_json()
+        category = ExtraServiceCategory.query.filter_by(id=category_id, vendor_id=vendor_id, is_active=True).first_or_404()
+
+        name = data.get('name')
+        description = data.get('description')
+
+        if not name:
+            return jsonify({"error": "Category name required"}), 400
+
+        category.name = name
+        if description is not None:
+            category.description = description
+
+        db.session.commit()
+        return jsonify({"id": category.id, "name": category.name, "description": category.description}), 200
+
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        current_app.logger.error(f"SQLAlchemy error updating category: {e}")
+        return jsonify({"error": "Failed to update category"}), 500
+    except Exception as e:
+        current_app.logger.error(f"Error updating category: {e}")
+        return jsonify({"error": "Failed to update category"}), 500
+
+
+# Soft delete category (deactivate)
+@dashboard_service.route('/vendor/<int:vendor_id>/extras/category/<int:category_id>', methods=['DELETE'])
+def delete_extra_service_category(vendor_id, category_id):
+    try:
+        category = ExtraServiceCategory.query.filter_by(id=category_id, vendor_id=vendor_id, is_active=True).first_or_404()
+        category.is_active = False
+
+        # Optionally, also soft delete all menus under this category
+        for menu in category.menus:
+            menu.is_active = False
+
+        db.session.commit()
+        return jsonify({"message": "Category and related menus deactivated"}), 200
+
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        current_app.logger.error(f"SQLAlchemy error deleting category: {e}")
+        return jsonify({"error": "Failed to delete category"}), 500
+    except Exception as e:
+        current_app.logger.error(f"Error deleting category: {e}")
+        return jsonify({"error": "Failed to delete category"}), 500
+
+# Update menu item
+@dashboard_service.route('/vendor/<int:vendor_id>/extras/category/<int:category_id>/menu/<int:menu_id>', methods=['PUT'])
+def update_extra_service_menu(vendor_id, category_id, menu_id):
+    try:
+        category = ExtraServiceCategory.query.filter_by(id=category_id, vendor_id=vendor_id, is_active=True).first_or_404()
+        menu = ExtraServiceMenu.query.filter_by(id=menu_id, category_id=category.id, is_active=True).first_or_404()
+
+        data = request.get_json()
+        name = data.get('name')
+        price = data.get('price')
+        description = data.get('description')
+
+        if not name or price is None:
+            return jsonify({"error": "Menu name and price required"}), 400
+
+        menu.name = name
+        menu.price = price
+        if description is not None:
+            menu.description = description
+
+        db.session.commit()
+        return jsonify({"id": menu.id, "name": menu.name, "price": menu.price, "description": menu.description}), 200
+
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        current_app.logger.error(f"SQLAlchemy error updating menu: {e}")
+        return jsonify({"error": "Failed to update menu item"}), 500
+    except Exception as e:
+        current_app.logger.error(f"Error updating menu: {e}")
+        return jsonify({"error": "Failed to update menu item"}), 500
+
+
+# Soft delete menu item
+@dashboard_service.route('/vendor/<int:vendor_id>/extras/category/<int:category_id>/menu/<int:menu_id>', methods=['DELETE'])
+def delete_extra_service_menu(vendor_id, category_id, menu_id):
+    try:
+        category = ExtraServiceCategory.query.filter_by(id=category_id, vendor_id=vendor_id, is_active=True).first_or_404()
+        menu = ExtraServiceMenu.query.filter_by(id=menu_id, category_id=category.id, is_active=True).first_or_404()
+
+        menu.is_active = False
+        db.session.commit()
+        return jsonify({"message": "Menu item deactivated"}), 200
+
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        current_app.logger.error(f"SQLAlchemy error deleting menu: {e}")
+        return jsonify({"error": "Failed to delete menu item"}), 500
+    except Exception as e:
+        current_app.logger.error(f"Error deleting menu: {e}")
+        return jsonify({"error": "Failed to delete menu item"}), 500
