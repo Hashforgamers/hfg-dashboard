@@ -93,6 +93,7 @@ class Vendor(db.Model):
     # In vendor.py
     documents = db.relationship("Document", back_populates="vendor", cascade="all, delete-orphan")
 
+    extra_service_categories = relationship('ExtraServiceCategory', back_populates='vendor', cascade='all, delete-orphan')
 
     # Relationship to Image (new addition)
     images = relationship(

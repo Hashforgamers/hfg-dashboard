@@ -29,6 +29,9 @@ from app.models.openingDay import OpeningDay
 from app.models.contactInfo import ContactInfo
 from app.models.businessRegistration import BusinessRegistration
 from app.models.vendorAccount import VendorAccount
+from app.models.extraServiceCategory import ExtraServiceCategory
+from app.models.bookingExtraService import BookingExtraService
+from app.models.extraServiceMenu import ExtraServiceMenu
 
 dashboard_service = Blueprint("dashboard_service", __name__)
 
@@ -1185,3 +1188,62 @@ def get_master_stats():
         }
 
     return jsonify(analytics)
+
+# List categories with menus for vendor
+@dashboard_service.route('/vendor/<int:vendor_id>/extras/categories', methods=['GET'])
+def list_categories_with_menus(vendor_id):
+    categories = ExtraServiceCategory.query.filter_by(vendor_id=vendor_id, is_active=True).all()
+    result = []
+    for cat in categories:
+        menus = [
+          {
+            "id": menu.id,
+            "name": menu.name,
+            "price": menu.price,
+            "description": menu.description,
+            "is_active": menu.is_active,
+          }
+          for menu in cat.menus if menu.is_active
+        ]
+        result.append({
+            "id": cat.id,
+            "name": cat.name,
+            "description": cat.description,
+            "menus": menus
+        })
+    return jsonify(result), 200
+
+# Add category
+@dashboard_service.route('/vendor/<int:vendor_id>/extras/category', methods=['POST'])
+def add_extra_service_category(vendor_id):
+    data = request.get_json()
+    name = data.get('name')
+    description = data.get('description', '')
+
+    if not name:
+        return jsonify({"error": "Category name required"}), 400
+
+    category = ExtraServiceCategory(vendor_id=vendor_id, name=name, description=description)
+    db.session.add(category)
+    db.session.commit()
+    return jsonify({"id": category.id, "name": category.name, "description": category.description}), 201
+
+# Add menu item under category
+@dashboard_service.route('/vendor/<int:vendor_id>/extras/category/<int:category_id>/menu', methods=['POST'])
+def add_extra_service_menu(vendor_id, category_id):
+    category = ExtraServiceCategory.query.filter_by(id=category_id, vendor_id=vendor_id, is_active=True).first_or_404()
+
+    data = request.get_json()
+    name = data.get('name')
+    price = data.get('price')
+    description = data.get('description', '')
+
+    if not name or price is None:
+        return jsonify({"error": "Menu name and price required"}), 400
+
+    menu = ExtraServiceMenu(category_id=category.id, name=name, price=price, description=description)
+    db.session.add(menu)
+    db.session.commit()
+    return jsonify({"id": menu.id, "name": menu.name, "price": menu.price, "description": menu.description}), 201
+
+# Update and delete endpoints similarly for categories and menus...
