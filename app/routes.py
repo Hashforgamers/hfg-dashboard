@@ -1391,7 +1391,7 @@ def create_cafe_pass(vendor_id):
     return jsonify({"message": "Pass created"}), 200
 
 # Edit, delete, deactivate similar to your current pattern
-@dashboard_service.route('/api/pass_types', methods=['GET'])
+@dashboard_service.route('/pass_types', methods=['GET'])
 def list_pass_types():
     pass_types = PassType.query.filter_by(is_active=True).all()
     result = [{
