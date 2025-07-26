@@ -8,6 +8,10 @@ from app.services.console_service import ConsoleService
 from .models.console import Console
 from .models.availableGame import AvailableGame, available_game_console
 from .models.booking import Booking
+from .models.cafePass import CafePass
+from .models.passType import PassType
+from .models.userPass import UserPass
+
 
 from .models.hardwareSpecification import HardwareSpecification
 from .models.maintenanceStatus import MaintenanceStatus
@@ -1348,3 +1352,42 @@ def delete_extra_service_menu(vendor_id, category_id, menu_id):
     except Exception as e:
         current_app.logger.error(f"Error deleting menu: {e}")
         return jsonify({"error": "Failed to delete menu item"}), 500
+
+# List all passes for this cafe
+@dashboard_service.route("/vendor/<int:vendor_id>/passes", methods=["GET"])
+def list_cafe_passes(vendor_id):
+    passes = CafePass.query.filter_by(vendor_id=vendor_id, is_active=True).all()
+    return jsonify([
+        {
+            "id": p.id,
+            "name": p.name,
+            "price": p.price,
+            "days_valid": p.days_valid,
+            "description": p.description,
+            "pass_type": p.pass_type.name
+        } for p in passes
+    ])
+
+# Add a new cafe pass
+@dashboard_service.route("/vendor/<int:vendor_id>/passes", methods=["POST"])
+def create_cafe_pass(vendor_id):
+    data = request.json
+    name = data["name"]
+    price = data["price"]
+    days_valid = data["days_valid"]
+    pass_type_id = data["pass_type_id"]   # links to PassType (daily/monthly/...)
+    description = data.get("description", "")
+
+    cafe_pass = CafePass(
+        vendor_id=vendor_id,
+        name=name,
+        price=price,
+        days_valid=days_valid,
+        pass_type_id=pass_type_id,
+        description=description
+    )
+    db.session.add(cafe_pass)
+    db.session.commit()
+    return jsonify({"message": "Pass created"}), 200
+
+# Edit, delete, deactivate similar to your current pattern
