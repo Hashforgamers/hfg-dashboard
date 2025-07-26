@@ -1400,3 +1400,43 @@ def list_pass_types():
         'description': pt.description
     } for pt in pass_types]
     return jsonify(result), 200
+
+@dashboard_service.route('/pass_types', methods=['POST'])
+def add_pass_type():
+    data = request.get_json()
+
+    if not data:
+        return jsonify({'error': 'No input data provided'}), 400
+
+    name = data.get('name')
+    description = data.get('description')
+    is_global = data.get('is_global', False)  # Default to False for vendor/cafe pass
+
+    if not name:
+        return jsonify({'error': 'Name is required'}), 400
+
+    # Check for duplicate
+    if PassType.query.filter_by(name=name).first():
+        return jsonify({'error': 'PassType with this name already exists'}), 409
+
+    try:
+        new_pass_type = PassType(
+            name=name,
+            description=description,
+            is_global=is_global
+        )
+        db.session.add(new_pass_type)
+        db.session.commit()
+
+        return jsonify({
+            'message': 'PassType created successfully',
+            'pass_type': {
+                'id': new_pass_type.id,
+                'name': new_pass_type.name,
+                'description': new_pass_type.description,
+                'is_global': new_pass_type.is_global
+            }
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': 'An error occurred', 'details': str(e)}), 500
