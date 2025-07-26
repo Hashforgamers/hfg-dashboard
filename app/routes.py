@@ -1440,3 +1440,15 @@ def add_pass_type():
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': 'An error occurred', 'details': str(e)}), 500
+
+@dashboard_service.route("/vendor/<int:vendor_id>/passes/<int:pass_id>", methods=["DELETE"])
+def deactivate_cafe_pass(vendor_id, pass_id):
+    try:
+        cafe_pass = CafePass.query.filter_by(id=pass_id, vendor_id=vendor_id, is_active=True).first_or_404()
+        cafe_pass.is_active = False
+        db.session.commit()
+        return jsonify({"message": "Pass deactivated successfully"}), 200
+    except Exception as e:
+        current_app.logger.error(f"Error deactivating pass {pass_id} for vendor {vendor_id}: {e}")
+        return jsonify({"error": "Failed to deactivate pass"}), 500
+
