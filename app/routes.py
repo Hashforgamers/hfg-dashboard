@@ -1393,7 +1393,7 @@ def create_cafe_pass(vendor_id):
 # Edit, delete, deactivate similar to your current pattern
 @dashboard_service.route('/pass_types', methods=['GET'])
 def list_pass_types():
-    pass_types = PassType.query.filter_by(is_active=True).all()
+    pass_types = PassType.query.filter_by(is_global=False).all()
     result = [{
         'id': pt.id,
         'name': pt.name,

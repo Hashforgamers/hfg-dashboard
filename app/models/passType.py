@@ -6,4 +6,4 @@ class PassType(db.Model):
     id = Column(Integer, primary_key=True)
     name = Column(String(100), nullable=False, unique=True)  # e.g., "daily", "monthly", "yearly"
     description = Column(String(255))
-    is_global = Column(Boolean, default=True)  # True for Hash Pass; False for vendor/cafe pass category
+    is_global = Column(Boolean, default=True)  # True for Hash Pass; False for vendor/cafe pass categor
