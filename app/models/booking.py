@@ -15,6 +15,8 @@ class Booking(db.Model):
     slot_id = Column(Integer, ForeignKey('slots.id'), nullable=False)
     status = db.Column(db.String(20), default='pending_verified')  # New field for verification status
     
+    booking_extra_services = relationship('BookingExtraService', back_populates='booking', cascade='all, delete-orphan')
+
     # Relationship with AvailableGame (many-to-one)
     game = relationship('AvailableGame', back_populates='bookings')
 
