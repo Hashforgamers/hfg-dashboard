@@ -36,6 +36,7 @@ from app.models.vendorAccount import VendorAccount
 from app.models.extraServiceCategory import ExtraServiceCategory
 from app.models.bookingExtraService import BookingExtraService
 from app.models.extraServiceMenu import ExtraServiceMenu
+from app.services.extra_service_service import ExtraServiceService
 
 dashboard_service = Blueprint("dashboard_service", __name__)
 
@@ -1451,4 +1452,69 @@ def deactivate_cafe_pass(vendor_id, pass_id):
     except Exception as e:
         current_app.logger.error(f"Error deactivating pass {pass_id} for vendor {vendor_id}: {e}")
         return jsonify({"error": "Failed to deactivate pass"}), 500
+    
+    
+   
+
+
+# Add these routes to your dashboard_service blueprint
+
+@dashboard_service.route('/vendor/<int:vendor_id>/extra-services', methods=['GET'])
+def get_extra_services(vendor_id):
+    """Get all categories and menu items"""
+    try:
+        result, status_code = ExtraServiceService.get_categories_with_menus(vendor_id)
+        return jsonify(result), status_code
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@dashboard_service.route('/vendor/<int:vendor_id>/extra-services/category', methods=['POST'])
+def create_category(vendor_id):
+    """Create new service category"""
+    try:
+        data = request.get_json()
+        result, status_code = ExtraServiceService.create_category(vendor_id, data)
+        return jsonify(result), status_code
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@dashboard_service.route('/vendor/<int:vendor_id>/extra-services/category/<int:category_id>/menu', methods=['POST'])
+def create_menu_item(vendor_id, category_id):
+    """Create menu item with optional image"""
+    try:
+        # Handle multipart form data for image upload
+        if request.content_type and request.content_type.startswith('multipart/form-data'):
+            data = {
+                'name': request.form.get('name'),
+                'price': request.form.get('price'),
+                'description': request.form.get('description', '')
+            }
+            image_file = request.files.get('image')
+        else:
+            data = request.get_json()
+            image_file = None
+
+        result, status_code = ExtraServiceService.create_menu_item(vendor_id, category_id, data, image_file)
+        return jsonify(result), status_code
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@dashboard_service.route('/vendor/<int:vendor_id>/extra-services/category/<int:category_id>', methods=['DELETE'])
+def delete_category(vendor_id, category_id):
+    """Delete category"""
+    try:
+        result, status_code = ExtraServiceService.delete_category(vendor_id, category_id)
+        return jsonify(result), status_code
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@dashboard_service.route('/vendor/<int:vendor_id>/extra-services/category/<int:category_id>/menu/<int:menu_id>', methods=['DELETE'])
+def delete_menu_item(vendor_id, category_id, menu_id):
+    """Delete menu item"""
+    try:
+        result, status_code = ExtraServiceService.delete_menu_item(vendor_id, category_id, menu_id)
+        return jsonify(result), status_code
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 

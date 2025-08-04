@@ -10,6 +10,8 @@ from flask_cors import CORS
 
 from .routes import dashboard_service
 from app.extension.extensions import db
+from flask_migrate import Migrate
+
 
 # Initialize socketio globally, but it will be initialized in create_app
 socketio = SocketIO(cors_allowed_origins="*")
@@ -22,6 +24,7 @@ def create_app():
     app.config.from_object(Config)
 
     db.init_app(app)
+    migrate = Migrate(app, db)
 
     app.register_blueprint(dashboard_service, url_prefix='/api')
 
