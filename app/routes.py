@@ -1518,3 +1518,59 @@ def delete_menu_item(vendor_id, category_id, menu_id):
         return jsonify({"error": str(e)}), 500
 
 
+@dashboard_service.route('/admin/hash_pass', methods=['POST'])
+def create_hash_pass():
+    # Security: Add your admin authentication/authorization here
+    # if not current_user.is_admin:
+    #     return jsonify({"error": "Unauthorized"}), 403
+
+    data = request.get_json()
+    name = data.get('name')
+    price = data.get('price')
+    days_valid = data.get('days_valid')
+    description = data.get('description', '')
+    pass_type_id = data.get('pass_type_id')  # Optional - can auto-fetch
+
+    # Find global PassType, or require pass_type_id
+    pass_type = None
+    if pass_type_id:
+        pass_type = PassType.query.filter_by(id=pass_type_id, is_global=True).first()
+    else:
+        # You may choose to create a default "Hash Pass" type if not found
+        pass_type = PassType.query.filter_by(is_global=True).first()
+
+    if not pass_type:
+        return jsonify({"error": "Global PassType (is_global=True) required. Please create it first."}), 400
+
+    if not name or price is None or days_valid is None:
+        return jsonify({"error": "name, price, and days_valid are required fields."}), 400
+
+    # Create Hash Pass (vendor_id=None!)
+    try:
+        hash_pass = CafePass(
+            vendor_id=None,
+            name=name,
+            price=price,
+            days_valid=days_valid,
+            description=description,
+            pass_type_id=pass_type.id,
+            is_active=True
+        )
+        db.session.add(hash_pass)
+        db.session.commit()
+        return jsonify({
+            "message": "Hash Pass created successfully",
+            "pass": {
+                "id": hash_pass.id,
+                "name": hash_pass.name,
+                "price": hash_pass.price,
+                "days_valid": hash_pass.days_valid,
+                "description": hash_pass.description,
+                "pass_type_id": hash_pass.pass_type_id,
+                "vendor_id": hash_pass.vendor_id
+            }
+        }), 201
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        current_app.logger.error(f"Hash Pass creation failed: {e}")
+        return jsonify({"error": "Failed to create Hash Pass"}), 500
