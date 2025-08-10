@@ -8,6 +8,10 @@ from app.services.console_service import ConsoleService
 from .models.console import Console
 from .models.availableGame import AvailableGame, available_game_console
 from .models.booking import Booking
+from .models.cafePass import CafePass
+from .models.passType import PassType
+from .models.userPass import UserPass
+
 
 from .models.hardwareSpecification import HardwareSpecification
 from .models.maintenanceStatus import MaintenanceStatus
@@ -29,6 +33,10 @@ from app.models.openingDay import OpeningDay
 from app.models.contactInfo import ContactInfo
 from app.models.businessRegistration import BusinessRegistration
 from app.models.vendorAccount import VendorAccount
+from app.models.extraServiceCategory import ExtraServiceCategory
+from app.models.bookingExtraService import BookingExtraService
+from app.models.extraServiceMenu import ExtraServiceMenu
+from app.services.extra_service_service import ExtraServiceService
 
 dashboard_service = Blueprint("dashboard_service", __name__)
 
@@ -1185,3 +1193,384 @@ def get_master_stats():
         }
 
     return jsonify(analytics)
+
+# List categories with menus for vendor
+@dashboard_service.route('/vendor/<int:vendor_id>/extras/categories', methods=['GET'])
+def list_categories_with_menus(vendor_id):
+    categories = ExtraServiceCategory.query.filter_by(vendor_id=vendor_id, is_active=True).all()
+    result = []
+    for cat in categories:
+        menus = [
+          {
+            "id": menu.id,
+            "name": menu.name,
+            "price": menu.price,
+            "description": menu.description,
+            "is_active": menu.is_active,
+          }
+          for menu in cat.menus if menu.is_active
+        ]
+        result.append({
+            "id": cat.id,
+            "name": cat.name,
+            "description": cat.description,
+            "menus": menus
+        })
+    return jsonify(result), 200
+
+# Add category
+@dashboard_service.route('/vendor/<int:vendor_id>/extras/category', methods=['POST'])
+def add_extra_service_category(vendor_id):
+    data = request.get_json()
+    name = data.get('name')
+    description = data.get('description', '')
+
+    if not name:
+        return jsonify({"error": "Category name required"}), 400
+
+    category = ExtraServiceCategory(vendor_id=vendor_id, name=name, description=description)
+    db.session.add(category)
+    db.session.commit()
+    return jsonify({"id": category.id, "name": category.name, "description": category.description}), 201
+
+# Add menu item under category
+@dashboard_service.route('/vendor/<int:vendor_id>/extras/category/<int:category_id>/menu', methods=['POST'])
+def add_extra_service_menu(vendor_id, category_id):
+    category = ExtraServiceCategory.query.filter_by(id=category_id, vendor_id=vendor_id, is_active=True).first_or_404()
+
+    data = request.get_json()
+    name = data.get('name')
+    price = data.get('price')
+    description = data.get('description', '')
+
+    if not name or price is None:
+        return jsonify({"error": "Menu name and price required"}), 400
+
+    menu = ExtraServiceMenu(category_id=category.id, name=name, price=price, description=description)
+    db.session.add(menu)
+    db.session.commit()
+    return jsonify({"id": menu.id, "name": menu.name, "price": menu.price, "description": menu.description}), 201
+
+# Update and delete endpoints similarly for categories and menus...
+# Update category
+@dashboard_service.route('/vendor/<int:vendor_id>/extras/category/<int:category_id>', methods=['PUT'])
+def update_extra_service_category(vendor_id, category_id):
+    try:
+        data = request.get_json()
+        category = ExtraServiceCategory.query.filter_by(id=category_id, vendor_id=vendor_id, is_active=True).first_or_404()
+
+        name = data.get('name')
+        description = data.get('description')
+
+        if not name:
+            return jsonify({"error": "Category name required"}), 400
+
+        category.name = name
+        if description is not None:
+            category.description = description
+
+        db.session.commit()
+        return jsonify({"id": category.id, "name": category.name, "description": category.description}), 200
+
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        current_app.logger.error(f"SQLAlchemy error updating category: {e}")
+        return jsonify({"error": "Failed to update category"}), 500
+    except Exception as e:
+        current_app.logger.error(f"Error updating category: {e}")
+        return jsonify({"error": "Failed to update category"}), 500
+
+
+# Soft delete category (deactivate)
+@dashboard_service.route('/vendor/<int:vendor_id>/extras/category/<int:category_id>', methods=['DELETE'])
+def delete_extra_service_category(vendor_id, category_id):
+    try:
+        category = ExtraServiceCategory.query.filter_by(id=category_id, vendor_id=vendor_id, is_active=True).first_or_404()
+        category.is_active = False
+
+        # Optionally, also soft delete all menus under this category
+        for menu in category.menus:
+            menu.is_active = False
+
+        db.session.commit()
+        return jsonify({"message": "Category and related menus deactivated"}), 200
+
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        current_app.logger.error(f"SQLAlchemy error deleting category: {e}")
+        return jsonify({"error": "Failed to delete category"}), 500
+    except Exception as e:
+        current_app.logger.error(f"Error deleting category: {e}")
+        return jsonify({"error": "Failed to delete category"}), 500
+
+# Update menu item
+@dashboard_service.route('/vendor/<int:vendor_id>/extras/category/<int:category_id>/menu/<int:menu_id>', methods=['PUT'])
+def update_extra_service_menu(vendor_id, category_id, menu_id):
+    try:
+        category = ExtraServiceCategory.query.filter_by(id=category_id, vendor_id=vendor_id, is_active=True).first_or_404()
+        menu = ExtraServiceMenu.query.filter_by(id=menu_id, category_id=category.id, is_active=True).first_or_404()
+
+        data = request.get_json()
+        name = data.get('name')
+        price = data.get('price')
+        description = data.get('description')
+
+        if not name or price is None:
+            return jsonify({"error": "Menu name and price required"}), 400
+
+        menu.name = name
+        menu.price = price
+        if description is not None:
+            menu.description = description
+
+        db.session.commit()
+        return jsonify({"id": menu.id, "name": menu.name, "price": menu.price, "description": menu.description}), 200
+
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        current_app.logger.error(f"SQLAlchemy error updating menu: {e}")
+        return jsonify({"error": "Failed to update menu item"}), 500
+    except Exception as e:
+        current_app.logger.error(f"Error updating menu: {e}")
+        return jsonify({"error": "Failed to update menu item"}), 500
+
+
+# Soft delete menu item
+@dashboard_service.route('/vendor/<int:vendor_id>/extras/category/<int:category_id>/menu/<int:menu_id>', methods=['DELETE'])
+def delete_extra_service_menu(vendor_id, category_id, menu_id):
+    try:
+        category = ExtraServiceCategory.query.filter_by(id=category_id, vendor_id=vendor_id, is_active=True).first_or_404()
+        menu = ExtraServiceMenu.query.filter_by(id=menu_id, category_id=category.id, is_active=True).first_or_404()
+
+        menu.is_active = False
+        db.session.commit()
+        return jsonify({"message": "Menu item deactivated"}), 200
+
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        current_app.logger.error(f"SQLAlchemy error deleting menu: {e}")
+        return jsonify({"error": "Failed to delete menu item"}), 500
+    except Exception as e:
+        current_app.logger.error(f"Error deleting menu: {e}")
+        return jsonify({"error": "Failed to delete menu item"}), 500
+
+# List all passes for this cafe
+@dashboard_service.route("/vendor/<int:vendor_id>/passes", methods=["GET"])
+def list_cafe_passes(vendor_id):
+    passes = CafePass.query.filter_by(vendor_id=vendor_id, is_active=True).all()
+    return jsonify([
+        {
+            "id": p.id,
+            "name": p.name,
+            "price": p.price,
+            "days_valid": p.days_valid,
+            "description": p.description,
+            "pass_type": p.pass_type.name
+        } for p in passes
+    ])
+
+# Add a new cafe pass
+@dashboard_service.route("/vendor/<int:vendor_id>/passes", methods=["POST"])
+def create_cafe_pass(vendor_id):
+    data = request.json
+    name = data["name"]
+    price = data["price"]
+    days_valid = data["days_valid"]
+    pass_type_id = data["pass_type_id"]   # links to PassType (daily/monthly/...)
+    description = data.get("description", "")
+
+    cafe_pass = CafePass(
+        vendor_id=vendor_id,
+        name=name,
+        price=price,
+        days_valid=days_valid,
+        pass_type_id=pass_type_id,
+        description=description
+    )
+    db.session.add(cafe_pass)
+    db.session.commit()
+    return jsonify({"message": "Pass created"}), 200
+
+# Edit, delete, deactivate similar to your current pattern
+@dashboard_service.route('/pass_types', methods=['GET'])
+def list_pass_types():
+    pass_types = PassType.query.filter_by(is_global=False).all()
+    result = [{
+        'id': pt.id,
+        'name': pt.name,
+        'description': pt.description
+    } for pt in pass_types]
+    return jsonify(result), 200
+
+@dashboard_service.route('/pass_types', methods=['POST'])
+def add_pass_type():
+    data = request.get_json()
+
+    if not data:
+        return jsonify({'error': 'No input data provided'}), 400
+
+    name = data.get('name')
+    description = data.get('description')
+    is_global = data.get('is_global', False)  # Default to False for vendor/cafe pass
+
+    if not name:
+        return jsonify({'error': 'Name is required'}), 400
+
+    # Check for duplicate
+    if PassType.query.filter_by(name=name).first():
+        return jsonify({'error': 'PassType with this name already exists'}), 409
+
+    try:
+        new_pass_type = PassType(
+            name=name,
+            description=description,
+            is_global=is_global
+        )
+        db.session.add(new_pass_type)
+        db.session.commit()
+
+        return jsonify({
+            'message': 'PassType created successfully',
+            'pass_type': {
+                'id': new_pass_type.id,
+                'name': new_pass_type.name,
+                'description': new_pass_type.description,
+                'is_global': new_pass_type.is_global
+            }
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': 'An error occurred', 'details': str(e)}), 500
+
+@dashboard_service.route("/vendor/<int:vendor_id>/passes/<int:pass_id>", methods=["DELETE"])
+def deactivate_cafe_pass(vendor_id, pass_id):
+    try:
+        cafe_pass = CafePass.query.filter_by(id=pass_id, vendor_id=vendor_id, is_active=True).first_or_404()
+        cafe_pass.is_active = False
+        db.session.commit()
+        return jsonify({"message": "Pass deactivated successfully"}), 200
+    except Exception as e:
+        current_app.logger.error(f"Error deactivating pass {pass_id} for vendor {vendor_id}: {e}")
+        return jsonify({"error": "Failed to deactivate pass"}), 500
+    
+    
+   
+
+
+# Add these routes to your dashboard_service blueprint
+
+@dashboard_service.route('/vendor/<int:vendor_id>/extra-services', methods=['GET'])
+def get_extra_services(vendor_id):
+    """Get all categories and menu items"""
+    try:
+        result, status_code = ExtraServiceService.get_categories_with_menus(vendor_id)
+        return jsonify(result), status_code
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@dashboard_service.route('/vendor/<int:vendor_id>/extra-services/category', methods=['POST'])
+def create_category(vendor_id):
+    """Create new service category"""
+    try:
+        data = request.get_json()
+        result, status_code = ExtraServiceService.create_category(vendor_id, data)
+        return jsonify(result), status_code
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@dashboard_service.route('/vendor/<int:vendor_id>/extra-services/category/<int:category_id>/menu', methods=['POST'])
+def create_menu_item(vendor_id, category_id):
+    """Create menu item with optional image"""
+    try:
+        # Handle multipart form data for image upload
+        if request.content_type and request.content_type.startswith('multipart/form-data'):
+            data = {
+                'name': request.form.get('name'),
+                'price': request.form.get('price'),
+                'description': request.form.get('description', '')
+            }
+            image_file = request.files.get('image')
+        else:
+            data = request.get_json()
+            image_file = None
+
+        result, status_code = ExtraServiceService.create_menu_item(vendor_id, category_id, data, image_file)
+        return jsonify(result), status_code
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@dashboard_service.route('/vendor/<int:vendor_id>/extra-services/category/<int:category_id>', methods=['DELETE'])
+def delete_category(vendor_id, category_id):
+    """Delete category"""
+    try:
+        result, status_code = ExtraServiceService.delete_category(vendor_id, category_id)
+        return jsonify(result), status_code
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@dashboard_service.route('/vendor/<int:vendor_id>/extra-services/category/<int:category_id>/menu/<int:menu_id>', methods=['DELETE'])
+def delete_menu_item(vendor_id, category_id, menu_id):
+    """Delete menu item"""
+    try:
+        result, status_code = ExtraServiceService.delete_menu_item(vendor_id, category_id, menu_id)
+        return jsonify(result), status_code
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@dashboard_service.route('/admin/hash_pass', methods=['POST'])
+def create_hash_pass():
+    # Security: Add your admin authentication/authorization here
+    # if not current_user.is_admin:
+    #     return jsonify({"error": "Unauthorized"}), 403
+
+    data = request.get_json()
+    name = data.get('name')
+    price = data.get('price')
+    days_valid = data.get('days_valid')
+    description = data.get('description', '')
+    pass_type_id = data.get('pass_type_id')  # Optional - can auto-fetch
+
+    # Find global PassType, or require pass_type_id
+    pass_type = None
+    if pass_type_id:
+        pass_type = PassType.query.filter_by(id=pass_type_id, is_global=True).first()
+    else:
+        # You may choose to create a default "Hash Pass" type if not found
+        pass_type = PassType.query.filter_by(is_global=True).first()
+
+    if not pass_type:
+        return jsonify({"error": "Global PassType (is_global=True) required. Please create it first."}), 400
+
+    if not name or price is None or days_valid is None:
+        return jsonify({"error": "name, price, and days_valid are required fields."}), 400
+
+    # Create Hash Pass (vendor_id=None!)
+    try:
+        hash_pass = CafePass(
+            vendor_id=None,
+            name=name,
+            price=price,
+            days_valid=days_valid,
+            description=description,
+            pass_type_id=pass_type.id,
+            is_active=True
+        )
+        db.session.add(hash_pass)
+        db.session.commit()
+        return jsonify({
+            "message": "Hash Pass created successfully",
+            "pass": {
+                "id": hash_pass.id,
+                "name": hash_pass.name,
+                "price": hash_pass.price,
+                "days_valid": hash_pass.days_valid,
+                "description": hash_pass.description,
+                "pass_type_id": hash_pass.pass_type_id,
+                "vendor_id": hash_pass.vendor_id
+            }
+        }), 201
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        current_app.logger.error(f"Hash Pass creation failed: {e}")
+        return jsonify({"error": "Failed to create Hash Pass"}), 500

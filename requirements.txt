@@ -11,3 +11,5 @@ gevent
 Flask-SQLAlchemy==3.0.3
 psycopg2-binary==2.9.6
 flask-cors
+Flask-Migrate==4.0.4
+cloudinary==1.36.0

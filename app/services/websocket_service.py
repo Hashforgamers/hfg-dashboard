@@ -13,7 +13,7 @@ def connect_to_5054(app):
     """ Connect to Flask-SocketIO server at 5054 with proper app context and wait until fully connected """
     with app.app_context():
         try:
-            app.logger.info("Connecting to Flask-SocketIO ws://127.0.0.1:5054")
+            app.logger.info("Connecting to Flask-SocketIO ws://host.docker.internal:5054")
             socket_url=os.getenv("BOOKING_WS_URL", "wss://hfg-booking.onrender.com")
             socketio_client.connect(socket_url)  # Ensure correct address
             
