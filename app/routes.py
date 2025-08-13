@@ -753,7 +753,7 @@ def get_vendor_dashboard(vendor_id):
             "email": vendor.contact_info.email if vendor.contact_info else "",
         },
         "cafeGallery": {
-            "images": [img.path for img in vendor.images]
+            "images": [img.url for img in vendor.images]
         },
         "businessDetails": {
             "businessName": "Game Cafe",
