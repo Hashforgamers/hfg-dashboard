@@ -25,6 +25,9 @@ from sqlalchemy import and_
  
 from collections import Counter
 
+from datetime import datetime, timedelta
+
+
 from app.models.vendor import Vendor  # adjust import as per your structure
 from app.models.uploadedImage import Image
 from app.models.documentSubmitted import DocumentSubmitted
@@ -725,40 +728,43 @@ def get_landing_page_vendor(vendor_id):
 
 @dashboard_service.route('/vendor/<int:vendor_id>/dashboard', methods=['GET'])
 def get_vendor_dashboard(vendor_id):
-    vendor = db.session.query(Vendor).options(
-        joinedload(Vendor.physical_address),
-        joinedload(Vendor.contact_info),
-        joinedload(Vendor.business_registration),
-        joinedload(Vendor.timing),
-        joinedload(Vendor.opening_days),
-        joinedload(Vendor.images),
-        joinedload(Vendor.documents),
-        joinedload(Vendor.available_games).joinedload(AvailableGame.slots)
-    ).filter_by(id=vendor_id).first()
+    # Load vendor and related info (do NOT try to eager-load AvailableGame.slots)
+    vendor = (
+        db.session.query(Vendor)
+        .options(
+            joinedload(Vendor.physical_address),
+            joinedload(Vendor.contact_info),
+            joinedload(Vendor.business_registration),
+            joinedload(Vendor.timing),
+            joinedload(Vendor.opening_days),
+            joinedload(Vendor.images),
+            joinedload(Vendor.documents),
+            joinedload(Vendor.available_games)  # keep as-is; no .slots here
+        )
+        .filter_by(id=vendor_id)
+        .first()
+    )
 
     if not vendor:
         return jsonify({"error": "Vendor not found"}), 404
 
-    # Helper: compute earliest start, latest end, and slot duration from Slot windows
+    # Fetch all Slot rows for this vendor by joining via AvailableGame.id
+    # Slot.gaming_type_id refers to AvailableGame.id in your schema.
+    all_slots = (
+        db.session.query(Slot)
+        .join(AvailableGame, AvailableGame.id == Slot.gaming_type_id)
+        .filter(AvailableGame.vendor_id == vendor_id)
+        .all()
+    )
+
     def infer_hours_and_duration_from_slots(slots):
-        """
-        Given a list of Slot objects (for a vendor across games), infer:
-        - opening_time_str: earliest start_time as "HH:MM"
-        - closing_time_str: latest end_time as "HH:MM"
-        - slot_duration_min: mode of slot durations across contiguous blocks (in minutes), or None
-        """
         if not slots:
             return None, None, None
 
-        # Collect all start and end times (as datetime.time)
-        starts = []
-        ends = []
-
-        # For duration inference, gather durations across per-game sequences
+        starts, ends = [], []
         durations_min = []
-
-        # Group by game to infer consistent sequences per game
         slots_by_game = defaultdict(list)
+
         for s in slots:
             if s.start_time and s.end_time:
                 starts.append(s.start_time)
@@ -768,55 +774,52 @@ def get_vendor_dashboard(vendor_id):
         if not starts or not ends:
             return None, None, None
 
-        # Sort each game's slots by start_time to compute per-game consecutive durations
-        for game_id, game_slots in slots_by_game.items():
+        # Compute duration per slot (end-start); take mode across all
+        for _, game_slots in slots_by_game.items():
             game_slots.sort(key=lambda x: (x.start_time, x.end_time))
             for gs in game_slots:
-                # primary duration = end - start
                 dt_start = datetime.combine(datetime.today(), gs.start_time)
                 dt_end = datetime.combine(datetime.today(), gs.end_time)
                 if dt_end <= dt_start:
-                    # Cross-midnight safety (shouldn't happen for base pattern, but guard anyway)
                     dt_end += timedelta(days=1)
                 dur = int((dt_end - dt_start).total_seconds() // 60)
                 if dur > 0:
                     durations_min.append(dur)
 
-        # Determine opening and closing
         opening_time = min(starts)
         closing_time = max(ends)
-
         opening_time_str = opening_time.strftime("%H:%M")
         closing_time_str = closing_time.strftime("%H:%M")
 
-        # Determine slot duration as the mode across collected durations
         slot_duration_min = None
         if durations_min:
             cnt = Counter(durations_min)
-            slot_duration_min = cnt.most_common(1)[0]
+            slot_duration_min = cnt.most_common(1)[0]  # return just the duration value
 
         return opening_time_str, closing_time_str, slot_duration_min
 
-    # Gather all slots across all games for this vendor
-    all_slots = []
-    for game in vendor.available_games:
-        # Ensure slots relationship is loaded
-        if getattr(game, "slots", None):
-            all_slots.extend(game.slots)
-
-    # Infer global hours and duration from the Slot table pattern
     opening_str, closing_str, inferred_duration = infer_hours_and_duration_from_slots(all_slots)
 
-    # Build operatingHours per opening_day with inferred times
-    # If there are no slots, fallback to blanks
+    # Build operating hours for each configured opening day using inferred times
     operating_hours = []
     for od in vendor.opening_days or []:
         operating_hours.append({
             "day": od.day,
             "open": opening_str or "",
             "close": closing_str or "",
-            "slotDurationMinutes": inferred_duration  # can be None if not inferable
+            "slotDurationMinutes": inferred_duration
         })
+
+    # Images: handle list safely
+    avatar = ""
+    if vendor.images:
+        first_img = vendor.images[0]
+        avatar = getattr(first_img, "path", None) or getattr(first_img, "url", "") or ""
+
+    gallery_images = []
+    if vendor.images:
+        for img in vendor.images:
+            gallery_images.append(getattr(img, "path", None) or getattr(img, "url", "") or "")
 
     payload = {
         "navigation": [
@@ -827,13 +830,13 @@ def get_vendor_dashboard(vendor_id):
         ],
         "cafeProfile": {
             "name": vendor.cafe_name,
-            "avatar": vendor.images.path if vendor.images else "",
+            "avatar": avatar,
             "membershipStatus": "Premium Member",
             "website": "www.demo.com",
             "email": vendor.contact_info.email if vendor.contact_info else "",
         },
         "cafeGallery": {
-            "images": [img.url for img in vendor.images]
+            "images": gallery_images
         },
         "businessDetails": {
             "businessName": "Game Cafe",
@@ -860,7 +863,7 @@ def get_vendor_dashboard(vendor_id):
                 "name": doc.document_type,
                 "status": doc.status,
                 "expiry": None
-            } for doc in vendor.documents
+            } for doc in (vendor.documents or [])
         ]
     }
 
