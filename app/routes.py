@@ -25,8 +25,7 @@ from sqlalchemy import and_
  
 from collections import Counter
 
-from datetime import datetime, timedelta
-
+from datetime import datetime, timedelta, date
 
 from app.models.vendor import Vendor  # adjust import as per your structure
 from app.models.uploadedImage import Image
@@ -40,6 +39,8 @@ from app.models.extraServiceCategory import ExtraServiceCategory
 from app.models.bookingExtraService import BookingExtraService
 from app.models.extraServiceMenu import ExtraServiceMenu
 from app.services.extra_service_service import ExtraServiceService
+
+WEEKDAY_ORDER = ["mon","tue","wed","thu","fri","sat","sun"]
 
 dashboard_service = Blueprint("dashboard_service", __name__)
 
@@ -726,20 +727,21 @@ def get_landing_page_vendor(vendor_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
 @dashboard_service.route('/vendor/<int:vendor_id>/dashboard', methods=['GET'])
 def get_vendor_dashboard(vendor_id):
-    # Load vendor and related info (do NOT try to eager-load AvailableGame.slots)
+    # 1) Load vendor and related objects (no eager-load of a non-existent slots relationship)
     vendor = (
         db.session.query(Vendor)
         .options(
             joinedload(Vendor.physical_address),
             joinedload(Vendor.contact_info),
             joinedload(Vendor.business_registration),
-            joinedload(Vendor.timing),
+            joinedload(Vendor.timing),           # not used for hours, but harmless to load
             joinedload(Vendor.opening_days),
             joinedload(Vendor.images),
             joinedload(Vendor.documents),
-            joinedload(Vendor.available_games)  # keep as-is; no .slots here
+            joinedload(Vendor.available_games)
         )
         .filter_by(id=vendor_id)
         .first()
@@ -748,8 +750,7 @@ def get_vendor_dashboard(vendor_id):
     if not vendor:
         return jsonify({"error": "Vendor not found"}), 404
 
-    # Fetch all Slot rows for this vendor by joining via AvailableGame.id
-    # Slot.gaming_type_id refers to AvailableGame.id in your schema.
+    # 2) Fetch all Slot rows for this vendor by joining Slot.gaming_type_id = AvailableGame.id
     all_slots = (
         db.session.query(Slot)
         .join(AvailableGame, AvailableGame.id == Slot.gaming_type_id)
@@ -757,60 +758,64 @@ def get_vendor_dashboard(vendor_id):
         .all()
     )
 
-    def infer_hours_and_duration_from_slots(slots):
+    # 3) Infer global opening/closing and a single slot duration (minutes) from Slot table
+    def infer_hours_and_duration(slots):
         if not slots:
             return None, None, None
 
-        starts, ends = [], []
-        durations_min = []
-        slots_by_game = defaultdict(list)
+        starts, ends, durations_min = [], [], []
 
         for s in slots:
-            if s.start_time and s.end_time:
-                starts.append(s.start_time)
-                ends.append(s.end_time)
-                slots_by_game[s.gaming_type_id].append(s)
+            if not (s.start_time and s.end_time):
+                continue
+
+            starts.append(s.start_time)
+            ends.append(s.end_time)
+
+            # Compute duration per slot (end - start), cross-midnight safe
+            dt_start = datetime.combine(date.today(), s.start_time)
+            dt_end = datetime.combine(date.today(), s.end_time)
+            if dt_end <= dt_start:
+                dt_end += timedelta(days=1)
+            dur_min = int((dt_end - dt_start).total_seconds() // 60)
+            if dur_min > 0:
+                durations_min.append(dur_min)
 
         if not starts or not ends:
             return None, None, None
 
-        # Compute duration per slot (end-start); take mode across all
-        for _, game_slots in slots_by_game.items():
-            game_slots.sort(key=lambda x: (x.start_time, x.end_time))
-            for gs in game_slots:
-                dt_start = datetime.combine(datetime.today(), gs.start_time)
-                dt_end = datetime.combine(datetime.today(), gs.end_time)
-                if dt_end <= dt_start:
-                    dt_end += timedelta(days=1)
-                dur = int((dt_end - dt_start).total_seconds() // 60)
-                if dur > 0:
-                    durations_min.append(dur)
+        opening = min(starts).strftime("%H:%M")
+        closing = max(ends).strftime("%H:%M")
 
-        opening_time = min(starts)
-        closing_time = max(ends)
-        opening_time_str = opening_time.strftime("%H:%M")
-        closing_time_str = closing_time.strftime("%H:%M")
-
-        slot_duration_min = None
+        duration_value = None
         if durations_min:
             cnt = Counter(durations_min)
-            slot_duration_min = cnt.most_common(1)[0]  # return just the duration value
+            duration_value = cnt.most_common(1)[0]  # single integer (mode)
 
-        return opening_time_str, closing_time_str, slot_duration_min
+        return opening, closing, duration_value
 
-    opening_str, closing_str, inferred_duration = infer_hours_and_duration_from_slots(all_slots)
+    opening_str, closing_str, slot_duration_min = infer_hours_and_duration(all_slots)
 
-    # Build operating hours for each configured opening day using inferred times
+    # 4) Build per-day operatingHours
+    # Use vendor.opening_days if present; otherwise, fall back to all weekdays.
+    opening_days_list = [od.day for od in (vendor.opening_days or [])] or WEEKDAY_ORDER
+
     operating_hours = []
-    for od in vendor.opening_days or []:
+    for day_key in opening_days_list:
+        dkey = (day_key or "").strip().lower()
+        # Keep output stable even if day values are missing or unexpected
+        if dkey not in WEEKDAY_ORDER:
+            dkey = dkey[:3] if dkey else ""  # very defensive fallback
+
         operating_hours.append({
-            "day": od.day,
+            "day": dkey,
             "open": opening_str or "",
             "close": closing_str or "",
-            "slotDurationMinutes": inferred_duration
+            "slotDurationMinutes": slot_duration_min  # single int or None
         })
 
-    # Images: handle list safely
+    # 5) Images
+    # Build avatar (first image) and gallery
     avatar = ""
     if vendor.images:
         first_img = vendor.images[0]
@@ -821,6 +826,7 @@ def get_vendor_dashboard(vendor_id):
         for img in vendor.images:
             gallery_images.append(getattr(img, "path", None) or getattr(img, "url", "") or "")
 
+    # 6) Construct response payload
     payload = {
         "navigation": [
             {"icon": "User", "label": "Profile"},
@@ -831,7 +837,7 @@ def get_vendor_dashboard(vendor_id):
         "cafeProfile": {
             "name": vendor.cafe_name,
             "avatar": avatar,
-            "membershipStatus": "Premium Member",
+            "membershipStatus": "Premium Member",  # customize as needed
             "website": "www.demo.com",
             "email": vendor.contact_info.email if vendor.contact_info else "",
         },
