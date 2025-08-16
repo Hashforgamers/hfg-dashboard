@@ -72,6 +72,8 @@ class Vendor(db.Model):
         cascade="all, delete-orphan"
     )
 
+    available_games = relationship('AvailableGame', back_populates='vendor', cascade="all, delete-orphan")
+
     # Relationship to Amenity
     amenities = relationship(
         "Amenity",
