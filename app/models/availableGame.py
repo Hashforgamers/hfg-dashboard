@@ -15,10 +15,13 @@ class AvailableGame(db.Model):
     __tablename__ = 'available_games'
     
     id = Column(Integer, primary_key=True)
-    vendor_id = Column(Integer, nullable=False)
+    vendor_id = Column(Integer, ForeignKey('vendors.id'), nullable=False)
     game_name = Column(String(50), nullable=False)
     total_slot = Column(Integer, nullable=False)
     single_slot_price = Column(Integer, nullable=False)
+
+    # Relationship with Vendor (one-to-many)
+    vendor = relationship('Vendor', back_populates='available_games')
 
     # Foreign key to Console
     consoles = relationship('Console', secondary=available_game_console, back_populates='available_games')
