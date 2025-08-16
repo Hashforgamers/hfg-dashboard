@@ -727,7 +727,6 @@ def get_landing_page_vendor(vendor_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
 @dashboard_service.route('/vendor/<int:vendor_id>/dashboard', methods=['GET'])
 def get_vendor_dashboard(vendor_id):
     # 1) Load vendor and related objects
@@ -751,7 +750,6 @@ def get_vendor_dashboard(vendor_id):
         return jsonify({"error": "Vendor not found"}), 404
 
     # 2) Prefer vendor_day_slot_config per-day overrides
-    #    Build: { 'mon': {'open': 'HH:MM', 'close': 'HH:MM', 'duration': 30}, ... }
     config_rows = db.session.execute(
         text("""
             SELECT day, opening_time, closing_time, slot_duration
@@ -761,26 +759,24 @@ def get_vendor_dashboard(vendor_id):
         {"vendor_id": vendor_id}
     ).fetchall()
 
-    config_map = {}
-    for r in config_rows or []:
-        # Normalize to 24h "HH:MM" in output for consistency
-        # If your config stores 12h like "09:00 AM", convert; otherwise pass through.
-        def to_24h(s):
-            # Try parse 12h first; if fails, assume already "HH:MM"
-            try:
-                return datetime.strptime(s, "%I:%M %p").strftime("%H:%M")
-            except Exception:
-                # If it's already "HH:MM", return as-is
-                return s
+    def to_24h(s):
+        if not s:
+            return ""
+        try:
+            return datetime.strptime(s, "%I:%M %p").strftime("%H:%M")
+        except Exception:
+            return s  # assume already "HH:MM"
 
-        config_map[(r.day or "").strip().lower()] = {
+    config_map = {}
+    for r in (config_rows or []):
+        dkey = (r.day or "").strip().lower()
+        config_map[dkey] = {
             "open": to_24h(r.opening_time),
             "close": to_24h(r.closing_time),
             "duration": int(r.slot_duration) if r.slot_duration is not None else None
         }
 
-    # 3) Fallback inference (global) from Slot table for the vendor
-    #    Only used for days missing in config_map.
+    # 3) Fallback inference from Slot table (used only if a day has no config)
     all_slots = (
         db.session.query(Slot)
         .join(AvailableGame, AvailableGame.id == Slot.gaming_type_id)
@@ -817,40 +813,38 @@ def get_vendor_dashboard(vendor_id):
         duration_value = None
         if durations_min:
             cnt = Counter(durations_min)
-            duration_value = cnt.most_common(1)[0]  # single integer
+            duration_value = cnt.most_common(1)[0]  # FIX: extract only the duration int
 
         return opening_24, closing_24, duration_value
 
     fallback_open, fallback_close, fallback_duration = infer_hours_and_duration(all_slots)
 
-    # 4) Build per-day operatingHours:
-    #    - Use vendor.opening_days if present; otherwise default to full week.
+    # 4) Build per-day operatingHours
+    WEEKDAY_ORDER = ["mon","tue","wed","thu","fri","sat","sun"]
     opening_days_list = [od.day for od in (vendor.opening_days or [])] or WEEKDAY_ORDER
 
     operating_hours = []
     for day_key in opening_days_list:
         dkey = (day_key or "").strip().lower()
         if dkey not in WEEKDAY_ORDER:
-            # Normalize or skip unexpected values
             dkey = dkey[:3] if dkey else ""
 
         cfg = config_map.get(dkey)
         if cfg:
-            # Use config values
-            operating_hours.append({
-                "day": dkey,
-                "open": cfg["open"] or "",
-                "close": cfg["close"] or "",
-                "slotDurationMinutes": cfg["duration"]
-            })
+            open_str = cfg["open"] or ""
+            close_str = cfg["close"] or ""
+            duration_int = int(cfg["duration"]) if cfg["duration"] is not None else None
         else:
-            # Fallback to inferred global values
-            operating_hours.append({
-                "day": dkey,
-                "open": fallback_open or "",
-                "close": fallback_close or "",
-                "slotDurationMinutes": fallback_duration
-            })
+            open_str = fallback_open or ""
+            close_str = fallback_close or ""
+            duration_int = fallback_duration if fallback_duration is not None else None
+
+        operating_hours.append({
+            "day": dkey,
+            "open": open_str,
+            "close": close_str,
+            "slotDurationMinutes": duration_int  # FIX: guaranteed int or None
+        })
 
     # 5) Images
     avatar = ""
@@ -874,7 +868,7 @@ def get_vendor_dashboard(vendor_id):
         "cafeProfile": {
             "name": vendor.cafe_name,
             "avatar": avatar,
-            "membershipStatus": "Premium Member",  # customize as needed
+            "membershipStatus": "Premium Member",
             "website": "www.demo.com",
             "email": vendor.contact_info.email if vendor.contact_info else "",
         },
@@ -888,7 +882,6 @@ def get_vendor_dashboard(vendor_id):
             "website": "www.mail.com",
             "address": vendor.physical_address.addressLine1 if vendor.physical_address else ""
         },
-        # First choice: vendor_day_slot_config; otherwise Slot-based inference
         "operatingHours": operating_hours,
         "billingDetails": {
             "plan": "Premium Plan",
@@ -911,7 +904,6 @@ def get_vendor_dashboard(vendor_id):
     }
 
     return jsonify(payload), 200
-
 
 @dashboard_service.route('/vendor/<int:vendor_id>/knowYourGamer', methods=['GET'])
 def get_your_gamers(vendor_id):
