@@ -27,6 +27,9 @@ from collections import Counter
 
 from datetime import datetime, timedelta, date
 
+WEEKDAY_ORDER = ["mon","tue","wed","thu","fri","sat","sun"]
+
+
 from app.models.vendor import Vendor  # adjust import as per your structure
 from app.models.uploadedImage import Image
 from app.models.documentSubmitted import DocumentSubmitted
@@ -727,6 +730,25 @@ def get_landing_page_vendor(vendor_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+def to_24h(s: str) -> str:
+    if not s:
+        return ""
+    try:
+        return datetime.strptime(s, "%I:%M %p").strftime("%H:%M")
+    except Exception:
+        return s  # assume already "HH:MM"
+
+def coerce_duration(value):
+    """Force duration to a single int or None."""
+    if value is None:
+        return None
+    if isinstance(value, (list, tuple)):
+        if not value:
+            return None
+        return int(value[0])
+    return int(value)
+
 @dashboard_service.route('/vendor/<int:vendor_id>/dashboard', methods=['GET'])
 def get_vendor_dashboard(vendor_id):
     # 1) Load vendor and related objects
@@ -736,7 +758,7 @@ def get_vendor_dashboard(vendor_id):
             joinedload(Vendor.physical_address),
             joinedload(Vendor.contact_info),
             joinedload(Vendor.business_registration),
-            joinedload(Vendor.timing),            # not used for hours; harmless to load
+            joinedload(Vendor.timing),            # not used for hours
             joinedload(Vendor.opening_days),
             joinedload(Vendor.images),
             joinedload(Vendor.documents),
@@ -749,7 +771,7 @@ def get_vendor_dashboard(vendor_id):
     if not vendor:
         return jsonify({"error": "Vendor not found"}), 404
 
-    # 2) Prefer vendor_day_slot_config per-day overrides
+    # 2) Load per-day vendor config (preferred if present)
     config_rows = db.session.execute(
         text("""
             SELECT day, opening_time, closing_time, slot_duration
@@ -759,24 +781,16 @@ def get_vendor_dashboard(vendor_id):
         {"vendor_id": vendor_id}
     ).fetchall()
 
-    def to_24h(s):
-        if not s:
-            return ""
-        try:
-            return datetime.strptime(s, "%I:%M %p").strftime("%H:%M")
-        except Exception:
-            return s  # assume already "HH:MM"
-
     config_map = {}
     for r in (config_rows or []):
         dkey = (r.day or "").strip().lower()
         config_map[dkey] = {
             "open": to_24h(r.opening_time),
             "close": to_24h(r.closing_time),
-            "duration": int(r.slot_duration) if r.slot_duration is not None else None
+            "duration": coerce_duration(r.slot_duration)
         }
 
-    # 3) Fallback inference from Slot table (used only if a day has no config)
+    # 3) Fallback inference from Slot table (used only where config is missing)
     all_slots = (
         db.session.query(Slot)
         .join(AvailableGame, AvailableGame.id == Slot.gaming_type_id)
@@ -813,14 +827,13 @@ def get_vendor_dashboard(vendor_id):
         duration_value = None
         if durations_min:
             cnt = Counter(durations_min)
-            duration_value = cnt.most_common(1)[0]  # FIX: extract only the duration int
+            duration_value = cnt.most_common(1)[0]  # mode as a single int
 
         return opening_24, closing_24, duration_value
 
     fallback_open, fallback_close, fallback_duration = infer_hours_and_duration(all_slots)
 
-    # 4) Build per-day operatingHours
-    WEEKDAY_ORDER = ["mon","tue","wed","thu","fri","sat","sun"]
+    # 4) Build operatingHours in a consistent weekday order or using vendor.opening_days
     opening_days_list = [od.day for od in (vendor.opening_days or [])] or WEEKDAY_ORDER
 
     operating_hours = []
@@ -833,17 +846,17 @@ def get_vendor_dashboard(vendor_id):
         if cfg:
             open_str = cfg["open"] or ""
             close_str = cfg["close"] or ""
-            duration_int = int(cfg["duration"]) if cfg["duration"] is not None else None
+            duration_int = coerce_duration(cfg["duration"])
         else:
             open_str = fallback_open or ""
             close_str = fallback_close or ""
-            duration_int = fallback_duration if fallback_duration is not None else None
+            duration_int = coerce_duration(fallback_duration)
 
         operating_hours.append({
             "day": dkey,
             "open": open_str,
             "close": close_str,
-            "slotDurationMinutes": duration_int  # FIX: guaranteed int or None
+            "slotDurationMinutes": duration_int  # always int or None
         })
 
     # 5) Images
@@ -857,7 +870,7 @@ def get_vendor_dashboard(vendor_id):
         for img in vendor.images:
             gallery_images.append(getattr(img, "path", None) or getattr(img, "url", "") or "")
 
-    # 6) Construct response payload
+    # 6) Construct response
     payload = {
         "navigation": [
             {"icon": "User", "label": "Profile"},
