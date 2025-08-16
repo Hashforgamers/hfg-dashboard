@@ -11,7 +11,7 @@ from .models.booking import Booking
 from .models.cafePass import CafePass
 from .models.passType import PassType
 from .models.userPass import UserPass
-
+from .models.vendorDaySlotConfig import VendorDaySlotConfig
 
 from .models.hardwareSpecification import HardwareSpecification
 from .models.maintenanceStatus import MaintenanceStatus
@@ -730,14 +730,14 @@ def get_landing_page_vendor(vendor_id):
 
 @dashboard_service.route('/vendor/<int:vendor_id>/dashboard', methods=['GET'])
 def get_vendor_dashboard(vendor_id):
-    # 1) Load vendor and related objects (no eager-load of a non-existent slots relationship)
+    # 1) Load vendor and related objects
     vendor = (
         db.session.query(Vendor)
         .options(
             joinedload(Vendor.physical_address),
             joinedload(Vendor.contact_info),
             joinedload(Vendor.business_registration),
-            joinedload(Vendor.timing),           # not used for hours, but harmless to load
+            joinedload(Vendor.timing),            # not used for hours; harmless to load
             joinedload(Vendor.opening_days),
             joinedload(Vendor.images),
             joinedload(Vendor.documents),
@@ -750,7 +750,37 @@ def get_vendor_dashboard(vendor_id):
     if not vendor:
         return jsonify({"error": "Vendor not found"}), 404
 
-    # 2) Fetch all Slot rows for this vendor by joining Slot.gaming_type_id = AvailableGame.id
+    # 2) Prefer vendor_day_slot_config per-day overrides
+    #    Build: { 'mon': {'open': 'HH:MM', 'close': 'HH:MM', 'duration': 30}, ... }
+    config_rows = db.session.execute(
+        text("""
+            SELECT day, opening_time, closing_time, slot_duration
+            FROM vendor_day_slot_config
+            WHERE vendor_id = :vendor_id
+        """),
+        {"vendor_id": vendor_id}
+    ).fetchall()
+
+    config_map = {}
+    for r in config_rows or []:
+        # Normalize to 24h "HH:MM" in output for consistency
+        # If your config stores 12h like "09:00 AM", convert; otherwise pass through.
+        def to_24h(s):
+            # Try parse 12h first; if fails, assume already "HH:MM"
+            try:
+                return datetime.strptime(s, "%I:%M %p").strftime("%H:%M")
+            except Exception:
+                # If it's already "HH:MM", return as-is
+                return s
+
+        config_map[(r.day or "").strip().lower()] = {
+            "open": to_24h(r.opening_time),
+            "close": to_24h(r.closing_time),
+            "duration": int(r.slot_duration) if r.slot_duration is not None else None
+        }
+
+    # 3) Fallback inference (global) from Slot table for the vendor
+    #    Only used for days missing in config_map.
     all_slots = (
         db.session.query(Slot)
         .join(AvailableGame, AvailableGame.id == Slot.gaming_type_id)
@@ -758,7 +788,6 @@ def get_vendor_dashboard(vendor_id):
         .all()
     )
 
-    # 3) Infer global opening/closing and a single slot duration (minutes) from Slot table
     def infer_hours_and_duration(slots):
         if not slots:
             return None, None, None
@@ -768,11 +797,9 @@ def get_vendor_dashboard(vendor_id):
         for s in slots:
             if not (s.start_time and s.end_time):
                 continue
-
             starts.append(s.start_time)
             ends.append(s.end_time)
 
-            # Compute duration per slot (end - start), cross-midnight safe
             dt_start = datetime.combine(date.today(), s.start_time)
             dt_end = datetime.combine(date.today(), s.end_time)
             if dt_end <= dt_start:
@@ -784,38 +811,48 @@ def get_vendor_dashboard(vendor_id):
         if not starts or not ends:
             return None, None, None
 
-        opening = min(starts).strftime("%H:%M")
-        closing = max(ends).strftime("%H:%M")
+        opening_24 = min(starts).strftime("%H:%M")
+        closing_24 = max(ends).strftime("%H:%M")
 
         duration_value = None
         if durations_min:
             cnt = Counter(durations_min)
-            duration_value = cnt.most_common(1)[0]  # single integer (mode)
+            duration_value = cnt.most_common(1)[0]  # single integer
 
-        return opening, closing, duration_value
+        return opening_24, closing_24, duration_value
 
-    opening_str, closing_str, slot_duration_min = infer_hours_and_duration(all_slots)
+    fallback_open, fallback_close, fallback_duration = infer_hours_and_duration(all_slots)
 
-    # 4) Build per-day operatingHours
-    # Use vendor.opening_days if present; otherwise, fall back to all weekdays.
+    # 4) Build per-day operatingHours:
+    #    - Use vendor.opening_days if present; otherwise default to full week.
     opening_days_list = [od.day for od in (vendor.opening_days or [])] or WEEKDAY_ORDER
 
     operating_hours = []
     for day_key in opening_days_list:
         dkey = (day_key or "").strip().lower()
-        # Keep output stable even if day values are missing or unexpected
         if dkey not in WEEKDAY_ORDER:
-            dkey = dkey[:3] if dkey else ""  # very defensive fallback
+            # Normalize or skip unexpected values
+            dkey = dkey[:3] if dkey else ""
 
-        operating_hours.append({
-            "day": dkey,
-            "open": opening_str or "",
-            "close": closing_str or "",
-            "slotDurationMinutes": slot_duration_min  # single int or None
-        })
+        cfg = config_map.get(dkey)
+        if cfg:
+            # Use config values
+            operating_hours.append({
+                "day": dkey,
+                "open": cfg["open"] or "",
+                "close": cfg["close"] or "",
+                "slotDurationMinutes": cfg["duration"]
+            })
+        else:
+            # Fallback to inferred global values
+            operating_hours.append({
+                "day": dkey,
+                "open": fallback_open or "",
+                "close": fallback_close or "",
+                "slotDurationMinutes": fallback_duration
+            })
 
     # 5) Images
-    # Build avatar (first image) and gallery
     avatar = ""
     if vendor.images:
         first_img = vendor.images[0]
@@ -851,7 +888,7 @@ def get_vendor_dashboard(vendor_id):
             "website": "www.mail.com",
             "address": vendor.physical_address.addressLine1 if vendor.physical_address else ""
         },
-        # Derived from Slot table, not Timing
+        # First choice: vendor_day_slot_config; otherwise Slot-based inference
         "operatingHours": operating_hours,
         "billingDetails": {
             "plan": "Premium Plan",
@@ -875,80 +912,6 @@ def get_vendor_dashboard(vendor_id):
 
     return jsonify(payload), 200
 
-# @dashboard_service.route('/vendor/<int:vendor_id>/knowYourGamer', methods=['GET'])
-# def get_your_gamers(vendor_id):
-#     try:
-#         transactions = Transaction.query.filter_by(vendor_id=vendor_id).all()
-#         if not transactions:
-#             return jsonify([])
-
-#         promo_table = f"VENDOR_{vendor_id}_PROMO_DETAIL"
-#         user_summary = {}
-
-#         for trans in transactions:
-#             user_id = trans.user_id
-#             booking_id = trans.booking_id
-#             amount = trans.amount
-#             booked_date = trans.booked_date
-
-#             user_obj = User.query.filter_by(id=user_id).first()
-#             booking = Booking.query.filter_by(id=booking_id).first()
-
-#             if not user_obj or not booking:
-#                 continue
-
-#             contact_info = user_obj.contact_info
-#             phone = contact_info.phone if contact_info else "N/A"
-
-#             if user_id not in user_summary:
-#                 user_summary[user_id] = {
-#                     "id": user_id,
-#                     "name": user_obj.name,
-#                     "contact": phone,
-#                     "totalSlots": 0,
-#                     "totalAmount": 0.0,
-#                     "promoCodesUsed": 0,
-#                     "discountAvailed": 0.0,
-#                     "lastVisit": booked_date,
-#                     "membershipTier": "Silver",
-#                     "notes": "N/A"
-#                 }
-
-#             user_summary[user_id]["totalSlots"] += 1
-#             user_summary[user_id]["totalAmount"] += amount
-#             user_summary[user_id]["lastVisit"] = max(user_summary[user_id]["lastVisit"], booked_date)
-
-#             # Promo Code Data
-#             sql = text(f"SELECT discount_applied FROM {promo_table} WHERE transaction_id = :trans_id")
-#             promo_result = db.session.execute(sql, {"trans_id": trans.id}).fetchone()
-
-#             if promo_result:
-#                 user_summary[user_id]["promoCodesUsed"] += 1
-#                 user_summary[user_id]["discountAvailed"] += promo_result[0]
-
-#         # Format result
-#         result = []
-#         for user in user_summary.values():
-#             total_amount = user["totalAmount"]
-#             total_slots = user["totalSlots"]
-#             discount = user["discountAvailed"]
-#             net = total_amount - discount
-
-#             user["averagePerSlot"] = round(total_amount / total_slots) if total_slots else 0
-#             user["netRevenue"] = net
-
-#             if total_slots > 50:
-#                 user["membershipTier"] = "Platinum"
-#             elif total_slots > 30:
-#                 user["membershipTier"] = "Gold"
-
-#             result.append(user)
-
-#         return jsonify(result), 200
-
-#     except Exception as e:
-#         current_app.logger.error(f"Error generating Know Your Gamer: {e}")
-#         return jsonify({"message": "Internal server error", "error": str(e)}), 500
 
 @dashboard_service.route('/vendor/<int:vendor_id>/knowYourGamer', methods=['GET'])
 def get_your_gamers(vendor_id):
