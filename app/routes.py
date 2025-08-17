@@ -12,7 +12,7 @@ from .models.cafePass import CafePass
 from .models.passType import PassType
 from .models.userPass import UserPass
 from .models.vendorDaySlotConfig import VendorDaySlotConfig
-from .model.amenity import Amenity
+from .models.amenity import Amenity
 
 from .models.hardwareSpecification import HardwareSpecification
 from .models.maintenanceStatus import MaintenanceStatus
