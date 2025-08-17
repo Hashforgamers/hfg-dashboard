@@ -5,6 +5,7 @@ from datetime import datetime
 from app.models.documentSubmitted import DocumentSubmitted
 from app.models.openingDay import OpeningDay
 from app.models.availableGame import AvailableGame
+from app.models.vendorProfileImage import VendorProfileImage
 from app.models.contactInfo import ContactInfo
 from app.models.businessRegistration import BusinessRegistration
 from app.models.timing import Timing
@@ -26,6 +27,13 @@ class Vendor(db.Model):
     business_registration_id = Column(Integer, ForeignKey('business_registration.id'), nullable=True)
     # Foreign Key to Timing
     timing_id = Column(Integer, ForeignKey('timing.id'), nullable=False)
+    
+    profile_image = relationship(
+        'VendorProfileImage', 
+        back_populates='vendor', 
+        uselist=False, 
+        cascade='all, delete-orphan'
+    )
 
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
