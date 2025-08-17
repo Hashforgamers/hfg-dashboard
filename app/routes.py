@@ -11,6 +11,8 @@ from .models.booking import Booking
 from .models.cafePass import CafePass
 from .models.passType import PassType
 from .models.userPass import UserPass
+from .models.vendorDaySlotConfig import VendorDaySlotConfig
+from .models.amenity import Amenity
 from app.models.vendorProfileImage import VendorProfileImage
 from app.services.cloudinary_profile_service import CloudinaryProfileImageService
 
@@ -24,7 +26,12 @@ from .models.additionalDetails import AdditionalDetails
 from sqlalchemy.orm import joinedload
 from collections import defaultdict
 from sqlalchemy import and_
+ 
+from collections import Counter
 
+from datetime import datetime, timedelta, date
+
+WEEKDAY_ORDER = ["mon","tue","wed","thu","fri","sat","sun"]
 
 
 from app.models.vendor import Vendor  # adjust import as per your structure
@@ -39,6 +46,9 @@ from app.models.extraServiceCategory import ExtraServiceCategory
 from app.models.bookingExtraService import BookingExtraService
 from app.models.extraServiceMenu import ExtraServiceMenu
 from app.services.extra_service_service import ExtraServiceService
+
+
+WEEKDAY_ORDER = ["mon","tue","wed","thu","fri","sat","sun"]
 
 dashboard_service = Blueprint("dashboard_service", __name__)
 
@@ -725,8 +735,43 @@ def get_landing_page_vendor(vendor_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+def to_24h(s: str) -> str:
+    if not s:
+        return ""
+    try:
+        return datetime.strptime(s, "%I:%M %p").strftime("%H:%M")
+    except Exception:
+        return s  # assume already "HH:MM"
+
+def coerce_duration(value):
+    """Force duration to a single int or None."""
+    if value is None:
+        return None
+    if isinstance(value, (list, tuple)):
+        if not value:
+            return None
+        return int(value[0])
+    return int(value)
+
 @dashboard_service.route('/vendor/<int:vendor_id>/dashboard', methods=['GET'])
 def get_vendor_dashboard(vendor_id):
+    # 1) Load vendor and related objects
+    vendor = (
+        db.session.query(Vendor)
+        .options(
+            joinedload(Vendor.physical_address),
+            joinedload(Vendor.contact_info),
+            joinedload(Vendor.business_registration),
+            joinedload(Vendor.timing),            # not used for hours
+            joinedload(Vendor.opening_days),
+            joinedload(Vendor.images),
+            joinedload(Vendor.documents),
+            joinedload(Vendor.available_games)
+        )
+        .filter_by(id=vendor_id)
+        .first()
+    )
     vendor = db.session.query(Vendor).options(
         joinedload(Vendor.physical_address),
         joinedload(Vendor.contact_info),
@@ -743,6 +788,106 @@ def get_vendor_dashboard(vendor_id):
     
     profile_image_url = vendor.profile_image.image_url if vendor.profile_image else None
 
+    # 2) Load per-day vendor config (preferred if present)
+    config_rows = db.session.execute(
+        text("""
+            SELECT day, opening_time, closing_time, slot_duration
+            FROM vendor_day_slot_config
+            WHERE vendor_id = :vendor_id
+        """),
+        {"vendor_id": vendor_id}
+    ).fetchall()
+
+    config_map = {}
+    for r in (config_rows or []):
+        dkey = (r.day or "").strip().lower()
+        config_map[dkey] = {
+            "open": to_24h(r.opening_time),
+            "close": to_24h(r.closing_time),
+            "duration": coerce_duration(r.slot_duration)
+        }
+
+    # 3) Fallback inference from Slot table (used only where config is missing)
+    all_slots = (
+        db.session.query(Slot)
+        .join(AvailableGame, AvailableGame.id == Slot.gaming_type_id)
+        .filter(AvailableGame.vendor_id == vendor_id)
+        .all()
+    )
+
+    def infer_hours_and_duration(slots):
+        if not slots:
+            return None, None, None
+
+        starts, ends, durations_min = [], [], []
+
+        for s in slots:
+            if not (s.start_time and s.end_time):
+                continue
+            starts.append(s.start_time)
+            ends.append(s.end_time)
+
+            dt_start = datetime.combine(date.today(), s.start_time)
+            dt_end = datetime.combine(date.today(), s.end_time)
+            if dt_end <= dt_start:
+                dt_end += timedelta(days=1)
+            dur_min = int((dt_end - dt_start).total_seconds() // 60)
+            if dur_min > 0:
+                durations_min.append(dur_min)
+
+        if not starts or not ends:
+            return None, None, None
+
+        opening_24 = min(starts).strftime("%H:%M")
+        closing_24 = max(ends).strftime("%H:%M")
+
+        duration_value = None
+        if durations_min:
+            cnt = Counter(durations_min)
+            duration_value = cnt.most_common(1)[0]  # mode as a single int
+
+        return opening_24, closing_24, duration_value
+
+    fallback_open, fallback_close, fallback_duration = infer_hours_and_duration(all_slots)
+
+    # 4) Build operatingHours in a consistent weekday order or using vendor.opening_days
+    opening_days_list = [od.day for od in (vendor.opening_days or [])] or WEEKDAY_ORDER
+
+    operating_hours = []
+    for day_key in opening_days_list:
+        dkey = (day_key or "").strip().lower()
+        if dkey not in WEEKDAY_ORDER:
+            dkey = dkey[:3] if dkey else ""
+
+        cfg = config_map.get(dkey)
+        if cfg:
+            open_str = cfg["open"] or ""
+            close_str = cfg["close"] or ""
+            duration_int = coerce_duration(cfg["duration"])
+        else:
+            open_str = fallback_open or ""
+            close_str = fallback_close or ""
+            duration_int = coerce_duration(fallback_duration)
+
+        operating_hours.append({
+            "day": dkey,
+            "open": open_str,
+            "close": close_str,
+            "slotDurationMinutes": duration_int  # always int or None
+        })
+
+    # 5) Images
+    avatar = ""
+    if vendor.images:
+        first_img = vendor.images[0]
+        avatar = getattr(first_img, "path", None) or getattr(first_img, "url", "") or ""
+
+    gallery_images = []
+    if vendor.images:
+        for img in vendor.images:
+            gallery_images.append(getattr(img, "path", None) or getattr(img, "url", "") or "")
+
+    # 6) Construct response
     payload = {
         "navigation": [
             {"icon": "User", "label": "Profile"},
@@ -752,6 +897,8 @@ def get_vendor_dashboard(vendor_id):
         ],
         "cafeProfile": {
             "name": vendor.cafe_name,
+            "avatar": avatar,
+            "membershipStatus": "Premium Member",
             "avatar": vendor.images[0].path if vendor.images else "",
             "profileImage": profile_image_url,  
             "membershipStatus": "Premium Member",  # hardcoded; change if needed
@@ -759,7 +906,7 @@ def get_vendor_dashboard(vendor_id):
             "email": vendor.contact_info.email if vendor.contact_info else "",
         },
         "cafeGallery": {
-            "images": [img.url for img in vendor.images]
+            "images": gallery_images
         },
         "businessDetails": {
             "businessName": "Game Cafe",
@@ -768,13 +915,7 @@ def get_vendor_dashboard(vendor_id):
             "website": "www.mail.com",
             "address": vendor.physical_address.addressLine1 if vendor.physical_address else ""
         },
-        "operatingHours": [
-            {
-                "day": opening_day.day,
-                "open": "09:00",
-                "close": "18:00"
-            } for opening_day in vendor.opening_days
-        ],
+        "operatingHours": operating_hours,
         "billingDetails": {
             "plan": "Premium Plan",
             "price": "$49/month, billed annually",
@@ -790,87 +931,12 @@ def get_vendor_dashboard(vendor_id):
             {
                 "name": doc.document_type,
                 "status": doc.status,
-                "expiry": None  # Your new model doesn’t include expiry
-            } for doc in vendor.documents
+                "expiry": None
+            } for doc in (vendor.documents or [])
         ]
     }
 
     return jsonify(payload), 200
-
-# @dashboard_service.route('/vendor/<int:vendor_id>/knowYourGamer', methods=['GET'])
-# def get_your_gamers(vendor_id):
-#     try:
-#         transactions = Transaction.query.filter_by(vendor_id=vendor_id).all()
-#         if not transactions:
-#             return jsonify([])
-
-#         promo_table = f"VENDOR_{vendor_id}_PROMO_DETAIL"
-#         user_summary = {}
-
-#         for trans in transactions:
-#             user_id = trans.user_id
-#             booking_id = trans.booking_id
-#             amount = trans.amount
-#             booked_date = trans.booked_date
-
-#             user_obj = User.query.filter_by(id=user_id).first()
-#             booking = Booking.query.filter_by(id=booking_id).first()
-
-#             if not user_obj or not booking:
-#                 continue
-
-#             contact_info = user_obj.contact_info
-#             phone = contact_info.phone if contact_info else "N/A"
-
-#             if user_id not in user_summary:
-#                 user_summary[user_id] = {
-#                     "id": user_id,
-#                     "name": user_obj.name,
-#                     "contact": phone,
-#                     "totalSlots": 0,
-#                     "totalAmount": 0.0,
-#                     "promoCodesUsed": 0,
-#                     "discountAvailed": 0.0,
-#                     "lastVisit": booked_date,
-#                     "membershipTier": "Silver",
-#                     "notes": "N/A"
-#                 }
-
-#             user_summary[user_id]["totalSlots"] += 1
-#             user_summary[user_id]["totalAmount"] += amount
-#             user_summary[user_id]["lastVisit"] = max(user_summary[user_id]["lastVisit"], booked_date)
-
-#             # Promo Code Data
-#             sql = text(f"SELECT discount_applied FROM {promo_table} WHERE transaction_id = :trans_id")
-#             promo_result = db.session.execute(sql, {"trans_id": trans.id}).fetchone()
-
-#             if promo_result:
-#                 user_summary[user_id]["promoCodesUsed"] += 1
-#                 user_summary[user_id]["discountAvailed"] += promo_result[0]
-
-#         # Format result
-#         result = []
-#         for user in user_summary.values():
-#             total_amount = user["totalAmount"]
-#             total_slots = user["totalSlots"]
-#             discount = user["discountAvailed"]
-#             net = total_amount - discount
-
-#             user["averagePerSlot"] = round(total_amount / total_slots) if total_slots else 0
-#             user["netRevenue"] = net
-
-#             if total_slots > 50:
-#                 user["membershipTier"] = "Platinum"
-#             elif total_slots > 30:
-#                 user["membershipTier"] = "Gold"
-
-#             result.append(user)
-
-#         return jsonify(result), 200
-
-#     except Exception as e:
-#         current_app.logger.error(f"Error generating Know Your Gamer: {e}")
-#         return jsonify({"message": "Internal server error", "error": str(e)}), 500
 
 @dashboard_service.route('/vendor/<int:vendor_id>/knowYourGamer', methods=['GET'])
 def get_your_gamers(vendor_id):
@@ -1234,10 +1300,39 @@ def add_extra_service_category(vendor_id):
     if not name:
         return jsonify({"error": "Category name required"}), 400
 
-    category = ExtraServiceCategory(vendor_id=vendor_id, name=name, description=description)
+    # Check if the vendor already has 'food' amenity
+    food_amenity = Amenity.query.filter_by(vendor_id=vendor_id, name='food').first()
+    
+    if not food_amenity:
+        # Create a new 'food' amenity if it doesn't exist
+        food_amenity = Amenity(
+            vendor_id=vendor_id,
+            name='food',
+            available=True
+        )
+        db.session.add(food_amenity)
+    else:
+        # If it exists but is not available, mark it as available
+        if not food_amenity.available:
+            food_amenity.available = True
+        db.session.add(food_amenity)  # ensure update is tracked
+
+    # Add the new category
+    category = ExtraServiceCategory(
+        vendor_id=vendor_id,
+        name=name,
+        description=description
+    )
     db.session.add(category)
+
+    # Commit all changes together (amenity + category)
     db.session.commit()
-    return jsonify({"id": category.id, "name": category.name, "description": category.description}), 201
+
+    return jsonify({
+        "id": category.id,
+        "name": category.name,
+        "description": category.description
+    }), 201
 
 # Add menu item under category
 @dashboard_service.route('/vendor/<int:vendor_id>/extras/category/<int:category_id>/menu', methods=['POST'])
@@ -1291,12 +1386,30 @@ def update_extra_service_category(vendor_id, category_id):
 @dashboard_service.route('/vendor/<int:vendor_id>/extras/category/<int:category_id>', methods=['DELETE'])
 def delete_extra_service_category(vendor_id, category_id):
     try:
-        category = ExtraServiceCategory.query.filter_by(id=category_id, vendor_id=vendor_id, is_active=True).first_or_404()
+        category = ExtraServiceCategory.query.filter_by(
+            id=category_id, vendor_id=vendor_id, is_active=True
+        ).first_or_404()
+
+        # Soft delete the category
         category.is_active = False
 
         # Optionally, also soft delete all menus under this category
         for menu in category.menus:
             menu.is_active = False
+
+        # Check if this vendor has any active categories left
+        active_categories = ExtraServiceCategory.query.filter_by(
+            vendor_id=vendor_id, is_active=True
+        ).count()
+
+        if active_categories == 0:
+            # If no active categories left → disable "food" amenity
+            food_amenity = Amenity.query.filter_by(
+                vendor_id=vendor_id, name='food'
+            ).first()
+            if food_amenity and food_amenity.available:
+                food_amenity.available = False
+                db.session.add(food_amenity)
 
         db.session.commit()
         return jsonify({"message": "Category and related menus deactivated"}), 200
@@ -1306,6 +1419,7 @@ def delete_extra_service_category(vendor_id, category_id):
         current_app.logger.error(f"SQLAlchemy error deleting category: {e}")
         return jsonify({"error": "Failed to delete category"}), 500
     except Exception as e:
+        db.session.rollback()
         current_app.logger.error(f"Error deleting category: {e}")
         return jsonify({"error": "Failed to delete category"}), 500
 
