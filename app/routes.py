@@ -13,6 +13,9 @@ from .models.passType import PassType
 from .models.userPass import UserPass
 from .models.vendorDaySlotConfig import VendorDaySlotConfig
 from .models.amenity import Amenity
+from app.models.vendorProfileImage import VendorProfileImage
+from app.services.cloudinary_profile_service import CloudinaryProfileImageService
+
 
 from .models.hardwareSpecification import HardwareSpecification
 from .models.maintenanceStatus import MaintenanceStatus
@@ -769,9 +772,21 @@ def get_vendor_dashboard(vendor_id):
         .filter_by(id=vendor_id)
         .first()
     )
+    vendor = db.session.query(Vendor).options(
+        joinedload(Vendor.physical_address),
+        joinedload(Vendor.contact_info),
+        joinedload(Vendor.business_registration),
+        joinedload(Vendor.timing),
+        joinedload(Vendor.opening_days),
+        joinedload(Vendor.images),
+        joinedload(Vendor.documents),
+        joinedload(Vendor.profile_image)
+    ).filter_by(id=vendor_id).first()
 
     if not vendor:
         return jsonify({"error": "Vendor not found"}), 404
+    
+    profile_image_url = vendor.profile_image.image_url if vendor.profile_image else None
 
     # 2) Load per-day vendor config (preferred if present)
     config_rows = db.session.execute(
@@ -884,6 +899,9 @@ def get_vendor_dashboard(vendor_id):
             "name": vendor.cafe_name,
             "avatar": avatar,
             "membershipStatus": "Premium Member",
+            "avatar": vendor.images[0].path if vendor.images else "",
+            "profileImage": profile_image_url,  
+            "membershipStatus": "Premium Member",  # hardcoded; change if needed
             "website": "www.demo.com",
             "email": vendor.contact_info.email if vendor.contact_info else "",
         },
@@ -1676,3 +1694,163 @@ def create_hash_pass():
         db.session.rollback()
         current_app.logger.error(f"Hash Pass creation failed: {e}")
         return jsonify({"error": "Failed to create Hash Pass"}), 500
+    
+# Profile image upload route
+@dashboard_service.route('/vendor/<int:vendor_id>/update-profile-image', methods=['POST'])
+def update_profile_image(vendor_id):
+    """
+    Upload profile image to Cloudinary and update VendorProfileImage table.
+    Creates record if it doesn't exist.
+    """
+    try:
+        # Validate request
+        if 'profileImage' not in request.files:
+            return jsonify({
+                "success": False, 
+                "message": "No profileImage file provided"
+            }), 400
+
+        profile_image = request.files['profileImage']
+        
+        if profile_image.filename == '':
+            return jsonify({
+                "success": False, 
+                "message": "No file selected"
+            }), 400
+
+        # Validate file type
+        allowed_extensions = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+        if not ('.' in profile_image.filename and 
+                profile_image.filename.rsplit('.', 1)[1].lower() in allowed_extensions):
+            return jsonify({
+                "success": False, 
+                "message": "Invalid file type. Please upload an image file."
+            }), 400
+
+        # Check if vendor exists
+        vendor = Vendor.query.get(vendor_id)
+        if not vendor:
+            return jsonify({
+                "success": False, 
+                "message": "Vendor not found"
+            }), 404
+
+        # Upload to Cloudinary using the service
+        upload_result = CloudinaryProfileImageService.upload_profile_image(
+            profile_image, 
+            vendor_id
+        )
+
+        if not upload_result['success']:
+            return jsonify({
+                "success": False,
+                "message": f"Failed to upload image: {upload_result['error']}"
+            }), 500
+
+        # Get or create VendorProfileImage record
+        vendor_profile_image = VendorProfileImage.query.filter_by(vendor_id=vendor_id).first()
+        if vendor_profile_image:
+            # Update existing record
+            vendor_profile_image.image_url = upload_result['url']
+            vendor_profile_image.public_id = upload_result['public_id']
+            vendor_profile_image.uploaded_at = datetime.utcnow()
+        else:
+            # Create new record
+            vendor_profile_image = VendorProfileImage(
+                vendor_id=vendor_id,
+                image_url=upload_result['url'],
+                public_id=upload_result['public_id']
+            )
+            db.session.add(vendor_profile_image)
+
+        db.session.commit()
+
+        current_app.logger.info(f"Profile image updated for vendor {vendor_id}: {upload_result['url']}")
+
+        return jsonify({
+            "success": True,
+            "message": "Profile image updated successfully",
+            "profileImage": {
+                "url": upload_result['url'],
+                "public_id": upload_result['public_id']
+            }
+        }), 200
+
+    except Exception as e:
+        current_app.logger.error(f"Error updating profile image for vendor {vendor_id}: {str(e)}")
+        db.session.rollback()
+        return jsonify({
+            "success": False, 
+            "message": "An error occurred while updating profile image"
+        }), 500
+
+# Get vendor profile image
+@dashboard_service.route('/vendor/<int:vendor_id>/profile-image', methods=['GET'])
+def get_vendor_profile_image(vendor_id):
+    """Get vendor profile image information"""
+    try:
+        vendor_profile_image = VendorProfileImage.query.filter_by(vendor_id=vendor_id).first()
+        
+        if not vendor_profile_image:
+            return jsonify({
+                "success": False,
+                "message": "Profile image not found"
+            }), 404
+
+        return jsonify({
+            "success": True,
+            "profileImage": {
+                "id": vendor_profile_image.id,
+                "vendor_id": vendor_profile_image.vendor_id,
+                "url": vendor_profile_image.image_url,
+                "public_id": vendor_profile_image.public_id,
+                "uploaded_at": vendor_profile_image.uploaded_at.isoformat()
+            }
+        }), 200
+
+    except Exception as e:
+        current_app.logger.error(f"Error fetching profile image for vendor {vendor_id}: {str(e)}")
+        return jsonify({
+            "success": False,
+            "message": "Failed to fetch profile image"
+        }), 500
+
+# Delete profile image
+@dashboard_service.route('/vendor/<int:vendor_id>/delete-profile-image', methods=['DELETE'])
+def delete_vendor_profile_image(vendor_id):
+    """Delete vendor's profile image"""
+    try:
+        vendor_profile_image = VendorProfileImage.query.filter_by(vendor_id=vendor_id).first()
+        
+        if not vendor_profile_image:
+            return jsonify({
+                "success": False, 
+                "message": "Profile image not found"
+            }), 404
+
+        # Delete from Cloudinary if exists
+        if vendor_profile_image.public_id:
+            delete_result = CloudinaryProfileImageService.delete_profile_image(
+                vendor_profile_image.public_id
+            )
+            
+            if not delete_result['success']:
+                current_app.logger.warning(f"Failed to delete image from Cloudinary: {delete_result['error']}")
+
+        # Delete from database
+        db.session.delete(vendor_profile_image)
+        db.session.commit()
+
+        return jsonify({
+            "success": True,
+            "message": "Profile image deleted successfully"
+        }), 200
+
+    except Exception as e:
+        current_app.logger.error(f"Error deleting profile image for vendor {vendor_id}: {str(e)}")
+        db.session.rollback()
+        return jsonify({
+            "success": False, 
+            "message": "An error occurred while deleting profile image"
+        }), 500
+
