@@ -1536,8 +1536,9 @@ def add_pass_type():
     if not name:
         return jsonify({'error': 'Name is required'}), 400
 
-    # Check for duplicate
-    if PassType.query.filter_by(name=name).first():
+    # ✅ Correct duplicate check
+    existing_pass_type = PassType.query.filter_by(name=name, is_global=is_global).first()
+    if existing_pass_type:
         return jsonify({'error': 'PassType with this name already exists'}), 409
 
     try:
@@ -1558,6 +1559,7 @@ def add_pass_type():
                 'is_global': new_pass_type.is_global
             }
         }), 201
+
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': 'An error occurred', 'details': str(e)}), 500
