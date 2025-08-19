@@ -12,8 +12,10 @@ from app.models.timing import Timing
 from app.models.amenity import Amenity
 from app.models.physicalAddress import PhysicalAddress
 from app.models.document import Document
+from app.models.bankTransferDetails import BankTransferDetails, PayoutTransaction
 from sqlalchemy.sql import and_
 from app.models.vendorAccount import VendorAccount
+from app.models.website import Website
 
 class Vendor(db.Model):
     __tablename__ = 'vendors'
@@ -44,6 +46,29 @@ class Vendor(db.Model):
         back_populates='vendor',
         uselist=False,
         cascade="all, delete-orphan"
+    )
+    
+       # WEBSITE RELATIONSHIP - One-to-One
+    website = relationship(
+        'Website', 
+        back_populates='vendor', 
+        uselist=False, 
+        cascade='all, delete-orphan'
+    )
+    
+       # Bank transfer details relationship
+    bank_details = relationship(
+        'BankTransferDetails', 
+        back_populates='vendor', 
+        uselist=False, 
+        cascade='all, delete-orphan'
+    )
+
+    # Payout transactions relationship
+    payouts = relationship(
+        'PayoutTransaction', 
+        back_populates='vendor', 
+        cascade='all, delete-orphan'
     )
 
 

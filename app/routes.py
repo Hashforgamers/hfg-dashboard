@@ -15,7 +15,8 @@ from .models.vendorDaySlotConfig import VendorDaySlotConfig
 from .models.amenity import Amenity
 from app.models.vendorProfileImage import VendorProfileImage
 from app.services.cloudinary_profile_service import CloudinaryProfileImageService
-
+from app.models.website import Website 
+from app.models.bankTransferDetails import BankTransferDetails, PayoutTransaction
 
 from .models.hardwareSpecification import HardwareSpecification
 from .models.maintenanceStatus import MaintenanceStatus
@@ -902,7 +903,7 @@ def get_vendor_dashboard(vendor_id):
             "avatar": vendor.images[0].path if vendor.images else "",
             "profileImage": profile_image_url,  
             "membershipStatus": "Premium Member",  # hardcoded; change if needed
-            "website": "www.demo.com",
+             "website": vendor.website.url if vendor.website else "",
             "email": vendor.contact_info.email if vendor.contact_info else "",
         },
         "cafeGallery": {
@@ -912,7 +913,7 @@ def get_vendor_dashboard(vendor_id):
             "businessName": "Game Cafe",
             "businessType": "Cafe",
             "phone": vendor.contact_info.phone if vendor.contact_info else "",
-            "website": "www.mail.com",
+            "website": vendor.website.url if vendor.website else "",
             "address": vendor.physical_address.addressLine1 if vendor.physical_address else ""
         },
         "operatingHours": operating_hours,
@@ -1852,5 +1853,331 @@ def delete_vendor_profile_image(vendor_id):
         return jsonify({
             "success": False, 
             "message": "An error occurred while deleting profile image"
+        }), 500
+        
+   # update business details
+
+@dashboard_service.route('/vendor/<int:vendor_id>/business-details', methods=['PATCH'])
+def update_business_details(vendor_id):
+    """Update vendor business details including website"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No input data provided'}), 400
+
+        vendor = Vendor.query.get(vendor_id)
+        if not vendor:
+            return jsonify({'error': 'Vendor not found'}), 404
+
+        # Update cafe name
+        if 'businessName' in data:
+            vendor.cafe_name = data['businessName']
+
+        # Update contact info (phone/email)
+        if 'phone' in data or 'email' in data:
+            contact_info = vendor.contact_info
+            if not contact_info:
+                contact_info = ContactInfo(
+                    parent_id=vendor.id, 
+                    parent_type='vendor',
+                    email=data.get('email', ''),
+                    phone=data.get('phone', '')
+                )
+                db.session.add(contact_info)
+            else:
+                if 'phone' in data:
+                    contact_info.phone = data['phone']
+                if 'email' in data:
+                    contact_info.email = data['email']
+
+        # Update website
+        if 'website' in data:
+            website = vendor.website
+            if not website:
+                website = Website(vendor_id=vendor.id, url=data['website'])
+                db.session.add(website)
+            else:
+                website.url = data['website']
+
+        # Update address
+        if 'address' in data and vendor.physical_address:
+            vendor.physical_address.addressLine1 = data['address']
+
+        db.session.commit()
+        
+        return jsonify({
+            'success': True, 
+            'message': 'Business details updated successfully'
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error updating business details: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+    
+    
+    
+
+# Get bank details for vendor
+@dashboard_service.route('/vendor/<int:vendor_id>/bank-details', methods=['GET'])
+def get_bank_details(vendor_id):
+    """Get vendor's bank transfer details"""
+    try:
+        bank_details = BankTransferDetails.query.filter_by(vendor_id=vendor_id).first()
+        
+        if not bank_details:
+            return jsonify({
+                "success": False,
+                "message": "No bank details found"
+            }), 404
+        
+        # Helper functions for masking
+        def mask_upi_id(upi_id):
+            if not upi_id or len(upi_id) <= 4:
+                return '****'
+            return '****' + upi_id[4:]
+        
+        def mask_account_number(account_number):
+            if not account_number or len(account_number) <= 4:
+                return account_number
+            return 'X' * (len(account_number) - 4) + account_number[-4:]
+        
+        return jsonify({
+            "success": True,
+            "bankDetails": {
+                "id": bank_details.id,
+                "accountHolderName": bank_details.account_holder_name,
+                "bankName": bank_details.bank_name,
+                "accountNumber": mask_account_number(bank_details.account_number) if bank_details.account_number else None,
+                "fullAccountNumber": bank_details.account_number,
+                "ifscCode": bank_details.ifsc_code,
+                "upiId": mask_upi_id(bank_details.upi_id) if bank_details.upi_id else None,
+                "fullUpiId": bank_details.upi_id,
+                "isVerified": bank_details.is_verified,
+                "verificationStatus": bank_details.verification_status,
+                "createdAt": bank_details.created_at.isoformat() if bank_details.created_at else None,
+                "updatedAt": bank_details.updated_at.isoformat() if bank_details.updated_at else None
+            }
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f"Error fetching bank details for vendor {vendor_id}: {str(e)}")
+        return jsonify({
+            "success": False,
+            "message": "Failed to fetch bank details"
+        }), 500
+
+
+# Add or update bank details
+@dashboard_service.route('/vendor/<int:vendor_id>/bank-details', methods=['POST', 'PUT'])
+def add_or_update_bank_details(vendor_id):
+    """Add or update vendor's bank transfer details"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No input data provided"}), 400
+        
+        # Check if vendor exists
+        vendor = Vendor.query.get(vendor_id)
+        if not vendor:
+            return jsonify({"error": "Vendor not found"}), 404
+        
+        # Determine if this is bank account or UPI based on provided data
+        is_bank_account = bool(data.get('accountHolderName') or data.get('bankName') or 
+                              data.get('accountNumber') or data.get('ifscCode'))
+        is_upi_only = bool(data.get('upiId')) and not is_bank_account
+        
+        # Conditional validation based on payment method
+        if is_bank_account:
+            # Validate required bank fields
+            required_bank_fields = ['accountHolderName', 'bankName', 'accountNumber', 'ifscCode']
+            for field in required_bank_fields:
+                if field not in data or not str(data[field]).strip():
+                    return jsonify({"error": f"{field} is required for bank account"}), 400
+            
+            # Validate IFSC code format
+            ifsc_code = str(data['ifscCode']).upper().strip()
+            if len(ifsc_code) != 11:
+                return jsonify({"error": "IFSC code must be 11 characters"}), 400
+        elif is_upi_only:
+            # Validate UPI ID
+            if not data.get('upiId') or not str(data['upiId']).strip():
+                return jsonify({"error": "UPI ID is required for UPI payment method"}), 400
+        else:
+            return jsonify({"error": "Please provide either bank account details or UPI ID"}), 400
+        
+        # Get or create bank details
+        bank_details = BankTransferDetails.query.filter_by(vendor_id=vendor_id).first()
+        
+        if bank_details:
+            # Update existing record
+            if is_bank_account:
+                bank_details.account_holder_name = str(data['accountHolderName']).strip()
+                bank_details.bank_name = str(data['bankName']).strip()
+                bank_details.account_number = str(data['accountNumber']).strip()
+                bank_details.ifsc_code = str(data['ifscCode']).upper().strip()
+                bank_details.upi_id = str(data.get('upiId', '')).strip() if data.get('upiId') else None
+            else:  # UPI only
+                # Clear bank fields for UPI-only setup
+                bank_details.account_holder_name = None
+                bank_details.bank_name = None
+                bank_details.account_number = None
+                bank_details.ifsc_code = None
+                bank_details.upi_id = str(data['upiId']).strip()
+            
+            # Reset verification when details change
+            bank_details.is_verified = False
+            bank_details.verification_status = 'PENDING'
+            action = "updated"
+        else:
+            # Create new record
+            if is_bank_account:
+                bank_details = BankTransferDetails(
+                    vendor_id=vendor_id,
+                    account_holder_name=str(data['accountHolderName']).strip(),
+                    bank_name=str(data['bankName']).strip(),
+                    account_number=str(data['accountNumber']).strip(),
+                    ifsc_code=str(data['ifscCode']).upper().strip(),
+                    upi_id=str(data.get('upiId', '')).strip() if data.get('upiId') else None
+                )
+            else:  # UPI only
+                bank_details = BankTransferDetails(
+                    vendor_id=vendor_id,
+                    account_holder_name=None,
+                    bank_name=None,
+                    account_number=None,
+                    ifsc_code=None,
+                    upi_id=str(data['upiId']).strip()
+                )
+            
+            db.session.add(bank_details)
+            action = "added"
+        
+        db.session.commit()
+        
+        return jsonify({
+            "success": True,
+            "message": f"Payment details {action} successfully",
+            "bankDetails": {
+                "id": bank_details.id,
+                "accountHolderName": bank_details.account_holder_name,
+                "bankName": bank_details.bank_name,
+                "accountNumber": bank_details.get_masked_account_number() if bank_details.account_number else None,
+                "fullAccountNumber": bank_details.account_number,
+                "ifscCode": bank_details.ifsc_code,
+                "upiId": bank_details.get_masked_upi_id() if bank_details.upi_id else None,
+                "fullUpiId": bank_details.upi_id,
+                "isVerified": bank_details.is_verified,
+                "verificationStatus": bank_details.verification_status
+            }
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error updating bank details for vendor {vendor_id}: {str(e)}")
+        return jsonify({
+            "success": False,
+            "message": "Failed to update payment details"
+        }), 500
+
+
+# Get payout history
+@dashboard_service.route('/vendor/<int:vendor_id>/payouts', methods=['GET'])
+def get_payout_history(vendor_id):
+    """Get vendor's payout transaction history"""
+    try:
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 10, type=int)
+        
+        # Query payouts with pagination
+        payouts_query = PayoutTransaction.query.filter_by(vendor_id=vendor_id)\
+            .order_by(PayoutTransaction.payout_date.desc())
+        
+        total_payouts = payouts_query.count()
+        payouts = payouts_query.offset((page - 1) * per_page).limit(per_page).all()
+        
+        return jsonify({
+            "success": True,
+            "payouts": [{
+                "id": payout.id,
+                "amount": float(payout.amount),
+                "transferMode": payout.transfer_mode,
+                "utrNumber": payout.utr_number,
+                "payoutDate": payout.payout_date.isoformat() if payout.payout_date else None,
+                "status": payout.status,
+                "remarks": payout.remarks,
+                "createdAt": payout.created_at.isoformat() if payout.created_at else None
+            } for payout in payouts],
+            "pagination": {
+                "page": page,
+                "per_page": per_page,
+                "total": total_payouts,
+                "total_pages": (total_payouts + per_page - 1) // per_page
+            }
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f"Error fetching payouts for vendor {vendor_id}: {str(e)}")
+        return jsonify({
+            "success": False,
+            "message": "Failed to fetch payout history"
+        }), 500
+
+# Create a new payout (for testing or admin use)
+@dashboard_service.route('/vendor/<int:vendor_id>/payouts', methods=['POST'])
+def create_payout(vendor_id):
+    """Create a new payout transaction"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No input data provided"}), 400
+        
+        # Validate required fields
+        if 'amount' not in data or 'transferMode' not in data:
+            return jsonify({"error": "Amount and transferMode are required"}), 400
+        
+        amount = float(data['amount'])
+        if amount <= 0:
+            return jsonify({"error": "Amount must be greater than 0"}), 400
+        
+        transfer_mode = data['transferMode'].upper()
+        if transfer_mode not in ['BANK', 'UPI']:
+            return jsonify({"error": "Transfer mode must be BANK or UPI"}), 400
+        
+        # Check if vendor exists
+        vendor = Vendor.query.get(vendor_id)
+        if not vendor:
+            return jsonify({"error": "Vendor not found"}), 404
+        
+        # Create new payout
+        payout = PayoutTransaction(
+            vendor_id=vendor_id,
+            amount=amount,
+            transfer_mode=transfer_mode,
+            utr_number=data.get('utrNumber'),
+            status=data.get('status', 'PENDING'),
+            remarks=data.get('remarks')
+        )
+        
+        db.session.add(payout)
+        db.session.commit()
+        
+        return jsonify({
+            "success": True,
+            "message": "Payout created successfully",
+            "payout": {
+                "id": payout.id,
+                "amount": float(payout.amount),
+                "transferMode": payout.transfer_mode,
+                "status": payout.status
+            }
+        }), 201
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error creating payout for vendor {vendor_id}: {str(e)}")
+        return jsonify({
+            "success": False,
+            "message": "Failed to create payout"
         }), 500
 
