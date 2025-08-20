@@ -912,8 +912,8 @@ def get_vendor_dashboard(vendor_id):
             "images": gallery_images
         },
         "businessDetails": {
-            "businessName": "Game Cafe",
-            "businessType": "Cafe",
+            "businessName": vendor.cafe_name,
+            "businessType": "Gaming Cafe",
             "phone": vendor.contact_info.phone if vendor.contact_info else "",
             "website": vendor.website.url if vendor.website else "",
             "address": vendor.physical_address.addressLine1 if vendor.physical_address else ""
