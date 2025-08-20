@@ -43,6 +43,7 @@ class Vendor(db.Model):
 
     physical_address = relationship(
         'PhysicalAddress',
+        primaryjoin="and_(foreign(PhysicalAddress.parent_id) == Vendor.id, ContactInfo.parent_type == 'vendor')",
         back_populates='vendor',
         uselist=False,
         cascade="all, delete-orphan"
@@ -78,10 +79,7 @@ class Vendor(db.Model):
     # Relationship to ContactInfo
     contact_info = relationship(
         "ContactInfo",
-        primaryjoin=and_(
-            foreign(ContactInfo.parent_id) == id,
-            ContactInfo.parent_type == 'vendor'
-        ),
+        primaryjoin="and_(foreign(ContactInfo.parent_id) == Vendor.id, ContactInfo.parent_type == 'vendor')",
         back_populates="vendor",
         uselist=False,
         cascade="all, delete-orphan",
