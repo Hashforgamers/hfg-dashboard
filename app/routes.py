@@ -11,6 +11,8 @@ from .models.booking import Booking
 from .models.cafePass import CafePass
 from .models.passType import PassType
 from .models.userPass import UserPass
+from .models.physicalAddress import PhysicalAddress
+from .models.contactInfo import ContactInfo
 from .models.vendorDaySlotConfig import VendorDaySlotConfig
 from .models.amenity import Amenity
 from app.models.vendorProfileImage import VendorProfileImage
@@ -41,7 +43,6 @@ from app.models.uploadedImage import Image
 from app.models.documentSubmitted import DocumentSubmitted
 from app.models.timing import Timing
 from app.models.openingDay import OpeningDay
-from app.models.contactInfo import ContactInfo
 from app.models.businessRegistration import BusinessRegistration
 from app.models.vendorAccount import VendorAccount
 from app.models.extraServiceCategory import ExtraServiceCategory
