@@ -1914,17 +1914,28 @@ def update_business_details(vendor_id):
             physical_address = vendor.physical_address
             if not physical_address:
                 physical_address = PhysicalAddress(
-                    vendor_id=vendor.id,
-                    addressLine1=address_line1.strip()
+                    parent_id=vendor.id,        # ✅ correct field
+                    parent_type="vendor",       # ✅ required for polymorphic link
+                    address_type="business",    # you can adjust type if needed
+                    addressLine1=address_line1.strip(),
+                    pincode=data.get("pincode", ""),
+                    state=data.get("state", ""),
+                    country=data.get("country", "India")
                 )
                 db.session.add(physical_address)
                 vendor.physical_address = physical_address
             else:
                 physical_address.addressLine1 = address_line1.strip()
+                if "pincode" in data:
+                    physical_address.pincode = data["pincode"]
+                if "state" in data:
+                    physical_address.state = data["state"]
+                if "country" in data:
+                    physical_address.country = data["country"]
 
         db.session.commit()
 
-        # ✅ Return updated vendor data (so frontend can refresh state)
+        # ✅ Return updated vendor data
         return jsonify({
             'success': True,
             'message': 'Business details updated successfully',
@@ -1934,7 +1945,12 @@ def update_business_details(vendor_id):
                 'phone': vendor.contact_info.phone if vendor.contact_info else None,
                 'email': vendor.contact_info.email if vendor.contact_info else None,
                 'website': vendor.website.url if vendor.website else None,
-                'address': vendor.physical_address.addressLine1 if vendor.physical_address else None
+                'address': {
+                    'line1': vendor.physical_address.addressLine1 if vendor.physical_address else None,
+                    'pincode': vendor.physical_address.pincode if vendor.physical_address else None,
+                    'state': vendor.physical_address.state if vendor.physical_address else None,
+                    'country': vendor.physical_address.country if vendor.physical_address else None
+                } if vendor.physical_address else None
             }
         }), 200
 
@@ -1947,7 +1963,7 @@ def update_business_details(vendor_id):
         db.session.rollback()
         current_app.logger.exception(f"Unexpected error updating business details: {e}")
         return jsonify({'success': False, 'message': 'Internal server error'}), 500
-    
+
 
 # Get bank details for vendor
 @dashboard_service.route('/vendor/<int:vendor_id>/bank-details', methods=['GET'])
