@@ -880,13 +880,20 @@ def get_vendor_dashboard(vendor_id):
     # 5) Images
     avatar = ""
     if vendor.images:
-        first_img = vendor.images[0]
-        avatar = getattr(first_img, "path", None) or getattr(first_img, "url", "") or ""
+       first_img = vendor.images[0]
+       avatar = getattr(first_img, "path", None) or getattr(first_img, "url", "") or ""
+
 
     gallery_images = []
     if vendor.images:
-        for img in vendor.images:
-            gallery_images.append(getattr(img, "path", None) or getattr(img, "url", "") or "")
+       for img in vendor.images:
+           image_url = getattr(img, "path", None) or getattr(img, "url", "") or ""
+           gallery_images.append({
+               "id": img.id,
+               "url": image_url,
+               "public_id": img.public_id,
+               "uploaded_at": img.uploaded_at.isoformat() if img.uploaded_at else None
+        })
 
     # 6) Construct response
     payload = {
@@ -907,7 +914,7 @@ def get_vendor_dashboard(vendor_id):
             "email": vendor.contact_info.email if vendor.contact_info else "",
         },
         "cafeGallery": {
-            "images": gallery_images
+            "images": gallery_images  # Now returns objects instead of just URLs
         },
         "businessDetails": {
             "businessName": "Game Cafe",
@@ -2182,4 +2189,3 @@ def create_payout(vendor_id):
             "success": False,
             "message": "Failed to create payout"
         }), 500
-

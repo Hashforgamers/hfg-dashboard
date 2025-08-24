@@ -13,6 +13,7 @@ from app.models.amenity import Amenity
 from app.models.physicalAddress import PhysicalAddress
 from app.models.document import Document
 from app.models.bankTransferDetails import BankTransferDetails, PayoutTransaction
+from app.models.paymentVendorMap import PaymentVendorMap
 from sqlalchemy.sql import and_
 from app.models.vendorAccount import VendorAccount
 from app.models.website import Website
@@ -104,6 +105,9 @@ class Vendor(db.Model):
         back_populates='vendor',
         cascade="all, delete-orphan"
     )
+    
+    # Add this relationship to your Vendor class
+    payment_methods = relationship('PaymentVendorMap', back_populates='vendor', cascade='all, delete-orphan')
 
     available_games = relationship('AvailableGame', back_populates='vendor', cascade="all, delete-orphan")
 
