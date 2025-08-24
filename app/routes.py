@@ -36,6 +36,7 @@ from app.services.payload_formatters import format_current_slot_item
 from collections import Counter
 
 from datetime import datetime, timedelta, date
+from app.services.websocket_service import socketio
 
 WEEKDAY_ORDER = ["mon","tue","wed","thu","fri","sat","sun"]
 
