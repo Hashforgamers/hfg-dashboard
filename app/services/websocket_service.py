@@ -8,6 +8,8 @@ from typing import Dict, Any, Optional, Set
 from flask import current_app
 from flask_socketio import SocketIO, join_room
 import socketio as pwsio   # python-socketio client (aliased)
+from services.payload_formatters import format_upcoming_booking_from_upstream
+
 
 # -----------------------------------------------------------------------------
 # Dashboard Socket.IO server (clients connect here)
@@ -65,8 +67,10 @@ def _emit_downstream_to_vendor(vendor_id: Optional[int], event: str, data: Dict[
     try:
         if vendor_id is not None:
             room = f"vendor_{int(vendor_id)}"
+            _log_info("Emitting %s to %s", event, room)
             socketio.emit(event, data, room=room)
         else:
+            _log_info("Emitting %s to broadcast", event)
             socketio.emit(event, data, broadcast=True)
     except Exception:
         _log_err("Downstream emit failed event=%s vendor=%s", event, vendor_id)
@@ -96,14 +100,25 @@ def _join_upstream_admin():
     except Exception:
         _log_err("Failed to request admin tap (connect_admin)")
 
+
 def _handle_upstream_booking(data: Dict[str, Any]):
     try:
         vendor_id = data.get("vendorId") or data.get("vendor_id")
         booking_id = data.get("bookingId") or data.get("booking_id")
         _log_info("[Upstream booking] vendor=%s bookingId=%s", vendor_id, booking_id)
-        _emit_downstream_to_vendor(vendor_id, "booking", data)
+
+        # 1) General relay: always send the raw update (backward-compat)
+        _emit_downstream_to_vendor(vendor_id, "booking_update", data)
+
+        # 2) Specific signal: if it's an upcoming booking, emit a normalized event
+        upcoming_payload = format_upcoming_booking_from_upstream(data)
+        if upcoming_payload:
+            _emit_downstream_to_vendor(vendor_id, "upcoming_booking", upcoming_payload)
+            _log_info("Emitted dashboard_upcoming_booking to vendor_%s bookingId=%s", vendor_id, booking_id)
+
     except Exception:
         _log_err("Error handling upstream booking payload")
+
 
 def _register_upstream_handlers():
     @_upstream_sio.event
