@@ -17,6 +17,8 @@ services:
       - CLOUDINARY_API_KEY=181315914336585
       - CLOUDINARY_API_SECRET=DpUMsRVIpXZ4P3pu63cb-jJGwXA
       - SOCKETIO_URL=http://socketio:5054
+      - BOOKING_SOCKET_URL=<placeholder>
+      - BOOKING_BRIDGE_NAMESPACE=<placeholder>
     volumes:
       - .:/app
     command: ["python", "run.py"]
