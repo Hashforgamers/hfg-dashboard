@@ -7,26 +7,26 @@ from typing import Dict, Any, Optional, Set
 
 from flask import current_app
 from flask_socketio import SocketIO, join_room
-import socketio  # python-socketio (client)
+import socketio as pwsio   # ALIAS to avoid shadowing by server instance named `socketio`
 
 # -----------------------------------------------------------------------------
 # Dashboard-side Socket.IO server (used by your dashboard clients)
 # -----------------------------------------------------------------------------
 socketio = SocketIO(
     cors_allowed_origins="*",
-    async_mode=None,  # eventlet/gevent/threading – auto-select based on installed libs
+    async_mode=None,
 )
 
 # -----------------------------------------------------------------------------
 # Upstream booking service Socket.IO client (single persistent connection)
 # -----------------------------------------------------------------------------
 BOOKING_SOCKET_URL = os.getenv("BOOKING_SOCKET_URL", "wss://hfg-booking-hmnx.onrender.com")
-BOOKING_NAMESPACE = os.getenv("BOOKING_BRIDGE_NAMESPACE")  # e.g. "/booking" or None
-BOOKING_AUTH_TOKEN = os.getenv("BOOKING_AUTH_TOKEN")       # optional Authorization header
+BOOKING_NAMESPACE = os.getenv("BOOKING_BRIDGE_NAMESPACE")
+BOOKING_AUTH_TOKEN = os.getenv("BOOKING_AUTH_TOKEN")
 
-_upstream_sio = socketio.Client(
+_upstream_sio = pwsio.Client(   # USE pwsio.Client, not socketio.Client
     reconnection=True,
-    reconnection_attempts=0,      # infinite
+    reconnection_attempts=0,
     reconnection_delay=1.0,
     reconnection_delay_max=10.0,
     logger=False,
