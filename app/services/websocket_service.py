@@ -101,7 +101,7 @@ def _handle_upstream_booking(data: Dict[str, Any]):
         vendor_id = data.get("vendorId") or data.get("vendor_id")
         booking_id = data.get("bookingId") or data.get("booking_id")
         _log_info("[Upstream booking] vendor=%s bookingId=%s", vendor_id, booking_id)
-        _emit_downstream_to_vendor(vendor_id, "booking_update", data)
+        _emit_downstream_to_vendor(vendor_id, "booking", data)
     except Exception:
         _log_err("Error handling upstream booking payload")
 
