@@ -100,24 +100,24 @@ def _join_upstream_admin():
     except Exception:
         _log_err("Failed to request admin tap (connect_admin)")
 
-
 def _handle_upstream_booking(data: Dict[str, Any]):
     try:
         vendor_id = data.get("vendorId") or data.get("vendor_id")
         booking_id = data.get("bookingId") or data.get("booking_id")
         _log_info("[Upstream booking] vendor=%s bookingId=%s", vendor_id, booking_id)
 
-        # 1) General relay: always send the raw update (backward-compat)
-        _emit_downstream_to_vendor(vendor_id, "booking_update", data)
+        # Always relay raw event for general consumers
+        _emit_downstream_to_vendor(vendor_id, "booking", data)
 
-        # 2) Specific signal: if it's an upcoming booking, emit a normalized event
+        # Only emit upcoming for confirmed bookings
         upcoming_payload = format_upcoming_booking_from_upstream(data)
         if upcoming_payload:
             _emit_downstream_to_vendor(vendor_id, "upcoming_booking", upcoming_payload)
-            _log_info("Emitted dashboard_upcoming_booking to vendor_%s bookingId=%s", vendor_id, booking_id)
+            _log_info("Emitted dashboard_upcoming_booking (confirmed) vendor=%s bookingId=%s", vendor_id, booking_id)
 
     except Exception:
         _log_err("Error handling upstream booking payload")
+
 
 
 def _register_upstream_handlers():
