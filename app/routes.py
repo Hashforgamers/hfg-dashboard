@@ -11,6 +11,8 @@ from .models.booking import Booking
 from .models.cafePass import CafePass
 from .models.passType import PassType
 from .models.userPass import UserPass
+from .models.physicalAddress import PhysicalAddress
+from .models.contactInfo import ContactInfo
 from .models.vendorDaySlotConfig import VendorDaySlotConfig
 from .models.amenity import Amenity
 from app.models.vendorProfileImage import VendorProfileImage
@@ -27,6 +29,7 @@ from .models.additionalDetails import AdditionalDetails
 from sqlalchemy.orm import joinedload
 from collections import defaultdict
 from sqlalchemy import and_
+from sqlalchemy.exc import SQLAlchemyError
  
 from collections import Counter
 
@@ -40,7 +43,6 @@ from app.models.uploadedImage import Image
 from app.models.documentSubmitted import DocumentSubmitted
 from app.models.timing import Timing
 from app.models.openingDay import OpeningDay
-from app.models.contactInfo import ContactInfo
 from app.models.businessRegistration import BusinessRegistration
 from app.models.vendorAccount import VendorAccount
 from app.models.extraServiceCategory import ExtraServiceCategory
@@ -917,8 +919,8 @@ def get_vendor_dashboard(vendor_id):
             "images": gallery_images  # Now returns objects instead of just URLs
         },
         "businessDetails": {
-            "businessName": "Game Cafe",
-            "businessType": "Cafe",
+            "businessName": vendor.cafe_name,
+            "businessType": "Gaming Cafe",
             "phone": vendor.contact_info.phone if vendor.contact_info else "",
             "website": vendor.website.url if vendor.website else "",
             "address": vendor.physical_address.addressLine1 if vendor.physical_address else ""
@@ -1866,66 +1868,109 @@ def delete_vendor_profile_image(vendor_id):
         
    # update business details
 
+
 @dashboard_service.route('/vendor/<int:vendor_id>/business-details', methods=['PATCH'])
 def update_business_details(vendor_id):
-    """Update vendor business details including website"""
+    """Update vendor business details including website, phone, email, and address"""
     try:
-        data = request.get_json()
-        if not data:
-            return jsonify({'error': 'No input data provided'}), 400
+        data = request.get_json(silent=True)
+        if not data or not isinstance(data, dict):
+            return jsonify({'success': False, 'message': 'Invalid or missing JSON payload'}), 400
 
         vendor = Vendor.query.get(vendor_id)
         if not vendor:
-            return jsonify({'error': 'Vendor not found'}), 404
+            return jsonify({'success': False, 'message': 'Vendor not found'}), 404
 
-        # Update cafe name
-        if 'businessName' in data:
-            vendor.cafe_name = data['businessName']
+        # --- Cafe/Business Name ---
+        business_name = data.get("businessName")
+        if business_name:
+            vendor.cafe_name = business_name.strip()
 
-        # Update contact info (phone/email)
-        if 'phone' in data or 'email' in data:
+        # --- Contact Info (Phone & Email) ---
+        phone = data.get("phone")
+        email = data.get("email")
+        if phone or email:
             contact_info = vendor.contact_info
             if not contact_info:
                 contact_info = ContactInfo(
-                    parent_id=vendor.id, 
-                    parent_type='vendor',
-                    email=data.get('email', ''),
-                    phone=data.get('phone', '')
+                    parent_id=vendor.id,
+                    parent_type='vendor'
                 )
                 db.session.add(contact_info)
-            else:
-                if 'phone' in data:
-                    contact_info.phone = data['phone']
-                if 'email' in data:
-                    contact_info.email = data['email']
+                vendor.contact_info = contact_info
 
-        # Update website
-        if 'website' in data:
+            if phone:
+                contact_info.phone = phone.strip()
+            if email:
+                contact_info.email = email.strip()
+
+        # --- Website ---
+        website_url = data.get("website")
+        if website_url:
             website = vendor.website
             if not website:
-                website = Website(vendor_id=vendor.id, url=data['website'])
+                website = Website(vendor_id=vendor.id)
                 db.session.add(website)
-            else:
-                website.url = data['website']
+                vendor.website = website
 
-        # Update address
-        if 'address' in data and vendor.physical_address:
-            vendor.physical_address.addressLine1 = data['address']
+            website.url = website_url.strip()
+
+        # --- Physical Address ---
+        address_line1 = data.get("address")
+        if address_line1:
+            physical_address = vendor.physical_address
+            if not physical_address:
+                physical_address = PhysicalAddress(
+                    parent_id=vendor.id,        # ✅ correct field
+                    parent_type="vendor",       # ✅ required for polymorphic link
+                    address_type="business",    # you can adjust type if needed
+                    addressLine1=address_line1.strip(),
+                    pincode=data.get("pincode", ""),
+                    state=data.get("state", ""),
+                    country=data.get("country", "India")
+                )
+                db.session.add(physical_address)
+                vendor.physical_address = physical_address
+            else:
+                physical_address.addressLine1 = address_line1.strip()
+                if "pincode" in data:
+                    physical_address.pincode = data["pincode"]
+                if "state" in data:
+                    physical_address.state = data["state"]
+                if "country" in data:
+                    physical_address.country = data["country"]
 
         db.session.commit()
-        
+
+        # ✅ Return updated vendor data
         return jsonify({
-            'success': True, 
-            'message': 'Business details updated successfully'
+            'success': True,
+            'message': 'Business details updated successfully',
+            'data': {
+                'vendorId': vendor.id,
+                'businessName': vendor.cafe_name,
+                'phone': vendor.contact_info.phone if vendor.contact_info else None,
+                'email': vendor.contact_info.email if vendor.contact_info else None,
+                'website': vendor.website.url if vendor.website else None,
+                'address': {
+                    'line1': vendor.physical_address.addressLine1 if vendor.physical_address else None,
+                    'pincode': vendor.physical_address.pincode if vendor.physical_address else None,
+                    'state': vendor.physical_address.state if vendor.physical_address else None,
+                    'country': vendor.physical_address.country if vendor.physical_address else None
+                } if vendor.physical_address else None
+            }
         }), 200
+
+    except SQLAlchemyError as db_err:
+        db.session.rollback()
+        current_app.logger.error(f"Database error updating business details: {db_err}")
+        return jsonify({'success': False, 'message': 'Database error occurred'}), 500
 
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f"Error updating business details: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-    
-    
-    
+        current_app.logger.exception(f"Unexpected error updating business details: {e}")
+        return jsonify({'success': False, 'message': 'Internal server error'}), 500
+
 
 # Get bank details for vendor
 @dashboard_service.route('/vendor/<int:vendor_id>/bank-details', methods=['GET'])
