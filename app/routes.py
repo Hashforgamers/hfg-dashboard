@@ -30,6 +30,8 @@ from sqlalchemy.orm import joinedload
 from collections import defaultdict
 from sqlalchemy import and_
 from sqlalchemy.exc import SQLAlchemyError
+
+from app.services.payload_formatters import format_current_slot_item
  
 from collections import Counter
 
