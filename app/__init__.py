@@ -11,6 +11,7 @@ from flask_migrate import Migrate
 
 from app.config import Config
 from app.extension.extensions import db
+from .routes import dashboard_service
 
 from app.services.websocket_service import (
     socketio,
@@ -28,13 +29,7 @@ def create_app():
     CORS(app)
 
     db.init_app(app)
-    Migrate(app, db)
-    
-    with app.app_context():
-        import app.models  # This loads all your models and resolves relationships
-
-    # Import and register routes AFTER models are loaded
-    from .routes import dashboard_service
+    Migrate(app, db)   
 
     app.register_blueprint(dashboard_service, url_prefix='/api')
 
