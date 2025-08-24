@@ -1,6 +1,33 @@
 # app/services/payload_formatters.py
 from typing import Any, Dict, Optional
 
+def format_current_slot_item(*, row: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Build a currentSlots item shape from a DB row-like mapping.
+    Expected keys in row:
+      slot_id, book_id, start_time, end_time, status, console_id,
+      username, user_id, game_id, date, single_slot_price
+    """
+    start_time = row["start_time"]
+    end_time = row["end_time"]
+
+    # Match GET landing page shape
+    return {
+        "slotId": row["slot_id"],
+        "bookId": row["book_id"],
+        "startTime": start_time.strftime("%I:%M %p") if hasattr(start_time, "strftime") else str(start_time),
+        "endTime": end_time.strftime("%I:%M %p") if hasattr(end_time, "strftime") else str(end_time),
+        "status": "Booked" if row.get("status") != "pending_verified" else "Available",
+        "consoleType": f"HASH{row['console_id']}" if row.get("console_id") is not None else None,
+        "consoleNumber": str(row["console_id"]) if row.get("console_id") is not None else None,
+        "username": row.get("username"),
+        "userId": row.get("user_id"),
+        "game_id": row.get("game_id"),
+        "date": row.get("date"),
+        "slot_price": row.get("single_slot_price"),
+    }
+
+
 def format_upcoming_booking_from_upstream(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
     Convert upstream booking payload into the upcomingBookings item shape,

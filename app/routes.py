@@ -389,16 +389,14 @@ def get_device_for_console_type(gameid, vendor_id):
 @dashboard_service.route('/updateDeviceStatus/consoleTypeId/<gameid>/console/<console_id>/bookingId/<booking_id>/vendor/<vendor_id>', methods=['POST'])
 def update_console_status(gameid, console_id, booking_id, vendor_id):
     try:
-        # ✅ Define the dynamic console availability table name
         console_table_name = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
         booking_table_name = f"VENDOR_{vendor_id}_DASHBOARD"
 
-        # ✅ Check if the console is available
+        # Check if the console is available
         sql_check_availability = text(f"""
             SELECT is_available FROM {console_table_name}
             WHERE console_id = :console_id AND game_id = :game_id
         """)
-
         result = db.session.execute(sql_check_availability, {
             "console_id": console_id,
             "game_id": gameid
@@ -407,38 +405,97 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
         if not result:
             return jsonify({"error": "Console not found in the availability table"}), 404
 
-        is_available = result.is_available
-
-        if not is_available:
+        if not result.is_available:
             return jsonify({"error": "Console is already in use"}), 400
 
-        # ✅ Update the console status to FALSE (occupied)
+        # Update console status to FALSE (occupied)
         sql_update_status = text(f"""
             UPDATE {console_table_name}
             SET is_available = FALSE
             WHERE console_id = :console_id AND game_id = :game_id
         """)
-
         db.session.execute(sql_update_status, {
             "console_id": console_id,
             "game_id": gameid
         })
 
-        # ✅ Update book_status from "upcoming" to "current"
+        # Update book_status 'upcoming' -> 'current' and set console_id
         sql_update_booking_status = text(f"""
             UPDATE {booking_table_name}
             SET book_status = 'current', console_id = :console_id
             WHERE book_id = :booking_id AND game_id = :game_id AND book_status = 'upcoming'
         """)
-
-        db.session.execute(sql_update_booking_status, {
+        upd_res = db.session.execute(sql_update_booking_status, {
             "console_id": console_id,
             "game_id": gameid,
-            "booking_id":booking_id
+            "booking_id": booking_id
         })
 
-        # ✅ Commit the changes
+        # Commit DB changes
         db.session.commit()
+
+        # ======= NEW: Fetch single booking row and emit current slot event =======
+        # Only fetch/emit if update actually changed a row (optional guard)
+        if getattr(upd_res, "rowcount", None) is None or upd_res.rowcount != 0:
+            sql_fetch_booking = text(f"""
+                SELECT
+                    COALESCE(b.username, u.name) AS username,
+                    b.user_id,
+                    b.start_time,
+                    b.end_time,
+                    b.date,
+                    b.book_id,
+                    b.game_id,
+                    b.game_name,
+                    b.console_id,
+                    b.status,
+                    b.book_status,
+                    ag.single_slot_price,
+                    d.slot_id
+                FROM {booking_table_name} b
+                JOIN available_games ag ON b.game_id = ag.id
+                JOIN bookings d ON b.book_id = d.id
+                LEFT JOIN users u ON b.user_id = u.id
+                WHERE b.book_id = :booking_id AND b.game_id = :game_id
+            """)
+            b_row = db.session.execute(sql_fetch_booking, {
+                "booking_id": booking_id,
+                "game_id": gameid
+            }).mappings().fetchone()
+
+            if b_row and b_row.get("book_status") == "current":
+                current_item = format_current_slot_item(row={
+                    "slot_id": b_row["slot_id"],
+                    "book_id": b_row["book_id"],
+                    "start_time": b_row["start_time"],
+                    "end_time": b_row["end_time"],
+                    "status": b_row["status"],
+                    "console_id": b_row["console_id"],
+                    "username": b_row["username"],
+                    "user_id": b_row["user_id"],
+                    "game_id": b_row["game_id"],
+                    "date": b_row["date"],
+                    "single_slot_price": b_row["single_slot_price"],
+                })
+                room = f"vendor_{int(vendor_id)}"
+                socketio.emit("current_slot", current_item, room=room)
+
+                # Optional: also notify console availability delta
+                sql_remaining = text(f"""
+                    SELECT COUNT(*) AS remaining
+                    FROM {console_table_name}
+                    WHERE game_id = :game_id AND is_available = TRUE
+                """)
+                rem_row = db.session.execute(sql_remaining, {"game_id": gameid}).fetchone()
+                remaining = int(rem_row.remaining) if rem_row and rem_row.remaining is not None else None
+                socketio.emit("console_availability", {
+                    "vendorId": int(vendor_id),
+                    "game_id": int(gameid),
+                    "console_id": int(console_id),
+                    "is_available": False,
+                    "remaining_available_for_game": remaining
+                }, room=room)
+        # ======= END NEW =======
 
         return jsonify({"message": "Console status and booking status updated successfully!"}), 200
 
