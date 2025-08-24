@@ -1,29 +1,36 @@
 # app/services/payload_formatters.py
 from typing import Any, Dict, Optional
 
+def _to_time_str(val: Any) -> str:
+    try:
+        return val.strftime("%I:%M %p")
+    except Exception:
+        return str(val) if val is not None else ""
+
+def _to_date_str(val: Any) -> str:
+    try:
+        # date or datetime -> YYYY-MM-DD
+        return val.date().isoformat() if hasattr(val, "date") else val.isoformat()
+    except Exception:
+        return str(val) if val is not None else ""
+
 def format_current_slot_item(*, row: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Build a currentSlots item shape from a DB row-like mapping.
-    Expected keys in row:
-      slot_id, book_id, start_time, end_time, status, console_id,
-      username, user_id, game_id, date, single_slot_price
-    """
     start_time = row["start_time"]
     end_time = row["end_time"]
+    date_val = row.get("date")
 
-    # Match GET landing page shape
     return {
         "slotId": row["slot_id"],
         "bookId": row["book_id"],
-        "startTime": start_time.strftime("%I:%M %p") if hasattr(start_time, "strftime") else str(start_time),
-        "endTime": end_time.strftime("%I:%M %p") if hasattr(end_time, "strftime") else str(end_time),
+        "startTime": _to_time_str(start_time),
+        "endTime": _to_time_str(end_time),
         "status": "Booked" if row.get("status") != "pending_verified" else "Available",
         "consoleType": f"HASH{row['console_id']}" if row.get("console_id") is not None else None,
         "consoleNumber": str(row["console_id"]) if row.get("console_id") is not None else None,
         "username": row.get("username"),
         "userId": row.get("user_id"),
         "game_id": row.get("game_id"),
-        "date": row.get("date"),
+        "date": _to_date_str(date_val),  # ensure string
         "slot_price": row.get("single_slot_price"),
     }
 
