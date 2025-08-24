@@ -7,10 +7,10 @@ from typing import Dict, Any, Optional, Set
 
 from flask import current_app
 from flask_socketio import SocketIO, join_room
-import socketio as pwsio   # ALIAS to avoid shadowing by server instance named `socketio`
+import socketio as pwsio   # python-socketio client (aliased)
 
 # -----------------------------------------------------------------------------
-# Dashboard-side Socket.IO server (used by your dashboard clients)
+# Dashboard Socket.IO server (clients connect here)
 # -----------------------------------------------------------------------------
 socketio = SocketIO(
     cors_allowed_origins="*",
@@ -18,15 +18,15 @@ socketio = SocketIO(
 )
 
 # -----------------------------------------------------------------------------
-# Upstream booking service Socket.IO client (single persistent connection)
+# Upstream booking service client (single persistent connection)
 # -----------------------------------------------------------------------------
 BOOKING_SOCKET_URL = os.getenv("BOOKING_SOCKET_URL", "wss://hfg-booking-hmnx.onrender.com")
-BOOKING_NAMESPACE = os.getenv("BOOKING_BRIDGE_NAMESPACE")
-BOOKING_AUTH_TOKEN = os.getenv("BOOKING_AUTH_TOKEN")
+BOOKING_NAMESPACE = os.getenv("BOOKING_BRIDGE_NAMESPACE")  # keep unset for default "/"
+BOOKING_AUTH_TOKEN = os.getenv("BOOKING_AUTH_TOKEN")       # optional bearer token
 
-_upstream_sio = pwsio.Client(   # USE pwsio.Client, not socketio.Client
+_upstream_sio = pwsio.Client(
     reconnection=True,
-    reconnection_attempts=0,
+    reconnection_attempts=0,      # infinite
     reconnection_delay=1.0,
     reconnection_delay_max=10.0,
     logger=False,
@@ -38,7 +38,7 @@ _joined_vendor_ids: Set[int] = set()
 _lock = threading.Lock()
 
 # -----------------------------------------------------------------------------
-# Internal helpers
+# Logging helpers
 # -----------------------------------------------------------------------------
 def _log_info(msg: str, *args):
     try:
@@ -58,11 +58,10 @@ def _log_err(msg: str, *args):
     except Exception:
         logging.getLogger(__name__).error(msg, *args)
 
+# -----------------------------------------------------------------------------
+# Downstream emit (to dashboard clients)
+# -----------------------------------------------------------------------------
 def _emit_downstream_to_vendor(vendor_id: Optional[int], event: str, data: Dict[str, Any]):
-    """
-    Emit to local dashboard clients in room vendor_{vendor_id}.
-    Falls back to broadcast if vendor_id missing.
-    """
     try:
         if vendor_id is not None:
             room = f"vendor_{int(vendor_id)}"
@@ -70,8 +69,11 @@ def _emit_downstream_to_vendor(vendor_id: Optional[int], event: str, data: Dict[
         else:
             socketio.emit(event, data, broadcast=True)
     except Exception:
-        _log_err("Downstream emit failed for event=%s vendor=%s", event, vendor_id)
+        _log_err("Downstream emit failed event=%s vendor=%s", event, vendor_id)
 
+# -----------------------------------------------------------------------------
+# Upstream helpers
+# -----------------------------------------------------------------------------
 def _join_upstream_vendor(vendor_id: int):
     payload = {"vendor_id": int(vendor_id)}
     try:
@@ -81,7 +83,18 @@ def _join_upstream_vendor(vendor_id: int):
             _upstream_sio.emit("connect_vendor", payload)
         _log_info("Upstream join requested: vendor_%s", vendor_id)
     except Exception:
-        _log_err("Failed to request upstream join for vendor_%s", vendor_id)
+        _log_err("Failed upstream join for vendor_%s", vendor_id)
+
+def _join_upstream_admin():
+    """Join the admin tap that receives ALL bookings."""
+    try:
+        if BOOKING_NAMESPACE:
+            _upstream_sio.emit("connect_admin", {}, namespace=BOOKING_NAMESPACE)
+        else:
+            _upstream_sio.emit("connect_admin", {})
+        _log_info("Requested admin tap: dashboard_admin")
+    except Exception:
+        _log_err("Failed to request admin tap (connect_admin)")
 
 def _handle_upstream_booking(data: Dict[str, Any]):
     try:
@@ -93,11 +106,12 @@ def _handle_upstream_booking(data: Dict[str, Any]):
         _log_err("Error handling upstream booking payload")
 
 def _register_upstream_handlers():
-    # connection lifecycle
     @_upstream_sio.event
     def connect():
-        _log_info("Connected to booking upstream: %s", BOOKING_SOCKET_URL)
-        # Re-join all known vendor rooms after reconnect
+        _log_info("Connected to booking upstream: %s (namespace=%s)", BOOKING_SOCKET_URL, BOOKING_NAMESPACE or "/")
+        # Always join the admin tap to receive ALL events
+        _join_upstream_admin()
+        # Optionally re-join vendor-specific rooms (if you still use that path)
         with _lock:
             vendors = list(_joined_vendor_ids)
         for vid in vendors:
@@ -107,7 +121,7 @@ def _register_upstream_handlers():
     def disconnect():
         _log_warn("Disconnected from booking upstream")
 
-    # booking event listener
+    # Per-vendor event listener (if upstream puts this client in vendor rooms)
     if BOOKING_NAMESPACE:
         @_upstream_sio.on("booking", namespace=BOOKING_NAMESPACE)
         def _on_booking_ns(data):
@@ -117,14 +131,20 @@ def _register_upstream_handlers():
         def _on_booking(data):
             _handle_upstream_booking(data)
 
+    # Admin tap listener: receives ALL booking events
+    if BOOKING_NAMESPACE:
+        @_upstream_sio.on("booking_admin", namespace=BOOKING_NAMESPACE)
+        def _on_booking_admin_ns(data):
+            _handle_upstream_booking(data)
+    else:
+        @_upstream_sio.on("booking_admin")
+        def _on_booking_admin(data):
+            _handle_upstream_booking(data)
+
 # -----------------------------------------------------------------------------
-# Public: start background upstream bridge
+# Public: start upstream bridge
 # -----------------------------------------------------------------------------
 def start_upstream_bridge(app):
-    """
-    Start the upstream Socket.IO client in a background thread.
-    Idempotent; safe to call once during app startup.
-    """
     global _started_upstream
     with _lock:
         if _started_upstream:
@@ -135,12 +155,11 @@ def start_upstream_bridge(app):
 
     def _runner():
         try:
-            connect_kwargs = dict(transports=["websocket"])
-            headers = None
+            kwargs = {}
             if BOOKING_AUTH_TOKEN:
-                headers = {"Authorization": f"Bearer {BOOKING_AUTH_TOKEN}"}
-                connect_kwargs["headers"] = headers
-            _upstream_sio.connect(BOOKING_SOCKET_URL, **connect_kwargs)
+                kwargs["headers"] = {"Authorization": f"Bearer {BOOKING_AUTH_TOKEN}"}
+            # Let engine negotiate transports; avoids proxies that block direct WS
+            _upstream_sio.connect(BOOKING_SOCKET_URL, **kwargs)
             _upstream_sio.wait()
         except Exception as e:
             _log_err("Upstream bridge connection error: %s", e)
@@ -149,16 +168,9 @@ def start_upstream_bridge(app):
     t.start()
 
 # -----------------------------------------------------------------------------
-# Dashboard (local) socket event registration
+# Dashboard (local) socket events
 # -----------------------------------------------------------------------------
 def register_dashboard_events():
-    """
-    Register events that your dashboard clients will use.
-    - dashboard_join_vendor: client declares which vendor_id it cares about.
-      Server joins client to local room vendor_{vendor_id} and ensures the
-      upstream connection is subscribed to that vendor room.
-    - demo events preserved from your previous code.
-    """
     @socketio.on("connect")
     def _on_connect():
         _log_info("Dashboard client connected")
@@ -178,7 +190,7 @@ def register_dashboard_events():
             join_room(room)
             _log_info("Dashboard client joined local room %s", room)
 
-            # Ensure upstream is joined once per vendor (idempotent)
+            # Optional: still ask upstream to join the vendor room (not required if using admin tap)
             with _lock:
                 is_new = int(vendor_id) not in _joined_vendor_ids
                 if is_new:
@@ -188,13 +200,10 @@ def register_dashboard_events():
         except Exception as e:
             _log_err("dashboard_join_vendor error: %s", e)
 
-    # ---------------------------
-    # Demo/test handlers you had
-    # ---------------------------
+    # Demo/test events remain (optional)
     @socketio.on('slot_booked_demo')
     def handle_slot_booked(data):
         try:
-            # Accept dict or JSON string
             if isinstance(data, str):
                 data = json.loads(data)
             current_app.logger.info("slot_booked_demo: %s", data)
