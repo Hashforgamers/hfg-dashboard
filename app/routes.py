@@ -389,8 +389,14 @@ def get_device_for_console_type(gameid, vendor_id):
 @dashboard_service.route('/updateDeviceStatus/consoleTypeId/<gameid>/console/<console_id>/bookingId/<booking_id>/vendor/<vendor_id>', methods=['POST'])
 def update_console_status(gameid, console_id, booking_id, vendor_id):
     try:
+        current_app.logger.debug(
+            "Starting update_console_status | gameid=%s console_id=%s booking_id=%s vendor_id=%s",
+            gameid, console_id, booking_id, vendor_id
+        )
+
         console_table_name = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
         booking_table_name = f"VENDOR_{vendor_id}_DASHBOARD"
+        current_app.logger.debug("Resolved table names: %s, %s", console_table_name, booking_table_name)
 
         # Check if the console is available
         sql_check_availability = text(f"""
@@ -401,11 +407,14 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
             "console_id": console_id,
             "game_id": gameid
         }).fetchone()
+        current_app.logger.debug("Console availability query result: %s", result)
 
         if not result:
+            current_app.logger.warning("Console not found in availability table")
             return jsonify({"error": "Console not found in the availability table"}), 404
 
         if not result.is_available:
+            current_app.logger.warning("Console already in use | console_id=%s", console_id)
             return jsonify({"error": "Console is already in use"}), 400
 
         # Update console status to FALSE (occupied)
@@ -418,8 +427,9 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
             "console_id": console_id,
             "game_id": gameid
         })
+        current_app.logger.debug("Updated console status to occupied")
 
-        # Update book_status 'upcoming' -> 'current' and set console_id
+        # Update booking status
         sql_update_booking_status = text(f"""
             UPDATE {booking_table_name}
             SET book_status = 'current', console_id = :console_id
@@ -430,12 +440,12 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
             "game_id": gameid,
             "booking_id": booking_id
         })
+        current_app.logger.debug("Booking update executed | rowcount=%s", getattr(upd_res, "rowcount", None))
 
-        # Commit DB changes
         db.session.commit()
+        current_app.logger.debug("DB commit successful")
 
-        # ======= NEW: Fetch single booking row and emit current slot event =======
-        # Only fetch/emit if update actually changed a row (optional guard)
+        # ======= Fetch and emit slot update =======
         if getattr(upd_res, "rowcount", None) is None or upd_res.rowcount != 0:
             sql_fetch_booking = text(f"""
                 SELECT
@@ -462,6 +472,7 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
                 "booking_id": booking_id,
                 "game_id": gameid
             }).mappings().fetchone()
+            current_app.logger.debug("Fetched booking row: %s", dict(b_row) if b_row else None)
 
             if b_row and b_row.get("book_status") == "current":
                 current_item = format_current_slot_item(row={
@@ -479,8 +490,8 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
                 })
                 room = f"vendor_{int(vendor_id)}"
                 socketio.emit("current_slot", current_item, room=room)
+                current_app.logger.debug("Emitted current_slot event to room=%s | data=%s", room, current_item)
 
-                # Optional: also notify console availability delta
                 sql_remaining = text(f"""
                     SELECT COUNT(*) AS remaining
                     FROM {console_table_name}
@@ -488,6 +499,8 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
                 """)
                 rem_row = db.session.execute(sql_remaining, {"game_id": gameid}).fetchone()
                 remaining = int(rem_row.remaining) if rem_row and rem_row.remaining is not None else None
+                current_app.logger.debug("Remaining consoles available for game_id=%s: %s", gameid, remaining)
+
                 socketio.emit("console_availability", {
                     "vendorId": int(vendor_id),
                     "game_id": int(gameid),
@@ -495,12 +508,15 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
                     "is_available": False,
                     "remaining_available_for_game": remaining
                 }, room=room)
-        # ======= END NEW =======
+                current_app.logger.debug("Emitted console_availability event to room=%s", room)
+        # ======= END =======
 
+        current_app.logger.debug("Successfully completed update_console_status")
         return jsonify({"message": "Console status and booking status updated successfully!"}), 200
 
     except Exception as e:
         db.session.rollback()
+        current_app.logger.error("Failed update_console_status | error=%s", str(e))
         return jsonify({"error": str(e)}), 500
 
 @dashboard_service.route('/assignConsoleToMultipleBookings', methods=['POST'])
