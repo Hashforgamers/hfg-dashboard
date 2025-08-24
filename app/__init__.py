@@ -11,6 +11,7 @@ from flask_cors import CORS
 from .routes import dashboard_service
 from app.extension.extensions import db
 from flask_migrate import Migrate
+from services.booking_bridge import start_bridge
 
 
 # Initialize socketio globally, but it will be initialized in create_app
@@ -32,8 +33,8 @@ def create_app():
     socketio.init_app(app)
 
     register_socketio_events(socketio)  # Pass socketio here to register events
-
-    # Start the socket client
-    start_socket_client(app)
+    
+    # Start upstream bridge (no vendor; vendors will be joined dynamically per client)
+    start_bridge()
 
     return app

@@ -1,134 +1,211 @@
-import time
-import socketio
+# app/services/websocket_service.py
+import os
 import json
+import logging
 import threading
-from flask import Flask, current_app
-import os 
+from typing import Dict, Any, Optional, Set
 
-from flask_socketio import SocketIO
+from flask import current_app
+from flask_socketio import SocketIO, join_room
+import socketio  # python-socketio (client)
 
-socketio_client = socketio.Client()
+# -----------------------------------------------------------------------------
+# Dashboard-side Socket.IO server (used by your dashboard clients)
+# -----------------------------------------------------------------------------
+socketio = SocketIO(
+    cors_allowed_origins="*",
+    async_mode=None,  # eventlet/gevent/threading – auto-select based on installed libs
+)
 
-def connect_to_5054(app):
-    """ Connect to Flask-SocketIO server at 5054 with proper app context and wait until fully connected """
-    with app.app_context():
-        try:
-            app.logger.info("Connecting to Flask-SocketIO ws://host.docker.internal:5054")
-            socket_url=os.getenv("BOOKING_WS_URL", "wss://hfg-booking.onrender.com")
-            socketio_client.connect(socket_url)  # Ensure correct address
-            
-            # ✅ Wait for connection
-            timeout = 5  # Max wait time in seconds
-            start_time = time.time()
-            while not socketio_client.connected:
-                if time.time() - start_time > timeout:
-                    app.logger.error("❌ Connection timeout. Could not connect to WebSocket.")
-                    return
-                time.sleep(0.1)
+# -----------------------------------------------------------------------------
+# Upstream booking service Socket.IO client (single persistent connection)
+# -----------------------------------------------------------------------------
+BOOKING_SOCKET_URL = os.getenv("BOOKING_SOCKET_URL", "wss://hfg-booking-hmnx.onrender.com")
+BOOKING_NAMESPACE = os.getenv("BOOKING_BRIDGE_NAMESPACE")  # e.g. "/booking" or None
+BOOKING_AUTH_TOKEN = os.getenv("BOOKING_AUTH_TOKEN")       # optional Authorization header
 
-            app.logger.info("✅ Connected to Flask-SocketIO at 5054")
+_upstream_sio = socketio.Client(
+    reconnection=True,
+    reconnection_attempts=0,      # infinite
+    reconnection_delay=1.0,
+    reconnection_delay_max=10.0,
+    logger=False,
+    engineio_logger=False,
+)
 
-        except Exception as e:
-            app.logger.error(f"❌ Connection to 5054 failed: {e}")
+_started_upstream = False
+_joined_vendor_ids: Set[int] = set()
+_lock = threading.Lock()
 
-def handle_message_with_app(app, data):
-    """ Handle messages from 5054 inside app context """
-    with app.app_context():
-        app.logger.info(f"📥 Received from 5054: {data}")
+# -----------------------------------------------------------------------------
+# Internal helpers
+# -----------------------------------------------------------------------------
+def _log_info(msg: str, *args):
+    try:
+        current_app.logger.info(msg, *args)
+    except Exception:
+        logging.getLogger(__name__).info(msg, *args)
 
-        # Ensure data is a dictionary
-        processed_data = data if isinstance(data, dict) else json.loads(data)
-        
-        app.logger.info(f"📤 Emitting processed data to 5056: {processed_data}")
+def _log_warn(msg: str, *args):
+    try:
+        current_app.logger.warning(msg, *args)
+    except Exception:
+        logging.getLogger(__name__).warning(msg, *args)
 
-        # ✅ Retry until the socket client is connected
-        timeout = 5
-        start_time = time.time()
-        while not socketio_client.connected:
-            if time.time() - start_time > timeout:
-                app.logger.error("❌ SocketIO client is not connected after waiting. Cannot emit event.")
-                return
-            time.sleep(0.1)
+def _log_err(msg: str, *args):
+    try:
+        current_app.logger.error(msg, *args)
+    except Exception:
+        logging.getLogger(__name__).error(msg, *args)
 
-        # ✅ Emit the processed message
-        socketio_client.emit('message', {"data": "Sample to WebSocket server"})
-        app.logger.info("✅ Emit the processed message")
-
-
-@socketio_client.on("message")
-def handle_message(data):
-    """ Event handler for incoming messages """
-    global flask_app
-
-    if flask_app is None:
-        raise RuntimeError("Flask app is not initialized")
-
-    handle_message_with_app(flask_app, data)
-
-
-def start_socket_client(app):
-    """ Start Socket.IO Client in a separate thread with proper app reference """
-    global flask_app
-    flask_app = app  # Store app globally so it can be accessed inside event handlers
-
-    def start_thread():
-        connect_to_5054(app)
-
-    thread = threading.Thread(target=start_thread, daemon=True)
-    thread.start()
-
-
-# Add WebSocket event handler for 'bookslot'
-@socketio_client.on('slot_booked')
-def handle_bookslot(data):
-    """ Handle the booking status from 5054 """
-    global flask_app
-
-    if flask_app is None:
-        raise RuntimeError("Flask app is not initialized")
-
-    with flask_app.app_context():
-        flask_app.logger.info(f"📥 Booking status received from 5054: {data}")
-
-        # Log if data is undefined
-        if not data:
-            flask_app.logger.error("❌ Data is undefined or malformed.")
-
-        # Process valid data
-        if isinstance(data, dict):
-            slot_id = data.get("slot_id")
-            status = data.get("status")
-            
-            if slot_id and status:
-                flask_app.logger.info(f"Slot {slot_id} booking status: {status}")
-                # Emit a response or take appropriate action here
-                socketio = current_app.extensions['socketio']
-                socketio.emit('booking_status_received', {"slot_id": slot_id, "status": status})
-            else:
-                flask_app.logger.error("❌ Missing slot_id or status.")
+def _emit_downstream_to_vendor(vendor_id: Optional[int], event: str, data: Dict[str, Any]):
+    """
+    Emit to local dashboard clients in room vendor_{vendor_id}.
+    Falls back to broadcast if vendor_id missing.
+    """
+    try:
+        if vendor_id is not None:
+            room = f"vendor_{int(vendor_id)}"
+            socketio.emit(event, data, room=room)
         else:
-            flask_app.logger.error(f"❌ Invalid data type received for bookslot event: {data}")
+            socketio.emit(event, data, broadcast=True)
+    except Exception:
+        _log_err("Downstream emit failed for event=%s vendor=%s", event, vendor_id)
 
+def _join_upstream_vendor(vendor_id: int):
+    payload = {"vendor_id": int(vendor_id)}
+    try:
+        if BOOKING_NAMESPACE:
+            _upstream_sio.emit("connect_vendor", payload, namespace=BOOKING_NAMESPACE)
+        else:
+            _upstream_sio.emit("connect_vendor", payload)
+        _log_info("Upstream join requested: vendor_%s", vendor_id)
+    except Exception:
+        _log_err("Failed to request upstream join for vendor_%s", vendor_id)
 
-def register_socketio_events(socket: SocketIO):
+def _handle_upstream_booking(data: Dict[str, Any]):
+    try:
+        vendor_id = data.get("vendorId") or data.get("vendor_id")
+        booking_id = data.get("bookingId") or data.get("booking_id")
+        _log_info("[Upstream booking] vendor=%s bookingId=%s", vendor_id, booking_id)
+        _emit_downstream_to_vendor(vendor_id, "booking_update", data)
+    except Exception:
+        _log_err("Error handling upstream booking payload")
+
+def _register_upstream_handlers():
+    # connection lifecycle
+    @_upstream_sio.event
+    def connect():
+        _log_info("Connected to booking upstream: %s", BOOKING_SOCKET_URL)
+        # Re-join all known vendor rooms after reconnect
+        with _lock:
+            vendors = list(_joined_vendor_ids)
+        for vid in vendors:
+            _join_upstream_vendor(vid)
+
+    @_upstream_sio.event
+    def disconnect():
+        _log_warn("Disconnected from booking upstream")
+
+    # booking event listener
+    if BOOKING_NAMESPACE:
+        @_upstream_sio.on("booking", namespace=BOOKING_NAMESPACE)
+        def _on_booking_ns(data):
+            _handle_upstream_booking(data)
+    else:
+        @_upstream_sio.on("booking")
+        def _on_booking(data):
+            _handle_upstream_booking(data)
+
+# -----------------------------------------------------------------------------
+# Public: start background upstream bridge
+# -----------------------------------------------------------------------------
+def start_upstream_bridge(app):
     """
-    Register WebSocket events with the given SocketIO instance.
-    This will allow all controllers to access these events.
+    Start the upstream Socket.IO client in a background thread.
+    Idempotent; safe to call once during app startup.
     """
-    # Declare the socketio as a global variable
-    socketio = socket  # Set the global socketio variable
+    global _started_upstream
+    with _lock:
+        if _started_upstream:
+            return
+        _started_upstream = True
 
+    _register_upstream_handlers()
+
+    def _runner():
+        try:
+            connect_kwargs = dict(transports=["websocket"])
+            headers = None
+            if BOOKING_AUTH_TOKEN:
+                headers = {"Authorization": f"Bearer {BOOKING_AUTH_TOKEN}"}
+                connect_kwargs["headers"] = headers
+            _upstream_sio.connect(BOOKING_SOCKET_URL, **connect_kwargs)
+            _upstream_sio.wait()
+        except Exception as e:
+            _log_err("Upstream bridge connection error: %s", e)
+
+    t = threading.Thread(target=_runner, name="booking-upstream-bridge", daemon=True)
+    t.start()
+
+# -----------------------------------------------------------------------------
+# Dashboard (local) socket event registration
+# -----------------------------------------------------------------------------
+def register_dashboard_events():
+    """
+    Register events that your dashboard clients will use.
+    - dashboard_join_vendor: client declares which vendor_id it cares about.
+      Server joins client to local room vendor_{vendor_id} and ensures the
+      upstream connection is subscribed to that vendor room.
+    - demo events preserved from your previous code.
+    """
+    @socketio.on("connect")
+    def _on_connect():
+        _log_info("Dashboard client connected")
+
+    @socketio.on("disconnect")
+    def _on_disconnect():
+        _log_info("Dashboard client disconnected")
+
+    @socketio.on("dashboard_join_vendor")
+    def _on_dashboard_join_vendor(data: Dict[str, Any]):
+        try:
+            vendor_id = data.get("vendor_id") or data.get("vendorId")
+            if not vendor_id:
+                _log_warn("dashboard_join_vendor missing vendor_id")
+                return
+            room = f"vendor_{int(vendor_id)}"
+            join_room(room)
+            _log_info("Dashboard client joined local room %s", room)
+
+            # Ensure upstream is joined once per vendor (idempotent)
+            with _lock:
+                is_new = int(vendor_id) not in _joined_vendor_ids
+                if is_new:
+                    _joined_vendor_ids.add(int(vendor_id))
+            if is_new and _upstream_sio.connected:
+                _join_upstream_vendor(int(vendor_id))
+        except Exception as e:
+            _log_err("dashboard_join_vendor error: %s", e)
+
+    # ---------------------------
+    # Demo/test handlers you had
+    # ---------------------------
     @socketio.on('slot_booked_demo')
     def handle_slot_booked(data):
         try:
-            # Parse the JSON string into a dictionary
-            data = json.loads(data)
-            print(f"Slot {data['slot_id']} has been booked. Status: {data['status']}")
-            socketio.emit('slot_booked', {'slot_id': data['slot_id'], 'status': 'booked'})
-        except json.JSONDecodeError:
-            print(f"Failed to decode JSON: {data}")
-            
+            # Accept dict or JSON string
+            if isinstance(data, str):
+                data = json.loads(data)
+            current_app.logger.info("slot_booked_demo: %s", data)
+            socketio.emit('slot_booked', {'slot_id': data.get('slot_id'), 'status': 'booked'})
+        except Exception as e:
+            _log_err("slot_booked_demo error: %s", e)
+
     @socketio.on('booking_updated_demo')
     def handle_booking_updated(data):
-        print(f"Booking {data['booking_id']} updated. Status: {data['status']}")
-        socketio.emit('booking_updated', data)
+        try:
+            current_app.logger.info("booking_updated_demo: %s", data)
+            socketio.emit('booking_updated', data)
+        except Exception as e:
+            _log_err("booking_updated_demo error: %s", e)
