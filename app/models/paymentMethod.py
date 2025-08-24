@@ -2,7 +2,6 @@ from sqlalchemy import Column, Integer, String, DateTime
 from sqlalchemy.orm import relationship
 from app.extension.extensions import db
 from datetime import datetime
-from app.models.paymentVendorMap import PaymentVendorMap
 
 class PaymentMethod(db.Model):
     __tablename__ = 'payment_method'
