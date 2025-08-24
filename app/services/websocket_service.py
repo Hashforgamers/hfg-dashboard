@@ -8,7 +8,7 @@ from typing import Dict, Any, Optional, Set
 from flask import current_app
 from flask_socketio import SocketIO, join_room
 import socketio as pwsio   # python-socketio client (aliased)
-from services.payload_formatters import format_upcoming_booking_from_upstream
+from app.services.payload_formatters import format_upcoming_booking_from_upstream
 
 
 # -----------------------------------------------------------------------------
