@@ -2,7 +2,7 @@ from sqlalchemy import Column, Integer, ForeignKey, DateTime, UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.extension.extensions import db
 from datetime import datetime
-from app.models.paymentMethod import PaymentMethod
+
 
 
 class PaymentVendorMap(db.Model):

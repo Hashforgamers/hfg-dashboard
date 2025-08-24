@@ -14,7 +14,6 @@ from app.models.physicalAddress import PhysicalAddress
 from app.models.document import Document
 from app.models.bankTransferDetails import BankTransferDetails, PayoutTransaction
 from app.models.paymentVendorMap import PaymentVendorMap
-from app.models.paymentMethod import PaymentMethod
 from sqlalchemy.sql import and_
 from app.models.vendorAccount import VendorAccount
 from app.models.website import Website
