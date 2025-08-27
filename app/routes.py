@@ -641,8 +641,29 @@ def release_console(gameid, console_id, vendor_id):
             "game_id": gameid
         })
 
-        # ✅ Commit the changes
+        # Commit the changes
         db.session.commit()
+        # ADDED: Calculate remaining available consoles after release
+        sql_remaining = text(f"""
+            SELECT COUNT(*) AS remaining
+            FROM {console_table_name}
+            WHERE game_id = :game_id AND is_available = TRUE
+        """)
+        rem_row = db.session.execute(sql_remaining, {"game_id": gameid}).fetchone()
+        remaining = int(rem_row.remaining) if rem_row and rem_row.remaining is not None else None
+        current_app.logger.debug("Remaining consoles available for game_id=%s: %s", gameid, remaining)
+        
+        #  ADDED: Emit console_availability event (same as session start but with is_available: True)
+        room = f"vendor_{int(vendor_id)}"
+        socketio.emit("console_availability", {
+            "vendorId": int(vendor_id),
+            "game_id": int(gameid),
+            "console_id": int(console_id),
+            "is_available": True,  #  Console is now AVAILABLE (opposite of session start)
+            "remaining_available_for_game": remaining
+        }, room=room)
+        current_app.logger.debug("Emitted console_availability event to room=%s - console now available", room)
+        
 
         return jsonify({"message": "Console released successfully!"}), 200
 
