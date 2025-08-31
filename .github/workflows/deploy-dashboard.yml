@@ -1,4 +1,4 @@
-name: Build, push to ECR, deploy App Runner (hfg-onboard)
+name: Build, push to ECR, deploy App Runner (hfg-dashboard)
 
 on:
   push:
