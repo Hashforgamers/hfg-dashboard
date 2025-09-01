@@ -1,39 +1,42 @@
+# app/__init__.py
 from gevent import monkey
 monkey.patch_all()
 
+import os
+import logging
+
 from flask import Flask
-from flask_socketio import SocketIO
-from app.services.websocket_service import start_socket_client, register_socketio_events
-from .config import Config
-
 from flask_cors import CORS
-
-from .routes import dashboard_service
-from app.extension.extensions import db
 from flask_migrate import Migrate
 
+from app.config import Config
+from app.extension.extensions import db
+from .routes import dashboard_service
 
-# Initialize socketio globally, but it will be initialized in create_app
-socketio = SocketIO(cors_allowed_origins="*")
+from app.services.websocket_service import (
+    socketio,
+    register_dashboard_events,
+    start_upstream_bridge,
+)
 
 def create_app():
     app = Flask(__name__)
-    CORS(app)
-    app.logger.setLevel("INFO")
-
     app.config.from_object(Config)
 
+    logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
+    app.logger.setLevel(os.getenv("LOG_LEVEL", "INFO"))
+
+    CORS(app)
+
     db.init_app(app)
-    migrate = Migrate(app, db)
+    Migrate(app, db)   
 
     app.register_blueprint(dashboard_service, url_prefix='/api')
 
-    # Initialize SocketIO with the app
-    socketio.init_app(app)
+    socketio.init_app(app, cors_allowed_origins="*")
+    register_dashboard_events()
 
-    register_socketio_events(socketio)  # Pass socketio here to register events
-
-    # Start the socket client
-    start_socket_client(app)
+    # Start the upstream bridge to booking service (admin tap ensures ALL events)
+    start_upstream_bridge(app)
 
     return app

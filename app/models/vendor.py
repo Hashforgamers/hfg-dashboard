@@ -102,6 +102,9 @@ class Vendor(db.Model):
         back_populates='vendor',
         cascade="all, delete-orphan"
     )
+    
+    # Add this relationship to your Vendor class
+    payment_methods = relationship('PaymentVendorMap', back_populates='vendor', cascade='all, delete-orphan')
 
     available_games = relationship('AvailableGame', back_populates='vendor', cascade="all, delete-orphan")
 

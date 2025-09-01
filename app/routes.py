@@ -19,6 +19,10 @@ from app.models.vendorProfileImage import VendorProfileImage
 from app.services.cloudinary_profile_service import CloudinaryProfileImageService
 from app.models.website import Website 
 from app.models.bankTransferDetails import BankTransferDetails, PayoutTransaction
+# Add these imports with your existing model imports
+from app.models.paymentMethod import PaymentMethod
+from app.models.paymentVendorMap import PaymentVendorMap
+
 
 from .models.hardwareSpecification import HardwareSpecification
 from .models.maintenanceStatus import MaintenanceStatus
@@ -30,10 +34,13 @@ from sqlalchemy.orm import joinedload
 from collections import defaultdict
 from sqlalchemy import and_
 from sqlalchemy.exc import SQLAlchemyError
+
+from app.services.payload_formatters import format_current_slot_item
  
 from collections import Counter
 
 from datetime import datetime, timedelta, date
+from app.services.websocket_service import socketio
 
 WEEKDAY_ORDER = ["mon","tue","wed","thu","fri","sat","sun"]
 
@@ -389,61 +396,134 @@ def get_device_for_console_type(gameid, vendor_id):
 @dashboard_service.route('/updateDeviceStatus/consoleTypeId/<gameid>/console/<console_id>/bookingId/<booking_id>/vendor/<vendor_id>', methods=['POST'])
 def update_console_status(gameid, console_id, booking_id, vendor_id):
     try:
-        # ✅ Define the dynamic console availability table name
+        current_app.logger.debug(
+            "Starting update_console_status | gameid=%s console_id=%s booking_id=%s vendor_id=%s",
+            gameid, console_id, booking_id, vendor_id
+        )
+
         console_table_name = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
         booking_table_name = f"VENDOR_{vendor_id}_DASHBOARD"
+        current_app.logger.debug("Resolved table names: %s, %s", console_table_name, booking_table_name)
 
-        # ✅ Check if the console is available
+        # Check if the console is available
         sql_check_availability = text(f"""
             SELECT is_available FROM {console_table_name}
             WHERE console_id = :console_id AND game_id = :game_id
         """)
-
         result = db.session.execute(sql_check_availability, {
             "console_id": console_id,
             "game_id": gameid
         }).fetchone()
+        current_app.logger.debug("Console availability query result: %s", result)
 
         if not result:
+            current_app.logger.warning("Console not found in availability table")
             return jsonify({"error": "Console not found in the availability table"}), 404
 
-        is_available = result.is_available
-
-        if not is_available:
+        if not result.is_available:
+            current_app.logger.warning("Console already in use | console_id=%s", console_id)
             return jsonify({"error": "Console is already in use"}), 400
 
-        # ✅ Update the console status to FALSE (occupied)
+        # Update console status to FALSE (occupied)
         sql_update_status = text(f"""
             UPDATE {console_table_name}
             SET is_available = FALSE
             WHERE console_id = :console_id AND game_id = :game_id
         """)
-
         db.session.execute(sql_update_status, {
             "console_id": console_id,
             "game_id": gameid
         })
+        current_app.logger.debug("Updated console status to occupied")
 
-        # ✅ Update book_status from "upcoming" to "current"
+        # Update booking status
         sql_update_booking_status = text(f"""
             UPDATE {booking_table_name}
             SET book_status = 'current', console_id = :console_id
             WHERE book_id = :booking_id AND game_id = :game_id AND book_status = 'upcoming'
         """)
-
-        db.session.execute(sql_update_booking_status, {
+        upd_res = db.session.execute(sql_update_booking_status, {
             "console_id": console_id,
             "game_id": gameid,
-            "booking_id":booking_id
+            "booking_id": booking_id
         })
+        current_app.logger.debug("Booking update executed | rowcount=%s", getattr(upd_res, "rowcount", None))
 
-        # ✅ Commit the changes
         db.session.commit()
+        current_app.logger.debug("DB commit successful")
 
+        # ======= Fetch and emit slot update =======
+        if getattr(upd_res, "rowcount", None) is None or upd_res.rowcount != 0:
+            sql_fetch_booking = text(f"""
+                SELECT
+                    COALESCE(b.username, u.name) AS username,
+                    b.user_id,
+                    b.start_time,
+                    b.end_time,
+                    b.date,
+                    b.book_id,
+                    b.game_id,
+                    b.game_name,
+                    b.console_id,
+                    b.status,
+                    b.book_status,
+                    ag.single_slot_price,
+                    d.slot_id
+                FROM {booking_table_name} b
+                JOIN available_games ag ON b.game_id = ag.id
+                JOIN bookings d ON b.book_id = d.id
+                LEFT JOIN users u ON b.user_id = u.id
+                WHERE b.book_id = :booking_id AND b.game_id = :game_id
+            """)
+            b_row = db.session.execute(sql_fetch_booking, {
+                "booking_id": booking_id,
+                "game_id": gameid
+            }).mappings().fetchone()
+            current_app.logger.debug("Fetched booking row: %s", dict(b_row) if b_row else None)
+
+            if b_row and b_row.get("book_status") == "current":
+                current_item = format_current_slot_item(row={
+                    "slot_id": b_row["slot_id"],
+                    "book_id": b_row["book_id"],
+                    "start_time": b_row["start_time"],
+                    "end_time": b_row["end_time"],
+                    "status": b_row["status"],
+                    "console_id": b_row["console_id"],
+                    "username": b_row["username"],
+                    "user_id": b_row["user_id"],
+                    "game_id": b_row["game_id"],
+                    "date": b_row["date"],
+                    "single_slot_price": b_row["single_slot_price"],
+                })
+                room = f"vendor_{int(vendor_id)}"
+                socketio.emit("current_slot", current_item, room=room)
+                current_app.logger.debug("Emitted current_slot event to room=%s | data=%s", room, current_item)
+
+                sql_remaining = text(f"""
+                    SELECT COUNT(*) AS remaining
+                    FROM {console_table_name}
+                    WHERE game_id = :game_id AND is_available = TRUE
+                """)
+                rem_row = db.session.execute(sql_remaining, {"game_id": gameid}).fetchone()
+                remaining = int(rem_row.remaining) if rem_row and rem_row.remaining is not None else None
+                current_app.logger.debug("Remaining consoles available for game_id=%s: %s", gameid, remaining)
+
+                socketio.emit("console_availability", {
+                    "vendorId": int(vendor_id),
+                    "game_id": int(gameid),
+                    "console_id": int(console_id),
+                    "is_available": False,
+                    "remaining_available_for_game": remaining
+                }, room=room)
+                current_app.logger.debug("Emitted console_availability event to room=%s", room)
+        # ======= END =======
+
+        current_app.logger.debug("Successfully completed update_console_status")
         return jsonify({"message": "Console status and booking status updated successfully!"}), 200
 
     except Exception as e:
         db.session.rollback()
+        current_app.logger.error("Failed update_console_status | error=%s", str(e))
         return jsonify({"error": str(e)}), 500
 
 @dashboard_service.route('/assignConsoleToMultipleBookings', methods=['POST'])
@@ -565,8 +645,29 @@ def release_console(gameid, console_id, vendor_id):
             "game_id": gameid
         })
 
-        # ✅ Commit the changes
+        # Commit the changes
         db.session.commit()
+        # ADDED: Calculate remaining available consoles after release
+        sql_remaining = text(f"""
+            SELECT COUNT(*) AS remaining
+            FROM {console_table_name}
+            WHERE game_id = :game_id AND is_available = TRUE
+        """)
+        rem_row = db.session.execute(sql_remaining, {"game_id": gameid}).fetchone()
+        remaining = int(rem_row.remaining) if rem_row and rem_row.remaining is not None else None
+        current_app.logger.debug("Remaining consoles available for game_id=%s: %s", gameid, remaining)
+        
+        #  ADDED: Emit console_availability event (same as session start but with is_available: True)
+        room = f"vendor_{int(vendor_id)}"
+        socketio.emit("console_availability", {
+            "vendorId": int(vendor_id),
+            "game_id": int(gameid),
+            "console_id": int(console_id),
+            "is_available": True,  #  Console is now AVAILABLE (opposite of session start)
+            "remaining_available_for_game": remaining
+        }, room=room)
+        current_app.logger.debug("Emitted console_availability event to room=%s - console now available", room)
+        
 
         return jsonify({"message": "Console released successfully!"}), 200
 
@@ -882,13 +983,20 @@ def get_vendor_dashboard(vendor_id):
     # 5) Images
     avatar = ""
     if vendor.images:
-        first_img = vendor.images[0]
-        avatar = getattr(first_img, "path", None) or getattr(first_img, "url", "") or ""
+       first_img = vendor.images[0]
+       avatar = getattr(first_img, "path", None) or getattr(first_img, "url", "") or ""
+
 
     gallery_images = []
     if vendor.images:
-        for img in vendor.images:
-            gallery_images.append(getattr(img, "path", None) or getattr(img, "url", "") or "")
+       for img in vendor.images:
+           image_url = getattr(img, "path", None) or getattr(img, "url", "") or ""
+           gallery_images.append({
+               "id": img.id,
+               "url": image_url,
+               "public_id": img.public_id,
+               "uploaded_at": img.uploaded_at.isoformat() if img.uploaded_at else None
+        })
 
     # 6) Construct response
     payload = {
@@ -909,7 +1017,7 @@ def get_vendor_dashboard(vendor_id):
             "email": vendor.contact_info.email if vendor.contact_info else "",
         },
         "cafeGallery": {
-            "images": gallery_images
+            "images": gallery_images  # Now returns objects instead of just URLs
         },
         "businessDetails": {
             "businessName": vendor.cafe_name,
@@ -2227,4 +2335,308 @@ def create_payout(vendor_id):
             "success": False,
             "message": "Failed to create payout"
         }), 500
+        
+        
+        
+        # Get vendor's current payment method preferences
+# Updated API routes in dashboard_service.py
+
+@dashboard_service.route('/vendor/<int:vendor_id>/paymentMethods', methods=['GET'])
+def get_all_payment_methods_for_vendor(vendor_id):
+    """Get ALL available payment methods from payment_method table and show vendor's selections"""
+    try:
+        # Check if vendor exists
+        vendor = Vendor.query.get(vendor_id)
+        if not vendor:
+            return jsonify({'error': 'Vendor not found'}), 404
+        
+        # Get ALL payment methods from payment_method table (available for all vendors)
+        all_methods = PaymentMethod.query.all()
+        
+        if not all_methods:
+            return jsonify({
+                'success': False,
+                'message': 'No payment methods available in system',
+                'payment_methods': []
+            }), 200
+        
+        # Get vendor's currently enabled payment methods
+        vendor_selected_methods = db.session.query(PaymentVendorMap.pay_method_id).filter_by(vendor_id=vendor_id).all()
+        enabled_method_ids = {method[0] for method in vendor_selected_methods}
+        
+        # Prepare response with all available methods
+        methods_data = []
+        for method in all_methods:
+            display_name = 'Pay at Cafe' if method.method_name == 'Pay at Cafe' else 'Hash Pass'
+            description = (
+                'Customers pay directly at your cafe using cash or card' 
+                if method.method_name == 'pay_at_cafe' 
+                else 'Customers can use Hash Pass for seamless digital payments'
+            )
+            
+            methods_data.append({
+                'pay_method_id': method.pay_method_id,
+                'method_name': method.method_name,
+                'display_name': display_name,
+                'description': description,
+                'is_enabled': method.pay_method_id in enabled_method_ids  # true if vendor has enabled this method
+            })
+        
+        return jsonify({
+            'success': True,
+            'vendor_id': vendor_id,
+            'payment_methods': methods_data,
+            'total_available_methods': len(methods_data),
+            'vendor_enabled_methods': len(enabled_method_ids)
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f"Error fetching payment methods for vendor {vendor_id}: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@dashboard_service.route('/vendor/<int:vendor_id>/paymentMethods/toggle', methods=['POST'])
+def toggle_payment_method_for_vendor(vendor_id):
+    """Toggle payment method for vendor - registers/unregisters vendor in payment_vendor_map"""
+    try:
+        data = request.get_json()
+        
+        if not data or 'pay_method_id' not in data:
+            return jsonify({'success': False, 'error': 'pay_method_id is required'}), 400
+        
+        pay_method_id = data['pay_method_id']
+        
+        # Validate vendor exists
+        vendor = Vendor.query.get(vendor_id)
+        if not vendor:
+            return jsonify({'success': False, 'error': 'Vendor not found'}), 404
+        
+        # Validate payment method exists
+        payment_method = PaymentMethod.query.get(pay_method_id)
+        if not payment_method:
+            return jsonify({'success': False, 'error': 'Payment method not found'}), 404
+        
+        # Check if vendor is already registered for this payment method
+        existing_registration = PaymentVendorMap.query.filter_by(
+            vendor_id=vendor_id, 
+            pay_method_id=pay_method_id
+        ).first()
+        
+        if existing_registration:
+            # Vendor is registered - unregister (disable)
+            db.session.delete(existing_registration)
+            action = 'disabled'
+            is_enabled = False
+        else:
+            # Vendor is not registered - register (enable)
+            new_registration = PaymentVendorMap(
+                vendor_id=vendor_id,
+                pay_method_id=pay_method_id
+            )
+            db.session.add(new_registration)
+            action = 'enabled'
+            is_enabled = True
+        
+        db.session.commit()
+        
+        display_name = 'Pay at Cafe' if payment_method.method_name == 'pay_at_cafe' else 'Hash Pass'
+        
+        return jsonify({
+            'success': True,
+            'message': f'{display_name} {action} successfully',
+            'data': {
+                'vendor_id': vendor_id,
+                'pay_method_id': pay_method_id,
+                'method_name': payment_method.method_name,
+                'display_name': display_name,
+                'is_enabled': is_enabled,
+                'action': action
+            }
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error toggling payment method for vendor {vendor_id}: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# Optional: Get payment method statistics
+@dashboard_service.route('/vendor/<int:vendor_id>/paymentMethods/stats', methods=['GET'])
+def get_payment_method_stats_for_vendor(vendor_id):
+    """Get statistics about payment methods for vendor"""
+    try:
+        # Total available methods
+        total_methods = PaymentMethod.query.count()
+        
+        # Vendor enabled methods
+        vendor_enabled = PaymentVendorMap.query.filter_by(vendor_id=vendor_id).count()
+        
+        return jsonify({
+            'success': True,
+            'vendor_id': vendor_id,
+            'stats': {
+                'total_available_methods': total_methods,
+                'vendor_enabled_methods': vendor_enabled,
+                'completion_percentage': (vendor_enabled / total_methods * 100) if total_methods > 0 else 0
+            }
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f"Error fetching payment method stats for vendor {vendor_id}: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+
+
+
+
+
+# Update multiple payment methods at once (bulk update)
+@dashboard_service.route('/vendor/<int:vendor_id>/payment-methods/bulk-update', methods=['POST'])
+def bulk_update_payment_methods(vendor_id):
+    """Bulk update payment methods for a vendor"""
+    try:
+        data = request.get_json()
+        
+        if not data or 'payment_methods' not in data:
+            return jsonify({'error': 'payment_methods array is required'}), 400
+        
+        payment_methods = data['payment_methods']  # Expected: [{'pay_method_id': 1, 'enabled': true}, ...]
+        
+        # Validate vendor exists
+        vendor = Vendor.query.get(vendor_id)
+        if not vendor:
+            return jsonify({'error': 'Vendor not found'}), 404
+        
+        # Validate all payment methods exist
+        for method_data in payment_methods:
+            pay_method_id = method_data.get('pay_method_id')
+            if not PaymentMethod.query.get(pay_method_id):
+                return jsonify({'error': f'Payment method {pay_method_id} not found'}), 404
+        
+        # Remove all existing mappings for this vendor
+        PaymentVendorMap.query.filter_by(vendor_id=vendor_id).delete()
+        
+        # Add new mappings based on enabled methods
+        enabled_count = 0
+        for method_data in payment_methods:
+            if method_data.get('enabled', False):
+                pay_method_id = method_data.get('pay_method_id')
+                new_mapping = PaymentVendorMap(
+                    vendor_id=vendor_id,
+                    pay_method_id=pay_method_id
+                )
+                db.session.add(new_mapping)
+                enabled_count += 1
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Payment methods updated successfully',
+            'data': {
+                'vendor_id': vendor_id,
+                'enabled_methods': enabled_count
+            }
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error bulk updating payment methods for vendor {vendor_id}: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+# Initialize default payment methods (run once - admin endpoint)
+@dashboard_service.route('/payment-methods/initialize', methods=['POST'])
+def initialize_payment_methods():
+    """Initialize default payment methods (run once)"""
+    try:
+        # Check if methods already exist
+        existing_methods = PaymentMethod.query.count()
+        if existing_methods > 0:
+            methods = PaymentMethod.query.all()
+            return jsonify({
+                'success': True,
+                'message': 'Payment methods already initialized',
+                'methods': [method.to_dict() for method in methods]
+            }), 200
+        
+        # Create default payment methods
+        pay_at_cafe = PaymentMethod(method_name='pay_at_cafe')
+        hash_pass = PaymentMethod(method_name='hash_pass')
+        
+        db.session.add(pay_at_cafe)
+        db.session.add(hash_pass)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Payment methods initialized successfully',
+            'methods': [
+                pay_at_cafe.to_dict(),
+                hash_pass.to_dict()
+            ]
+        }), 201
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error initializing payment methods: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+# Get payment methods statistics for vendor
+@dashboard_service.route('/vendor/<int:vendor_id>/payment-methods/stats', methods=['GET'])
+def get_payment_method_stats(vendor_id):
+    """Get payment method usage statistics for vendor"""
+    try:
+        # Get vendor's enabled payment methods
+        enabled_methods = db.session.query(
+            PaymentMethod.method_name,
+            PaymentMethod.pay_method_id
+        ).join(
+            PaymentVendorMap, PaymentMethod.pay_method_id == PaymentVendorMap.pay_method_id
+        ).filter(PaymentVendorMap.vendor_id == vendor_id).all()
+        
+        # Get transaction counts by payment method for this vendor
+        transaction_stats = db.session.query(
+            Transaction.mode_of_payment,
+            func.count(Transaction.id).label('count'),
+            func.sum(Transaction.amount).label('total_amount')
+        ).filter(
+            Transaction.vendor_id == vendor_id
+        ).group_by(Transaction.mode_of_payment).all()
+        
+        # Format response
+        method_stats = []
+        for method_name, method_id in enabled_methods:
+            display_name = 'Pay at Cafe' if method_name == 'pay_at_cafe' else 'Hash Pass'
+            
+            # Find matching transaction stats
+            usage_count = 0
+            total_revenue = 0
+            for stat in transaction_stats:
+                if (method_name == 'pay_at_cafe' and stat.mode_of_payment in ['cash', 'card']) or \
+                   (method_name == 'hash_pass' and stat.mode_of_payment == 'hash_pass'):
+                    usage_count += stat.count
+                    total_revenue += float(stat.total_amount or 0)
+            
+            method_stats.append({
+                'pay_method_id': method_id,
+                'method_name': method_name,
+                'display_name': display_name,
+                'usage_count': usage_count,
+                'total_revenue': total_revenue,
+                'is_enabled': True
+            })
+        
+        return jsonify({
+            'success': True,
+            'vendor_id': vendor_id,
+            'payment_method_stats': method_stats,
+            'total_enabled_methods': len(method_stats)
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f"Error fetching payment method stats for vendor {vendor_id}: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
