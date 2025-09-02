@@ -2367,7 +2367,7 @@ def get_all_payment_methods_for_vendor(vendor_id):
         # Prepare response with all available methods
         methods_data = []
         for method in all_methods:
-            display_name = 'Pay at Cafe' if method.method_name == 'Pay at Cafe' else 'Hash Pass'
+            display_name = 'Pay at Cafe' if method.method_name == 'Pay at Cafe' else 'Hash'
             description = (
                 'Customers pay directly at your cafe using cash or card' 
                 if method.method_name == 'pay_at_cafe' 
@@ -2439,7 +2439,7 @@ def toggle_payment_method_for_vendor(vendor_id):
         
         db.session.commit()
         
-        display_name = 'Pay at Cafe' if payment_method.method_name == 'pay_at_cafe' else 'Hash Pass'
+        display_name = 'Pay at Cafe' if payment_method.method_name == 'pay_at_cafe' else 'Hash'
         
         return jsonify({
             'success': True,
@@ -2458,130 +2458,6 @@ def toggle_payment_method_for_vendor(vendor_id):
         db.session.rollback()
         current_app.logger.error(f"Error toggling payment method for vendor {vendor_id}: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
-
-
-# Optional: Get payment method statistics
-@dashboard_service.route('/vendor/<int:vendor_id>/paymentMethods/stats', methods=['GET'])
-def get_payment_method_stats_for_vendor(vendor_id):
-    """Get statistics about payment methods for vendor"""
-    try:
-        # Total available methods
-        total_methods = PaymentMethod.query.count()
-        
-        # Vendor enabled methods
-        vendor_enabled = PaymentVendorMap.query.filter_by(vendor_id=vendor_id).count()
-        
-        return jsonify({
-            'success': True,
-            'vendor_id': vendor_id,
-            'stats': {
-                'total_available_methods': total_methods,
-                'vendor_enabled_methods': vendor_enabled,
-                'completion_percentage': (vendor_enabled / total_methods * 100) if total_methods > 0 else 0
-            }
-        }), 200
-        
-    except Exception as e:
-        current_app.logger.error(f"Error fetching payment method stats for vendor {vendor_id}: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-
-
-
-
-
-# Update multiple payment methods at once (bulk update)
-@dashboard_service.route('/vendor/<int:vendor_id>/payment-methods/bulk-update', methods=['POST'])
-def bulk_update_payment_methods(vendor_id):
-    """Bulk update payment methods for a vendor"""
-    try:
-        data = request.get_json()
-        
-        if not data or 'payment_methods' not in data:
-            return jsonify({'error': 'payment_methods array is required'}), 400
-        
-        payment_methods = data['payment_methods']  # Expected: [{'pay_method_id': 1, 'enabled': true}, ...]
-        
-        # Validate vendor exists
-        vendor = Vendor.query.get(vendor_id)
-        if not vendor:
-            return jsonify({'error': 'Vendor not found'}), 404
-        
-        # Validate all payment methods exist
-        for method_data in payment_methods:
-            pay_method_id = method_data.get('pay_method_id')
-            if not PaymentMethod.query.get(pay_method_id):
-                return jsonify({'error': f'Payment method {pay_method_id} not found'}), 404
-        
-        # Remove all existing mappings for this vendor
-        PaymentVendorMap.query.filter_by(vendor_id=vendor_id).delete()
-        
-        # Add new mappings based on enabled methods
-        enabled_count = 0
-        for method_data in payment_methods:
-            if method_data.get('enabled', False):
-                pay_method_id = method_data.get('pay_method_id')
-                new_mapping = PaymentVendorMap(
-                    vendor_id=vendor_id,
-                    pay_method_id=pay_method_id
-                )
-                db.session.add(new_mapping)
-                enabled_count += 1
-        
-        db.session.commit()
-        
-        return jsonify({
-            'success': True,
-            'message': 'Payment methods updated successfully',
-            'data': {
-                'vendor_id': vendor_id,
-                'enabled_methods': enabled_count
-            }
-        }), 200
-        
-    except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error bulk updating payment methods for vendor {vendor_id}: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
-
-# Initialize default payment methods (run once - admin endpoint)
-@dashboard_service.route('/payment-methods/initialize', methods=['POST'])
-def initialize_payment_methods():
-    """Initialize default payment methods (run once)"""
-    try:
-        # Check if methods already exist
-        existing_methods = PaymentMethod.query.count()
-        if existing_methods > 0:
-            methods = PaymentMethod.query.all()
-            return jsonify({
-                'success': True,
-                'message': 'Payment methods already initialized',
-                'methods': [method.to_dict() for method in methods]
-            }), 200
-        
-        # Create default payment methods
-        pay_at_cafe = PaymentMethod(method_name='pay_at_cafe')
-        hash_pass = PaymentMethod(method_name='hash_pass')
-        
-        db.session.add(pay_at_cafe)
-        db.session.add(hash_pass)
-        db.session.commit()
-        
-        return jsonify({
-            'success': True,
-            'message': 'Payment methods initialized successfully',
-            'methods': [
-                pay_at_cafe.to_dict(),
-                hash_pass.to_dict()
-            ]
-        }), 201
-        
-    except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error initializing payment methods: {str(e)}")
-        return jsonify({'error': str(e)}), 500
 
 
 # Get payment methods statistics for vendor
@@ -2609,14 +2485,14 @@ def get_payment_method_stats(vendor_id):
         # Format response
         method_stats = []
         for method_name, method_id in enabled_methods:
-            display_name = 'Pay at Cafe' if method_name == 'pay_at_cafe' else 'Hash Pass'
+            display_name = 'Pay at Cafe' if method_name == 'pay_at_cafe' else 'Hash'
             
             # Find matching transaction stats
             usage_count = 0
             total_revenue = 0
             for stat in transaction_stats:
                 if (method_name == 'pay_at_cafe' and stat.mode_of_payment in ['cash', 'card']) or \
-                   (method_name == 'hash_pass' and stat.mode_of_payment == 'hash_pass'):
+                   (method_name == 'hash' and stat.mode_of_payment == 'hash'):
                     usage_count += stat.count
                     total_revenue += float(stat.total_amount or 0)
             
