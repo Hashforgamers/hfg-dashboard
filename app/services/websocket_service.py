@@ -3,14 +3,13 @@ import os
 import json
 import logging
 import threading
+import time
 from typing import Dict, Any, Optional, Set
 
 from flask import current_app
 from flask_socketio import SocketIO, join_room
 import socketio as pwsio   # python-socketio client (aliased)
 from app.services.payload_formatters import format_upcoming_booking_from_upstream
-import time
-
 
 # -----------------------------------------------------------------------------
 # Dashboard Socket.IO server (clients connect here)
@@ -39,6 +38,7 @@ _upstream_sio = pwsio.Client(
 _started_upstream = False
 _joined_vendor_ids: Set[int] = set()
 _lock = threading.Lock()
+_last_admin_heartbeat = 0
 
 # -----------------------------------------------------------------------------
 # Logging helpers
@@ -102,7 +102,9 @@ def _join_upstream_admin():
         _log_err("Failed to request admin tap (connect_admin)")
 
 def _handle_upstream_booking(data: Dict[str, Any]):
+    global _last_admin_heartbeat
     try:
+        _last_admin_heartbeat = time.time()  # mark heartbeat
         vendor_id = data.get("vendorId") or data.get("vendor_id")
         booking_id = data.get("bookingId") or data.get("booking_id")
         _log_info("[Upstream booking] vendor=%s bookingId=%s", vendor_id, booking_id)
@@ -119,15 +121,14 @@ def _handle_upstream_booking(data: Dict[str, Any]):
     except Exception:
         _log_err("Error handling upstream booking payload")
 
-
-
+# -----------------------------------------------------------------------------
+# Upstream event handlers
+# -----------------------------------------------------------------------------
 def _register_upstream_handlers():
     @_upstream_sio.event
     def connect():
         _log_info("Connected to booking upstream: %s (namespace=%s)", BOOKING_SOCKET_URL, BOOKING_NAMESPACE or "/")
-        # Always join the admin tap to receive ALL events
-        _join_upstream_admin()
-        # Optionally re-join vendor-specific rooms (if you still use that path)
+        _join_upstream_admin()   # always rejoin admin
         with _lock:
             vendors = list(_joined_vendor_ids)
         for vid in vendors:
@@ -137,7 +138,6 @@ def _register_upstream_handlers():
     def disconnect():
         _log_warn("Disconnected from booking upstream, will retry automatically")
 
-    # Per-vendor event listener (if upstream puts this client in vendor rooms)
     if BOOKING_NAMESPACE:
         @_upstream_sio.on("booking", namespace=BOOKING_NAMESPACE)
         def _on_booking_ns(data):
@@ -147,7 +147,6 @@ def _register_upstream_handlers():
         def _on_booking(data):
             _handle_upstream_booking(data)
 
-    # Admin tap listener: receives ALL booking events
     if BOOKING_NAMESPACE:
         @_upstream_sio.on("booking_admin", namespace=BOOKING_NAMESPACE)
         def _on_booking_admin_ns(data):
@@ -157,9 +156,14 @@ def _register_upstream_handlers():
         def _on_booking_admin(data):
             _handle_upstream_booking(data)
 
+# -----------------------------------------------------------------------------
+# Health check loop
+# -----------------------------------------------------------------------------
 def _health_check_loop():
+    global _last_admin_heartbeat
     while True:
         try:
+            now = time.time()
             if not _upstream_sio.connected:
                 _log_warn("Health check: upstream not connected, reconnecting...")
                 try:
@@ -170,20 +174,24 @@ def _health_check_loop():
                 except Exception as e:
                     _log_err("Health check reconnect failed: %s", e)
             else:
-                # Try a ping to ensure the connection is alive
+                # If no admin booking seen recently, re-join admin
+                if now - _last_admin_heartbeat > 60:
+                    _log_warn("No admin heartbeat detected, rejoining admin tap...")
+                    _join_upstream_admin()
+
                 try:
                     if BOOKING_NAMESPACE:
-                        _upstream_sio.emit("ping", {"ts": time.time()}, namespace=BOOKING_NAMESPACE)
+                        _upstream_sio.emit("ping", {"ts": now}, namespace=BOOKING_NAMESPACE)
                     else:
-                        _upstream_sio.emit("ping", {"ts": time.time()})
+                        _upstream_sio.emit("ping", {"ts": now})
                     _log_info("Health check: upstream alive")
                 except Exception as e:
                     _log_warn("Health check emit failed: %s", e)
-            time.sleep(30)  # every 30 seconds
+
+            time.sleep(30)
         except Exception as e:
             _log_err("Health check loop crashed: %s", e)
             time.sleep(30)
-
 
 # -----------------------------------------------------------------------------
 # Public: start upstream bridge
@@ -210,10 +218,8 @@ def start_upstream_bridge(app):
     t = threading.Thread(target=_runner, name="booking-upstream-bridge", daemon=True)
     t.start()
 
-    # 🔥 start health check thread
     hc = threading.Thread(target=_health_check_loop, name="booking-upstream-health", daemon=True)
     hc.start()
-
 
 # -----------------------------------------------------------------------------
 # Dashboard (local) socket events
@@ -238,7 +244,6 @@ def register_dashboard_events():
             join_room(room)
             _log_info("Dashboard client joined local room %s", room)
 
-            # Optional: still ask upstream to join the vendor room (not required if using admin tap)
             with _lock:
                 is_new = int(vendor_id) not in _joined_vendor_ids
                 if is_new:
@@ -248,7 +253,6 @@ def register_dashboard_events():
         except Exception as e:
             _log_err("dashboard_join_vendor error: %s", e)
 
-    # Demo/test events remain (optional)
     @socketio.on('slot_booked_demo')
     def handle_slot_booked(data):
         try:
