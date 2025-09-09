@@ -40,6 +40,14 @@ def _join_upstream_vendor(vendor_id: int):
 @_sio.event
 def connect():
     logger.info("Connected to booking upstream: %s", BOOKING_SOCKET_URL)
+
+    # Always join admin tap
+    if BOOKING_NAMESPACE:
+        _sio.emit("connect_admin", {}, namespace=BOOKING_NAMESPACE)
+    else:
+        _sio.emit("connect_admin", {})
+    logger.info("Requested admin tap: dashboard_admin")
+
     # Re-join all vendors after reconnect
     with _lock:
         vendors = list(_joined_vendor_ids)
@@ -77,16 +85,26 @@ def _handle_booking_event(data):
 
 
 def _register_booking_listener():
-    event_name = "booking"
-
+    # Vendor-specific events
     if BOOKING_NAMESPACE:
-        @_sio.on(event_name, namespace=BOOKING_NAMESPACE)
+        @_sio.on("booking", namespace=BOOKING_NAMESPACE)
         def _on_booking_ns(data):
             _handle_booking_event(data)
     else:
-        @_sio.on(event_name)
+        @_sio.on("booking")
         def _on_booking(data):
             _handle_booking_event(data)
+
+    # Admin tap events (ALL bookings)
+    if BOOKING_NAMESPACE:
+        @_sio.on("booking_admin", namespace=BOOKING_NAMESPACE)
+        def _on_booking_admin_ns(data):
+            _handle_booking_event(data)
+    else:
+        @_sio.on("booking_admin")
+        def _on_booking_admin(data):
+            _handle_booking_event(data)
+
 
 
 def start_bridge():
