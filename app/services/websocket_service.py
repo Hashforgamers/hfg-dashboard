@@ -9,6 +9,7 @@ from flask import current_app
 from flask_socketio import SocketIO, join_room
 import socketio as pwsio   # python-socketio client (aliased)
 from app.services.payload_formatters import format_upcoming_booking_from_upstream
+import time
 
 
 # -----------------------------------------------------------------------------
@@ -134,7 +135,7 @@ def _register_upstream_handlers():
 
     @_upstream_sio.event
     def disconnect():
-        _log_warn("Disconnected from booking upstream")
+        _log_warn("Disconnected from booking upstream, will retry automatically")
 
     # Per-vendor event listener (if upstream puts this client in vendor rooms)
     if BOOKING_NAMESPACE:
@@ -156,6 +157,34 @@ def _register_upstream_handlers():
         def _on_booking_admin(data):
             _handle_upstream_booking(data)
 
+def _health_check_loop():
+    while True:
+        try:
+            if not _upstream_sio.connected:
+                _log_warn("Health check: upstream not connected, reconnecting...")
+                try:
+                    kwargs = {}
+                    if BOOKING_AUTH_TOKEN:
+                        kwargs["headers"] = {"Authorization": f"Bearer {BOOKING_AUTH_TOKEN}"}
+                    _upstream_sio.connect(BOOKING_SOCKET_URL, **kwargs)
+                except Exception as e:
+                    _log_err("Health check reconnect failed: %s", e)
+            else:
+                # Try a ping to ensure the connection is alive
+                try:
+                    if BOOKING_NAMESPACE:
+                        _upstream_sio.emit("ping", {"ts": time.time()}, namespace=BOOKING_NAMESPACE)
+                    else:
+                        _upstream_sio.emit("ping", {"ts": time.time()})
+                    _log_info("Health check: upstream alive")
+                except Exception as e:
+                    _log_warn("Health check emit failed: %s", e)
+            time.sleep(30)  # every 30 seconds
+        except Exception as e:
+            _log_err("Health check loop crashed: %s", e)
+            time.sleep(30)
+
+
 # -----------------------------------------------------------------------------
 # Public: start upstream bridge
 # -----------------------------------------------------------------------------
@@ -173,7 +202,6 @@ def start_upstream_bridge(app):
             kwargs = {}
             if BOOKING_AUTH_TOKEN:
                 kwargs["headers"] = {"Authorization": f"Bearer {BOOKING_AUTH_TOKEN}"}
-            # Let engine negotiate transports; avoids proxies that block direct WS
             _upstream_sio.connect(BOOKING_SOCKET_URL, **kwargs)
             _upstream_sio.wait()
         except Exception as e:
@@ -181,6 +209,11 @@ def start_upstream_bridge(app):
 
     t = threading.Thread(target=_runner, name="booking-upstream-bridge", daemon=True)
     t.start()
+
+    # 🔥 start health check thread
+    hc = threading.Thread(target=_health_check_loop, name="booking-upstream-health", daemon=True)
+    hc.start()
+
 
 # -----------------------------------------------------------------------------
 # Dashboard (local) socket events
