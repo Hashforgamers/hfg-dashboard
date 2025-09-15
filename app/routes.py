@@ -758,8 +758,21 @@ def get_landing_page_vendor(vendor_id):
         upcoming_bookings = []
         current_slots = []
         
+        # Fetch all booking_ids with extras in one go
+        booking_ids = [row.book_id for row in result]
+        if booking_ids:
+          meals_lookup = set(
+              r[0] for r in db.session.query(BookingExtraService.booking_id)
+              .filter(BookingExtraService.booking_id.in_(booking_ids))
+              .distinct()
+              .all()
+            )
+        else:
+            meals_lookup = set()
+
+        
         for row in result:
-            has_meals = db.session.query(BookingExtraService).filter_by(booking_id=row.book_id).count() > 0
+            has_meals = row.book_id in meals_lookup
 
             booking_data = {
                 "slotId": row.slot_id,
