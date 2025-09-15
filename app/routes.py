@@ -22,6 +22,8 @@ from app.models.bankTransferDetails import BankTransferDetails, PayoutTransactio
 # Add these imports with your existing model imports
 from app.models.paymentMethod import PaymentMethod
 from app.models.paymentVendorMap import PaymentVendorMap
+from app.models.bookingExtraService import BookingExtraService
+
 
 
 from .models.hardwareSpecification import HardwareSpecification
@@ -757,6 +759,8 @@ def get_landing_page_vendor(vendor_id):
         current_slots = []
         
         for row in result:
+            has_meals = db.session.query(BookingExtraService).filter_by(booking_id=row.book_id).count() > 0
+
             booking_data = {
                 "slotId": row.slot_id,
                 "bookingId": row.book_id,
@@ -769,6 +773,8 @@ def get_landing_page_vendor(vendor_id):
                 "game_id":row.game_id,
                 "date":row.date,
                 "slot_price": row.single_slot_price,
+                "hasMeals": has_meals
+
             }
             
             slot_data = {
@@ -784,6 +790,8 @@ def get_landing_page_vendor(vendor_id):
                 "game_id":row.game_id,
                 "date":row.date,
                 "slot_price": row.single_slot_price,
+                "hasMeals": has_meals
+                
             }
             
             if row.book_status == "upcoming":
