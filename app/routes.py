@@ -2538,7 +2538,7 @@ def get_payment_method_stats(vendor_id):
         return jsonify({'error': str(e)}), 500
 
 
-@dashboard_service.route('/api/booking/<int:booking_id>/details', methods=['GET'])
+@dashboard_service.route('/booking/<int:booking_id>/details', methods=['GET'])
 def get_booking_details(booking_id):
     """Get detailed booking information including extra services/meals"""
     try:
@@ -2549,7 +2549,7 @@ def get_booking_details(booking_id):
             return jsonify({"success": False, "error": "Booking not found"}), 404
         
         # Get user details
-        user = User.query.filter_by(id=booking.userid).first()
+        user = User.query.filter_by(id=booking.user_id).first()
         
         # Get extra services for this booking
         extra_services = []
@@ -2577,12 +2577,12 @@ def get_booking_details(booking_id):
         result = {
             "booking": {
                 "id": booking.id,
-                "user_id": booking.userid,
+                "user_id": booking.user_id,
                 "username": user.name if user else "Unknown",
-                "game_id": booking.gameid,
-                "slot_id": booking.slotid,
+                "game_id": booking.game_id,
+                "slot_id": booking.slot_id,
                 "status": booking.status,
-                "created_at": booking.createdat.isoformat() if booking.createdat else None,
+               
                 "extra_services": extra_services
             }
         }
