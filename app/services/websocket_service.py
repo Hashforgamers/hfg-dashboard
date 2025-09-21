@@ -224,12 +224,23 @@ def _health_check_loop():
                 # Active health ping -> expect "pong_health"
                 try:
                     ns = _ns()
-                    payload = {"ts": now, "source": "dashboard-bridge"}
+                    # payload contains a timestamp and a nonce so we can correlate IRT (immediate round-trip) when pong_health arrives
+                    payload = {
+                        "ts": now,                       # unix seconds
+                        "source": "dashboard-bridge",    # identifies caller
+                        "nonce": f"{int(now*1000)}"      # simple unique token for IRT tracking
+                    }
+
                     if ns:
+                        # sending ping_health with payload=%s on namespace=%s
+                        _log_info("Health: ping_health payload=%s ns=%s", payload, ns)
                         _upstream_sio.emit("ping_health", payload, namespace=ns)
+                        _log_info("Health: sent ping_health if-branch (ns=%s, nonce=%s)", ns, payload["nonce"])
                     else:
+                        # sending ping_health with payload=%s on default namespace
+                        _log_info("Health: ping_health payload=%s ns=/", payload)
                         _upstream_sio.emit("ping_health", payload)
-                    _log_info("Health: sent ping_health")
+                        _log_info("Health: sent ping_health else-branch (ns=/, nonce=%s)", payload["nonce"])
                 except Exception as e:
                     _log_warn("Health: ping_health emit failed: %s", e)
 
