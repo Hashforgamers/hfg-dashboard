@@ -239,7 +239,7 @@ def _health_check_loop():
                     else:
                         # sending ping_health with payload=%s on default namespace
                         _log_info("Health: ping_health payload=%s ns=/", payload)
-                        _upstream_sio.emit("ping_health", payload)
+                        _upstream_sio.emit("ping_health", payload, namespace="/")
                         _log_info("Health: sent ping_health else-branch (ns=/, nonce=%s)", payload["nonce"])
                 except Exception as e:
                     _log_warn("Health: ping_health emit failed: %s", e)
