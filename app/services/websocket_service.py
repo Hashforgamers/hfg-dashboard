@@ -202,6 +202,19 @@ def _register_upstream_handlers():
             _mark_pong()
             _log_info("Received upstream pong_health")
 
+# --- helper ack callback for health pings ----------------------------------
+def _on_ping_ack(data=None):
+    """
+    Called if the server responds by invoking the emit ack callback.
+    Accepts any payload the server returned; mark pong and log it.
+    """
+    try:
+        _mark_pong()
+        _log_info("Health: ping_health ack callback received: %s", data)
+    except Exception as e:
+        _log_warn("Health: ping_health ack callback error: %s", e)
+
+
 # -----------------------------------------------------------------------------
 # Health check loop (uses ping_health)
 # -----------------------------------------------------------------------------
@@ -224,22 +237,20 @@ def _health_check_loop():
                 # Active health ping -> expect "pong_health"
                 try:
                     ns = _ns()
-                    # payload contains a timestamp and a nonce so we can correlate IRT (immediate round-trip) when pong_health arrives
                     payload = {
-                        "ts": now,                       # unix seconds
-                        "source": "dashboard-bridge",    # identifies caller
-                        "nonce": f"{int(now*1000)}"      # simple unique token for IRT tracking
+                        "ts": now,
+                        "source": "dashboard-bridge",
+                        "nonce": f"{int(now*1000)}"
                     }
 
                     if ns:
-                        # sending ping_health with payload=%s on namespace=%s
                         _log_info("Health: ping_health payload=%s ns=%s", payload, ns)
-                        _upstream_sio.emit("ping_health", payload, namespace=ns)
+                        # send with ack callback — server may choose to ack rather than emit pong_health
+                        _upstream_sio.emit("ping_health", payload, callback=_on_ping_ack, namespace=ns)
                         _log_info("Health: sent ping_health if-branch (ns=%s, nonce=%s)", ns, payload["nonce"])
                     else:
-                        # sending ping_health with payload=%s on default namespace
                         _log_info("Health: ping_health payload=%s ns=/", payload)
-                        _upstream_sio.emit("ping_health", payload, namespace="/")
+                        _upstream_sio.emit("ping_health", payload, callback=_on_ping_ack, namespace="/")
                         _log_info("Health: sent ping_health else-branch (ns=/, nonce=%s)", payload["nonce"])
                 except Exception as e:
                     _log_warn("Health: ping_health emit failed: %s", e)
