@@ -1,4 +1,5 @@
 # app/services/websocket_service.py
+
 import os
 import json
 import logging
@@ -7,7 +8,7 @@ import time
 from typing import Dict, Any, Optional, Set
 
 from flask import current_app
-from flask_socketio import SocketIO, join_room
+from flask_socketio import SocketIO, join_room, emit
 import socketio as pwsio   # python-socketio client (aliased)
 from app.services.payload_formatters import format_upcoming_booking_from_upstream
 
@@ -16,7 +17,7 @@ from app.services.payload_formatters import format_upcoming_booking_from_upstrea
 # -----------------------------------------------------------------------------
 socketio = SocketIO(
     cors_allowed_origins="*",
-    async_mode=None,
+    async_mode=None,  # gevent/eventlet auto if patched; falls back to threading
 )
 
 # -----------------------------------------------------------------------------
@@ -38,7 +39,11 @@ _upstream_sio = pwsio.Client(
 _started_upstream = False
 _joined_vendor_ids: Set[int] = set()
 _lock = threading.Lock()
-_last_admin_heartbeat = 0
+
+# Heartbeat tracking
+_last_admin_heartbeat = 0.0
+_last_pong = 0.0
+_UPSTREAM_PING_TIMEOUT = 10.0  # seconds to consider pong overdue
 
 # -----------------------------------------------------------------------------
 # Logging helpers
@@ -79,6 +84,11 @@ def _emit_downstream_to_vendor(vendor_id: Optional[int], event: str, data: Dict[
 # -----------------------------------------------------------------------------
 # Upstream helpers
 # -----------------------------------------------------------------------------
+def _mark_pong():
+    global _last_pong, _last_admin_heartbeat
+    _last_pong = time.time()
+    _last_admin_heartbeat = _last_pong  # treat any upstream response as heartbeat
+
 def _join_upstream_vendor(vendor_id: int):
     payload = {"vendor_id": int(vendor_id)}
     try:
@@ -104,7 +114,7 @@ def _join_upstream_admin():
 def _handle_upstream_booking(data: Dict[str, Any]):
     global _last_admin_heartbeat
     try:
-        _last_admin_heartbeat = time.time()  # mark heartbeat
+        _mark_pong()
         vendor_id = data.get("vendorId") or data.get("vendor_id")
         booking_id = data.get("bookingId") or data.get("booking_id")
         _log_info("[Upstream booking] vendor=%s bookingId=%s", vendor_id, booking_id)
@@ -112,12 +122,11 @@ def _handle_upstream_booking(data: Dict[str, Any]):
         # Always relay raw event for general consumers
         _emit_downstream_to_vendor(vendor_id, "booking", data)
 
-        # Only emit upcoming for confirmed bookings
+        # Emit upcoming for confirmed bookings
         upcoming_payload = format_upcoming_booking_from_upstream(data)
         if upcoming_payload:
             _emit_downstream_to_vendor(vendor_id, "upcoming_booking", upcoming_payload)
             _log_info("Emitted dashboard_upcoming_booking (confirmed) vendor=%s bookingId=%s", vendor_id, booking_id)
-
     except Exception:
         _log_err("Error handling upstream booking payload")
 
@@ -128,7 +137,8 @@ def _register_upstream_handlers():
     @_upstream_sio.event
     def connect():
         _log_info("Connected to booking upstream: %s (namespace=%s)", BOOKING_SOCKET_URL, BOOKING_NAMESPACE or "/")
-        _join_upstream_admin()   # always rejoin admin
+        _mark_pong()
+        _join_upstream_admin()   # always rejoin admin after connect
         with _lock:
             vendors = list(_joined_vendor_ids)
         for vid in vendors:
@@ -138,20 +148,26 @@ def _register_upstream_handlers():
     def disconnect():
         _log_warn("Disconnected from booking upstream, will retry automatically")
 
+    # Optional explicit pong if server responds to custom ping
+    @_upstream_sio.on("pong")
+    def _on_pong(data=None):
+        _mark_pong()
+        _log_info("Received upstream pong")
+
+    # Booking payload handlers (namespace-aware)
     if BOOKING_NAMESPACE:
         @_upstream_sio.on("booking", namespace=BOOKING_NAMESPACE)
         def _on_booking_ns(data):
+            _handle_upstream_booking(data)
+
+        @_upstream_sio.on("booking_admin", namespace=BOOKING_NAMESPACE)
+        def _on_booking_admin_ns(data):
             _handle_upstream_booking(data)
     else:
         @_upstream_sio.on("booking")
         def _on_booking(data):
             _handle_upstream_booking(data)
 
-    if BOOKING_NAMESPACE:
-        @_upstream_sio.on("booking_admin", namespace=BOOKING_NAMESPACE)
-        def _on_booking_admin_ns(data):
-            _handle_upstream_booking(data)
-    else:
         @_upstream_sio.on("booking_admin")
         def _on_booking_admin(data):
             _handle_upstream_booking(data)
@@ -160,38 +176,46 @@ def _register_upstream_handlers():
 # Health check loop
 # -----------------------------------------------------------------------------
 def _health_check_loop():
-    global _last_admin_heartbeat
     while True:
         try:
             now = time.time()
             if not _upstream_sio.connected:
-                _log_warn("Health check: upstream not connected, reconnecting...")
+                _log_warn("Health: upstream not connected; attempting connect...")
                 try:
                     kwargs = {}
                     if BOOKING_AUTH_TOKEN:
                         kwargs["headers"] = {"Authorization": f"Bearer {BOOKING_AUTH_TOKEN}"}
                     _upstream_sio.connect(BOOKING_SOCKET_URL, **kwargs)
                 except Exception as e:
-                    _log_err("Health check reconnect failed: %s", e)
+                    _log_err("Health connect failed: %s", e)
             else:
-                # If no admin booking seen recently, re-join admin
+                # Re-join admin if quiet too long
                 if now - _last_admin_heartbeat > 60:
-                    _log_warn("No admin heartbeat detected, rejoining admin tap...")
+                    _log_warn("Health: quiet >60s; rejoining admin tap")
                     _join_upstream_admin()
 
+                # Active ping and wait window for pong (server should mirror with 'pong' or any message updates _last_pong)
                 try:
                     if BOOKING_NAMESPACE:
                         _upstream_sio.emit("ping", {"ts": now}, namespace=BOOKING_NAMESPACE)
                     else:
                         _upstream_sio.emit("ping", {"ts": now})
-                    _log_info("Health check: upstream alive")
+                    _log_info("Health: sent ping")
                 except Exception as e:
-                    _log_warn("Health check emit failed: %s", e)
+                    _log_warn("Health: ping emit failed: %s", e)
 
-            time.sleep(30)
+                # If pong is overdue, force a reconnect to clear half-open sockets
+                if now - _last_pong > max(_UPSTREAM_PING_TIMEOUT, 2 * _upstream_sio.reconnection_delay):
+                    _log_warn("Health: pong overdue; forcing reconnect")
+                    try:
+                        _upstream_sio.disconnect()
+                    except Exception:
+                        pass
+
+            time.sleep(15)  # frequent health checks
         except Exception as e:
-            _log_err("Health check loop crashed: %s", e)
-            time.sleep(30)
+            _log_err("Health loop crashed: %s", e)
+            time.sleep(15)
 
 # -----------------------------------------------------------------------------
 # Public: start upstream bridge
@@ -233,6 +257,14 @@ def register_dashboard_events():
     def _on_disconnect():
         _log_info("Dashboard client disconnected")
 
+    # Local health check for dashboard clients
+    @socketio.on("ping_health")
+    def _on_ping_health(data=None):
+        try:
+            emit("pong_health", {"ok": True, "ts": time.time()})
+        except Exception as e:
+            _log_err("pong_health failed: %s", e)
+
     @socketio.on("dashboard_join_vendor")
     def _on_dashboard_join_vendor(data: Dict[str, Any]):
         try:
@@ -253,6 +285,7 @@ def register_dashboard_events():
         except Exception as e:
             _log_err("dashboard_join_vendor error: %s", e)
 
+    # Demo endpoints (unchanged)
     @socketio.on('slot_booked_demo')
     def handle_slot_booked(data):
         try:
