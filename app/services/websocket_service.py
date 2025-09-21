@@ -24,25 +24,29 @@ socketio = SocketIO(
 BOOKING_SOCKET_URL = os.getenv("BOOKING_SOCKET_URL", "wss://hfg-booking-hmnx.onrender.com")
 BOOKING_NAMESPACE = os.getenv("BOOKING_BRIDGE_NAMESPACE")  # unset or "/" => default namespace
 BOOKING_AUTH_TOKEN = os.getenv("BOOKING_AUTH_TOKEN")       # optional bearer token
+DEBUG_UPSTREAM_SIO = os.getenv("DEBUG_UPSTREAM_SIO", "1") == "1"
 
 _upstream_sio = pwsio.Client(
     reconnection=True,
-    reconnection_attempts=0,      # infinite
+    reconnection_attempts=0,
     reconnection_delay=1.0,
     reconnection_delay_max=10.0,
-    logger=False,
-    engineio_logger=False,
+    logger=DEBUG_UPSTREAM_SIO,
+    engineio_logger=DEBUG_UPSTREAM_SIO,
 )
 
 _started_upstream = False
 _joined_vendor_ids: Set[int] = set()
 _lock = threading.Lock()
 
+_last_forced_reconnect = 0.0
+_RECONNECT_BACKOFF = 5.0   
+
 # Heartbeat tracking
 _last_admin_heartbeat = 0.0
 _last_pong = 0.0
-_UPSTREAM_PING_TIMEOUT = 10.0  # seconds to consider pong overdue
-_HEALTH_INTERVAL = 15          # seconds between health checks
+_UPSTREAM_PING_TIMEOUT = 20.0  # seconds to consider pong overdue
+_HEALTH_INTERVAL = 20          # seconds between health checks
 _REJOIN_QUIET_SECS = 60        # if no traffic for this long, re-join admin
 
 # -----------------------------------------------------------------------------
@@ -200,19 +204,26 @@ def _register_upstream_handlers():
         @_upstream_sio.on("pong_health")
         def _on_pong_health(_data=None):
             _mark_pong()
-            _log_info("Received upstream pong_health")
+            try:
+                nonce = _data.get("nonce") if isinstance(_data, dict) else None
+            except Exception:
+                nonce = None
+            _log_info("Received upstream pong_health (event) nonce=%s payload=%s", nonce, _data)
+
 
 # --- helper ack callback for health pings ----------------------------------
 def _on_ping_ack(data=None):
-    """
-    Called if the server responds by invoking the emit ack callback.
-    Accepts any payload the server returned; mark pong and log it.
-    """
     try:
         _mark_pong()
-        _log_info("Health: ping_health ack callback received: %s", data)
+        nonce = None
+        try:
+            nonce = data.get("nonce") if isinstance(data, dict) else None
+        except Exception:
+            nonce = None
+        _log_info("Health: ping_health ack callback received (nonce=%s) payload=%s", nonce, data)
     except Exception as e:
         _log_warn("Health: ping_health ack callback error: %s", e)
+
 
 
 # -----------------------------------------------------------------------------
@@ -257,11 +268,20 @@ def _health_check_loop():
 
                 # If pong is overdue, force a reconnect to clear half-open sockets
                 if now - _last_pong > max(_UPSTREAM_PING_TIMEOUT, 2 * _upstream_sio.reconnection_delay):
-                    _log_warn("Health: pong overdue; forcing reconnect")
-                    try:
-                        _upstream_sio.disconnect()
-                    except Exception:
-                        pass
+                    # rate-limit forced reconnects to avoid flapping
+                    global _last_forced_reconnect
+                    if now - _last_forced_reconnect < _RECONNECT_BACKOFF:
+                        _log_warn("Health: pong overdue but recently forced reconnect; skipping")
+                    else:
+                        _log_warn("Health: pong overdue; forcing reconnect")
+                        _last_forced_reconnect = now
+                        try:
+                            # disconnect then short sleep to let the socket fully close before reconnect attempts happen
+                            _upstream_sio.disconnect()
+                            time.sleep(1.0)
+                        except Exception:
+                            pass
+
 
             time.sleep(_HEALTH_INTERVAL)
         except Exception as e:
