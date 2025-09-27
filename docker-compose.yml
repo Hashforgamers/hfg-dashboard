@@ -21,4 +21,5 @@ services:
       - BOOKING_BRIDGE_NAMESPACE=<placeholder>
     volumes:
       - .:/app
-    command: ["python", "run.py"]
+    command: ["gunicorn", "-k", "eventlet", "-w", "1", "-b", "0.0.0.0:5054", "run:create_app()[0]"]
+
