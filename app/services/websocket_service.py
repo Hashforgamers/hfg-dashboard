@@ -40,7 +40,7 @@ _joined_vendor_ids: Set[int] = set()
 _lock = threading.Lock()
 
 _last_forced_reconnect = 0.0
-_RECONNECT_BACKOFF = 5.0   
+_RECONNECT_BACKOFF = 5.0
 
 # Heartbeat tracking
 _last_admin_heartbeat = 0.0
@@ -108,22 +108,21 @@ def _join_upstream_vendor(vendor_id: int):
         if ns:
             _upstream_sio.emit("connect_vendor", payload, namespace=ns)
         else:
-            _upstream_sio.emit("connect_vendor", payload)
+            _upstream_sio.emit("connect_vendor", payload, namespace="/")
         _log_info("Upstream join requested: vendor_%s", vendor_id)
     except Exception:
         _log_err("Failed upstream join for vendor_%s", vendor_id)
 
 def _join_upstream_admin():
-    """Join the admin tap that receives ALL bookings."""
+    """Join the admin tap that receives ALL bookings. Non-blocking emit."""
     try:
         ns = _ns()
         if ns:
             _upstream_sio.emit("connect_admin", {}, namespace=ns)
-            _upstream_sio.wait()
         else:
-            _upstream_sio.emit("connect_admin", {})
-            _upstream_sio.wait()
-        _log_info("Requested admin tap: dashboard_admin")
+            _upstream_sio.emit("connect_admin", {}, namespace="/")
+        # don't block / wait here — server should reply with booking_admin or pong_health
+        _log_info("Requested admin tap: dashboard_admin (non-blocking)")
     except Exception:
         _log_err("Failed to request admin tap (connect_admin)")
 
@@ -151,25 +150,32 @@ def _connect_upstream():
         headers["Authorization"] = f"Bearer {BOOKING_AUTH_TOKEN}"
     ns = _ns() or "/"
     _log_info("Connecting to upstream %s ns=%s", BOOKING_SOCKET_URL, ns)
-    _upstream_sio.connect(
-        BOOKING_SOCKET_URL,
-        headers=headers or None,
-        namespaces=[ns],   # request the correct namespace on handshake
-        wait=True,
-        wait_timeout=10,
-        transports=["websocket", "polling"],
-    )
-    _upstream_sio.wait()
+    try:
+        # Use wait=False to avoid blocking the health thread; reconnection is handled by the client
+        _upstream_sio.connect(
+            BOOKING_SOCKET_URL,
+            headers=headers or None,
+            namespaces=[ns],
+            wait=False,
+            transports=["websocket", "polling"],
+        )
+    except Exception as e:
+        _log_err("Upstream connect call failed: %s", e)
 
 # -----------------------------------------------------------------------------
 # Upstream event handlers
 # -----------------------------------------------------------------------------
 def _register_upstream_handlers():
+    # always register connect/disconnect
     @_upstream_sio.event
     def connect():
         _log_info("Connected to booking upstream: %s (namespace=%s)", BOOKING_SOCKET_URL, _ns() or "/")
         _mark_pong()
-        _join_upstream_admin()   # always rejoin admin after connect
+
+        # request admin tap immediately (non-blocking)
+        _join_upstream_admin()
+
+        # rejoin any vendor-specific subscriptions we were tracking
         with _lock:
             vendors = list(_joined_vendor_ids)
         for vid in vendors:
@@ -194,7 +200,7 @@ def _register_upstream_handlers():
         @_upstream_sio.on("pong_health", namespace=ns)
         def _on_pong_health_ns(_data=None):
             _mark_pong()
-            _log_info("Received upstream pong_health")
+            _log_info("Received upstream pong_health (ns=%s) payload=%s", ns, _data)
     else:
         @_upstream_sio.on("booking")
         def _on_booking(data):
@@ -207,12 +213,7 @@ def _register_upstream_handlers():
         @_upstream_sio.on("pong_health")
         def _on_pong_health(_data=None):
             _mark_pong()
-            try:
-                nonce = _data.get("nonce") if isinstance(_data, dict) else None
-            except Exception:
-                nonce = None
-            _log_info("Received upstream pong_health (event) nonce=%s payload=%s", nonce, _data)
-
+            _log_info("Received upstream pong_health (ns=/) payload=%s", _data)
 
 # --- helper ack callback for health pings ----------------------------------
 def _on_ping_ack(data=None):
@@ -227,29 +228,27 @@ def _on_ping_ack(data=None):
     except Exception as e:
         _log_warn("Health: ping_health ack callback error: %s", e)
 
-
-
 # -----------------------------------------------------------------------------
 # Health check loop (uses ping_health)
 # -----------------------------------------------------------------------------
 def _health_check_loop():
+    global _last_forced_reconnect
     while True:
         try:
             now = time.time()
-            if not _upstream_sio.connected:
+            if not getattr(_upstream_sio, "connected", False):
                 _log_warn("Health: upstream not connected; attempting connect...")
                 try:
                     _connect_upstream()
-                    _upstream_sio.wait()
                 except Exception as e:
                     _log_err("Health connect failed: %s", e)
             else:
-                # Re-join admin if quiet too long
+                # Re-join admin if quiet too long (admin heartbeat tracked via _last_admin_heartbeat)
                 if now - _last_admin_heartbeat > _REJOIN_QUIET_SECS:
                     _log_warn("Health: quiet >%ss; rejoining admin tap", _REJOIN_QUIET_SECS)
                     _join_upstream_admin()
 
-                # Active health ping -> expect "pong_health"
+                # Active health ping -> expect "pong_health" or ack via callback
                 try:
                     ns = _ns()
                     payload = {
@@ -258,36 +257,38 @@ def _health_check_loop():
                         "nonce": f"{int(now*1000)}"
                     }
 
+                    # emit non-blocking with ack callback (socketio client will call callback if server acks)
                     if ns:
                         _log_info("Health: ping_health payload=%s ns=%s", payload, ns)
-                        # send with ack callback — server may choose to ack rather than emit pong_health
                         _upstream_sio.emit("ping_health", payload, callback=_on_ping_ack, namespace=ns)
-                        _upstream_sio.wait()
-                        _log_info("Health: sent ping_health if-branch (ns=%s, nonce=%s)", ns, payload["nonce"])
+                        _log_info("Health: sent ping_health (ns=%s, nonce=%s)", ns, payload["nonce"])
                     else:
                         _log_info("Health: ping_health payload=%s ns=/", payload)
                         _upstream_sio.emit("ping_health", payload, callback=_on_ping_ack, namespace="/")
-                        _upstream_sio.wait()
-                        _log_info("Health: sent ping_health else-branch (ns=/, nonce=%s)", payload["nonce"])
+                        _log_info("Health: sent ping_health (ns=/, nonce=%s)", payload["nonce"])
                 except Exception as e:
                     _log_warn("Health: ping_health emit failed: %s", e)
 
                 # If pong is overdue, force a reconnect to clear half-open sockets
-                if now - _last_pong > max(_UPSTREAM_PING_TIMEOUT, 2 * _upstream_sio.reconnection_delay):
-                    # rate-limit forced reconnects to avoid flapping
-                    global _last_forced_reconnect
-                    if now - _last_forced_reconnect < _RECONNECT_BACKOFF:
-                        _log_warn("Health: pong overdue but recently forced reconnect; skipping")
-                    else:
-                        _log_warn("Health: pong overdue; forcing reconnect")
-                        _last_forced_reconnect = now
-                        try:
-                            # disconnect then short sleep to let the socket fully close before reconnect attempts happen
-                            _upstream_sio.disconnect()
-                            time.sleep(1.0)
-                        except Exception:
-                            pass
-
+                try:
+                    reconnect_delay = getattr(_upstream_sio, "reconnection_delay", 1.0)
+                    if now - _last_pong > max(_UPSTREAM_PING_TIMEOUT, 2 * reconnect_delay):
+                        # rate-limit forced reconnects to avoid flapping
+                        if now - _last_forced_reconnect < _RECONNECT_BACKOFF:
+                            _log_warn("Health: pong overdue but recently forced reconnect; skipping")
+                        else:
+                            _log_warn("Health: pong overdue; forcing reconnect")
+                            _last_forced_reconnect = now
+                            try:
+                                _upstream_sio.disconnect()
+                                # short sleep to allow socket to really close before reconnect attempts happen
+                                time.sleep(1.0)
+                                # connect non-blocking; reconnection loop will handle further attempts
+                                _connect_upstream()
+                            except Exception as e:
+                                _log_err("Health: forced reconnect failed: %s", e)
+                except Exception as e:
+                    _log_warn("Health: reconnect check failed: %s", e)
 
             time.sleep(_HEALTH_INTERVAL)
         except Exception as e:
@@ -309,9 +310,8 @@ def start_upstream_bridge(app):
     def _runner():
         try:
             _connect_upstream()
-            _upstream_sio.wait()
         except Exception as e:
-            _log_err("Upstream bridge connection error: %s", e)
+            _log_err("Upstream bridge initial connect error: %s", e)
 
     t = threading.Thread(target=_runner, name="booking-upstream-bridge", daemon=True)
     t.start()
@@ -354,7 +354,7 @@ def register_dashboard_events():
                 is_new = int(vendor_id) not in _joined_vendor_ids
                 if is_new:
                     _joined_vendor_ids.add(int(vendor_id))
-            if is_new and _upstream_sio.connected:
+            if is_new and getattr(_upstream_sio, "connected", False):
                 _join_upstream_vendor(int(vendor_id))
         except Exception as e:
             _log_err("dashboard_join_vendor error: %s", e)
