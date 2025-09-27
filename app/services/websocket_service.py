@@ -119,8 +119,10 @@ def _join_upstream_admin():
         ns = _ns()
         if ns:
             _upstream_sio.emit("connect_admin", {}, namespace=ns)
+            _upstream_sio.wait()
         else:
             _upstream_sio.emit("connect_admin", {})
+            _upstream_sio.wait()
         _log_info("Requested admin tap: dashboard_admin")
     except Exception:
         _log_err("Failed to request admin tap (connect_admin)")
@@ -157,6 +159,7 @@ def _connect_upstream():
         wait_timeout=10,
         transports=["websocket", "polling"],
     )
+    _upstream_sio.wait()
 
 # -----------------------------------------------------------------------------
 # Upstream event handlers
@@ -237,6 +240,7 @@ def _health_check_loop():
                 _log_warn("Health: upstream not connected; attempting connect...")
                 try:
                     _connect_upstream()
+                    _upstream_sio.wait()
                 except Exception as e:
                     _log_err("Health connect failed: %s", e)
             else:
@@ -258,10 +262,12 @@ def _health_check_loop():
                         _log_info("Health: ping_health payload=%s ns=%s", payload, ns)
                         # send with ack callback — server may choose to ack rather than emit pong_health
                         _upstream_sio.emit("ping_health", payload, callback=_on_ping_ack, namespace=ns)
+                        _upstream_sio.wait()
                         _log_info("Health: sent ping_health if-branch (ns=%s, nonce=%s)", ns, payload["nonce"])
                     else:
                         _log_info("Health: ping_health payload=%s ns=/", payload)
                         _upstream_sio.emit("ping_health", payload, callback=_on_ping_ack, namespace="/")
+                        _upstream_sio.wait()
                         _log_info("Health: sent ping_health else-branch (ns=/, nonce=%s)", payload["nonce"])
                 except Exception as e:
                     _log_warn("Health: ping_health emit failed: %s", e)
