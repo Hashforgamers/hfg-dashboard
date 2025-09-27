@@ -7,4 +7,4 @@ RUN pip install -r requirements.txt
 
 COPY . .
 
-CMD ["gunicorn", "-k", "eventlet", "-w", "1", "-b", "0.0.0.0:5054", "run:create_app()[0]"]
+CMD ["gunicorn", "-k", "gevent", "-w", "1", "-b", "0.0.0.0:5054", "run:app"]
