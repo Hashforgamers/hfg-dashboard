@@ -9,7 +9,7 @@ services:
       - FLASK_APP=run.py
       - FLASK_RUN_HOST=0.0.0.0
       - DEBUG_MODE=true
-      - BOOKING_WS_URL=ws://host.docker.internal:5054
+      - BOOKING_WS_URL=ws://host.docker.internal:5054      
       - WS_HOST=0.0.0.0
       - WS_PORT=6789
       - DATABASE_URI=postgresql://neondb_owner:Od9UnVJ2Wvfr@ep-square-star-a8fg370g-pooler.eastus2.azure.neon.tech/neondb?sslmode=require
