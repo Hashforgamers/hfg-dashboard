@@ -22,6 +22,8 @@ from app.models.bankTransferDetails import BankTransferDetails, PayoutTransactio
 # Add these imports with your existing model imports
 from app.models.paymentMethod import PaymentMethod
 from app.models.paymentVendorMap import PaymentVendorMap
+from app.models.bookingExtraService import BookingExtraService
+
 
 
 from .models.hardwareSpecification import HardwareSpecification
@@ -756,7 +758,22 @@ def get_landing_page_vendor(vendor_id):
         upcoming_bookings = []
         current_slots = []
         
+        # Fetch all booking_ids with extras in one go
+        booking_ids = [row.book_id for row in result]
+        if booking_ids:
+          meals_lookup = set(
+              r[0] for r in db.session.query(BookingExtraService.booking_id)
+              .filter(BookingExtraService.booking_id.in_(booking_ids))
+              .distinct()
+              .all()
+            )
+        else:
+            meals_lookup = set()
+
+        
         for row in result:
+            has_meals = row.book_id in meals_lookup
+
             booking_data = {
                 "slotId": row.slot_id,
                 "bookingId": row.book_id,
@@ -769,6 +786,8 @@ def get_landing_page_vendor(vendor_id):
                 "game_id":row.game_id,
                 "date":row.date,
                 "slot_price": row.single_slot_price,
+                "hasMeals": has_meals
+
             }
             
             slot_data = {
@@ -784,6 +803,8 @@ def get_landing_page_vendor(vendor_id):
                 "game_id":row.game_id,
                 "date":row.date,
                 "slot_price": row.single_slot_price,
+                "hasMeals": has_meals
+                
             }
             
             if row.book_status == "upcoming":
@@ -2516,3 +2537,61 @@ def get_payment_method_stats(vendor_id):
         current_app.logger.error(f"Error fetching payment method stats for vendor {vendor_id}: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+
+@dashboard_service.route('/booking/<int:booking_id>/details', methods=['GET'])
+def get_booking_details(booking_id):
+    """Get detailed booking information including extra services/meals"""
+    try:
+        # Get the booking
+        booking = Booking.query.filter_by(id=booking_id).first()
+        
+        if not booking:
+            return jsonify({"success": False, "error": "Booking not found"}), 404
+        
+        # Get user details
+        user = User.query.filter_by(id=booking.user_id).first()
+        
+        # Get extra services for this booking
+        extra_services = []
+        booking_extra_services = BookingExtraService.query.filter_by(booking_id=booking_id).all()
+        
+        for extra in booking_extra_services:
+            # Get menu item details
+            menu_item = ExtraServiceMenu.query.filter_by(id=extra.menu_item_id).first()
+            if menu_item:
+                # Get category details
+                category = ExtraServiceCategory.query.filter_by(id=menu_item.category_id).first()
+                
+                extra_detail = {
+                    "id": extra.id,
+                    "menu_item_id": extra.menu_item_id,
+                    "menu_item_name": menu_item.name,
+                    "category_name": category.name if category else "Unknown",
+                    "quantity": extra.quantity,
+                    "unit_price": float(extra.unit_price),
+                    "total_price": float(extra.total_price)
+                }
+                extra_services.append(extra_detail)
+        
+        # Prepare response
+        result = {
+            "booking": {
+                "id": booking.id,
+                "user_id": booking.user_id,
+                "username": user.name if user else "Unknown",
+                "game_id": booking.game_id,
+                "slot_id": booking.slot_id,
+                "status": booking.status,
+               
+                "extra_services": extra_services
+            }
+        }
+        
+        return jsonify({
+            "success": True,
+            **result
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f"Error fetching booking details for booking_id {booking_id}: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
