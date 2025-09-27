@@ -24,5 +24,5 @@ class Config:
     CLOUDINARY_API_SECRET = os.getenv('CLOUDINARY_API_SECRET')
 
     # Booking bridge
-    BOOKING_SOCKET_URL = os.getenv("BOOKING_SOCKET_URL", "wss://hfg-booking-hmnx.onrender.com")
+    BOOKING_SOCKET_URL = os.getenv("BOOKING_SOCKET_URL", "https://hfg-booking-hmnx.onrender.com")
     BOOKING_BRIDGE_NAMESPACE = os.getenv("BOOKING_BRIDGE_NAMESPACE") 

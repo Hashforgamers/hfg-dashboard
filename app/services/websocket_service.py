@@ -22,18 +22,22 @@ socketio = SocketIO(
 # -----------------------------------------------------------------------------
 # Upstream booking service client (single persistent connection)
 # -----------------------------------------------------------------------------
-BOOKING_SOCKET_URL = os.getenv("BOOKING_SOCKET_URL", "wss://hfg-booking-hmnx.onrender.com")
+BOOKING_SOCKET_URL = os.getenv("BOOKING_SOCKET_URL", "https://hfg-booking-hmnx.onrender.com")
 BOOKING_NAMESPACE = os.getenv("BOOKING_BRIDGE_NAMESPACE")  # keep unset for default "/"
 BOOKING_AUTH_TOKEN = os.getenv("BOOKING_AUTH_TOKEN")       # optional bearer token
 
+# In websocket_service.py - Enhanced client configuration
 _upstream_sio = pwsio.Client(
     reconnection=True,
-    reconnection_attempts=0,      # infinite
-    reconnection_delay=1.0,
-    reconnection_delay_max=10.0,
-    logger=False,
-    engineio_logger=False,
+    reconnection_attempts=0,          # infinite attempts
+    reconnection_delay=2.0,           # start with 2 seconds
+    reconnection_delay_max=30.0,      # max 30 seconds between attempts
+    #max_reconnection_attempts=0,      # infinite
+    randomization_factor=0.5,
+    logger=True,                      # enable for debugging
+    engineio_logger=True,
 )
+
 
 _started_upstream = False
 _joined_vendor_ids: Set[int] = set()
@@ -100,6 +104,38 @@ def _join_upstream_admin():
         _log_info("Requested admin tap: dashboard_admin")
     except Exception:
         _log_err("Failed to request admin tap (connect_admin)")
+        
+        
+        # Add this function after _join_upstream_admin()
+def _connect_with_retry():
+    """Connect with retry logic and proper error handling"""
+    max_initial_attempts = 5
+    attempt = 0
+    
+    while attempt < max_initial_attempts:
+        try:
+            kwargs = {
+                'transports': ['websocket', 'polling'],  # Allow fallback
+                'wait_timeout': 20,  # ✅ Correct parameter name (not 'timeout')
+            }
+            
+            if BOOKING_AUTH_TOKEN:
+                kwargs["headers"] = {"Authorization": f"Bearer {BOOKING_AUTH_TOKEN}"}
+                
+            _upstream_sio.connect(BOOKING_SOCKET_URL, **kwargs)
+            _log_info("Successfully connected to booking service")
+            return True
+            
+        except Exception as e:
+            attempt += 1
+            _log_err("Connection attempt %d failed: %s", attempt, e)
+            if attempt < max_initial_attempts:
+                time.sleep(2 ** attempt)  # exponential backoff
+    
+    return False
+
+
+
 
 def _handle_upstream_booking(data: Dict[str, Any]):
     global _last_admin_heartbeat
@@ -159,43 +195,49 @@ def _register_upstream_handlers():
 # -----------------------------------------------------------------------------
 # Health check loop
 # -----------------------------------------------------------------------------
-def _health_check_loop():
-    global _last_admin_heartbeat
-    while True:
-        try:
-            now = time.time()
-            if not _upstream_sio.connected:
-                _log_warn("Health check: upstream not connected, reconnecting...")
-                try:
-                    kwargs = {}
-                    if BOOKING_AUTH_TOKEN:
-                        kwargs["headers"] = {"Authorization": f"Bearer {BOOKING_AUTH_TOKEN}"}
-                    _upstream_sio.connect(BOOKING_SOCKET_URL, **kwargs)
-                except Exception as e:
-                    _log_err("Health check reconnect failed: %s", e)
-            else:
-                # If no admin booking seen recently, re-join admin
-                if now - _last_admin_heartbeat > 60:
-                    _log_warn("No admin heartbeat detected, rejoining admin tap...")
-                    _join_upstream_admin()
-
-                try:
-                    if BOOKING_NAMESPACE:
-                        _upstream_sio.emit("ping", {"ts": now}, namespace=BOOKING_NAMESPACE)
-                    else:
-                        _upstream_sio.emit("ping", {"ts": now})
-                    _log_info("Health check: upstream alive")
-                except Exception as e:
-                    _log_warn("Health check emit failed: %s", e)
-
-            time.sleep(30)
-        except Exception as e:
-            _log_err("Health check loop crashed: %s", e)
-            time.sleep(30)
 
 # -----------------------------------------------------------------------------
 # Public: start upstream bridge
 # -----------------------------------------------------------------------------
+#def start_upstream_bridge(app):
+ #   global _started_upstream
+  #  with _lock:
+   #     if _started_upstream:
+    #        return
+     #   _started_upstream = True
+
+    #_register_upstream_handlers()
+
+    #def _runner():
+     #   try:
+      #      kwargs = {}
+       #     if BOOKING_AUTH_TOKEN:
+        #        kwargs["headers"] = {"Authorization": f"Bearer {BOOKING_AUTH_TOKEN}"}
+         #   _upstream_sio.connect(BOOKING_SOCKET_URL, **kwargs)
+          #  _upstream_sio.wait()
+        #except Exception as e:
+         #   _log_err("Upstream bridge connection error: %s", e)
+         
+    #def _runner():
+     #   try:
+      #     kwargs = {}
+       #    if BOOKING_AUTH_TOKEN:
+        #       kwargs["headers"] = {"Authorization": f"Bearer {BOOKING_AUTH_TOKEN}"}
+        
+        # Remove any 'timeout' parameter - use 'wait_timeout' if needed
+         #      kwargs["wait_timeout"] = 20   # Optional: set connection timeout
+        
+          #     _upstream_sio.connect(BOOKING_SOCKET_URL, **kwargs)
+           #    _upstream_sio.wait()
+        #except Exception as e:
+         #     _log_err("Upstream bridge connection error: %s", e)
+
+    #t = threading.Thread(target=_runner, name="booking-upstream-bridge", daemon=True)
+    #t.start()
+
+    #hc = threading.Thread(target=_enhanced_health_check_loop, name="booking-upstream-health", daemon=True)
+    #hc.start()
+    
 def start_upstream_bridge(app):
     global _started_upstream
     with _lock:
@@ -207,19 +249,82 @@ def start_upstream_bridge(app):
 
     def _runner():
         try:
-            kwargs = {}
-            if BOOKING_AUTH_TOKEN:
-                kwargs["headers"] = {"Authorization": f"Bearer {BOOKING_AUTH_TOKEN}"}
-            _upstream_sio.connect(BOOKING_SOCKET_URL, **kwargs)
+            if not _connect_with_retry():
+                _log_err("Failed to establish initial connection after maximum attempts")
             _upstream_sio.wait()
         except Exception as e:
             _log_err("Upstream bridge connection error: %s", e)
 
+    def _health_check_wrapper():
+        """Wrapper to run health check with Flask app context"""
+        with app.app_context():
+            _enhanced_health_check_loop_with_context(app)
+
     t = threading.Thread(target=_runner, name="booking-upstream-bridge", daemon=True)
     t.start()
 
-    hc = threading.Thread(target=_health_check_loop, name="booking-upstream-health", daemon=True)
+    # Pass app to health check thread
+    hc = threading.Thread(target=_health_check_wrapper, name="booking-upstream-health", daemon=True)
     hc.start()
+
+def _enhanced_health_check_loop_with_context(app):
+    """Enhanced health check with proper rate limiting"""
+    backoff_delay = 30.0  # Start with 30 seconds (not 1 second)
+    max_backoff = 300.0   # Max 5 minutes between attempts
+    consecutive_failures = 0
+    
+    while True:
+        try:
+            now = time.time()
+            
+            if not _upstream_sio.connected:
+                # Don't retry too fast - this prevents 429 errors
+                if consecutive_failures > 0:
+                    time.sleep(backoff_delay)
+                
+                app.logger.warning(
+                    "Health check: upstream not connected (attempt %d), reconnecting...", 
+                    consecutive_failures + 1
+                )
+                
+                try:
+                    if hasattr(_upstream_sio, 'disconnect'):
+                        _upstream_sio.disconnect()
+                    
+                    kwargs = {}
+                    if BOOKING_AUTH_TOKEN:
+                        kwargs["headers"] = {"Authorization": f"Bearer {BOOKING_AUTH_TOKEN}"}
+                    
+                    _upstream_sio.connect(BOOKING_SOCKET_URL, **kwargs)
+                    
+                    # Reset backoff on success
+                    backoff_delay = 30.0
+                    consecutive_failures = 0
+                    app.logger.info("Health check: reconnection successful")
+                    
+                except Exception as e:
+                    consecutive_failures += 1
+                    backoff_delay = min(backoff_delay * 1.5, max_backoff)  # Gentler exponential backoff
+                    app.logger.error("Health check reconnect failed (attempt %d): %s", consecutive_failures, e)
+            
+            else:
+                # Connection is healthy
+                consecutive_failures = 0
+                backoff_delay = 30.0
+                
+                # Check admin heartbeat (increased timeout)
+                if now - _last_admin_heartbeat > 300:  # 5 minutes instead of 2
+                    app.logger.warning("No admin heartbeat for 5+ minutes, rejoining admin...")
+                    _join_upstream_admin()
+
+            # Much longer sleep to avoid rate limiting
+            time.sleep(60)  # Check every 60 seconds instead of 30
+            
+        except Exception as e:
+            app.logger.exception("Health check loop crashed: %s", e)
+            time.sleep(60)
+
+
 
 # -----------------------------------------------------------------------------
 # Dashboard (local) socket events
@@ -270,3 +375,4 @@ def register_dashboard_events():
             socketio.emit('booking_updated', data)
         except Exception as e:
             _log_err("booking_updated_demo error: %s", e)
+            

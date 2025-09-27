@@ -3,6 +3,8 @@ from app.extension.extensions import db
 from app.models.extraServiceCategory import ExtraServiceCategory
 from app.models.extraServiceMenu import ExtraServiceMenu
 from app.models.extraServiceMenuImage import ExtraServiceMenuImage
+from app.services.cloudinary_services import CloudinaryMenuImageService
+
 from flask import current_app
 from sqlalchemy.orm import joinedload
 
@@ -187,112 +189,7 @@ class ExtraServiceService:
             db.session.rollback()
             return {'error': str(e)}, 500
 
-    @staticmethod
-    def create_menu_item(vendor_id, category_id, data, image_file=None):
-        """Create menu item with optional image"""
-        try:
-            # Validate category belongs to vendor
-            category = db.session.query(ExtraServiceCategory).filter(
-                ExtraServiceCategory.id == category_id,
-                ExtraServiceCategory.vendor_id == vendor_id,
-                ExtraServiceCategory.is_active == True
-            ).first()
-
-            if not category:
-                return {'error': 'Category not found'}, 404
-
-            name = data.get('name', '').strip()
-            price = data.get('price')
-            description = data.get('description', '').strip()
-
-            if not name:
-                return {'error': 'Menu item name is required'}, 400
-
-            try:
-                price = float(price)
-                if price < 0:
-                    return {'error': 'Price must be non-negative'}, 400
-            except (TypeError, ValueError):
-                return {'error': 'Invalid price format'}, 400
-
-            # Check if menu item name already exists in this category
-            existing = db.session.query(ExtraServiceMenu).filter(
-                ExtraServiceMenu.category_id == category_id,
-                ExtraServiceMenu.name.ilike(name)
-            ).first()
-
-            if existing:
-                return {'error': 'Menu item name already exists in this category'}, 400
-
-            menu_item = ExtraServiceMenu(
-                category_id=category_id,
-                name=name,
-                price=price,
-                description=description,
-                is_active=True
-            )
-
-            db.session.add(menu_item)
-            db.session.flush()  # Get the ID
-
-            # Handle image upload if provided
-            image_data = None
-            if image_file:
-                # You'll need to implement image upload to Cloudinary here
-                # This is a placeholder for your existing image upload logic
-                pass
-
-            db.session.commit()
-
-            result = {
-                'id': menu_item.id,
-                'name': menu_item.name,
-                'price': menu_item.price,
-                'description': menu_item.description,
-                'category_id': menu_item.category_id
-            }
-
-            return {
-                'success': True,
-                'message': 'Menu item created successfully',
-                'menu_item': result
-            }, 201
-
-        except Exception as e:
-            db.session.rollback()
-            return {'error': str(e)}, 500
-
-    @staticmethod
-    def delete_category(vendor_id, category_id):
-        """Delete category (soft delete by setting is_active to False)"""
-        try:
-            category = db.session.query(ExtraServiceCategory).filter(
-                ExtraServiceCategory.id == category_id,
-                ExtraServiceCategory.vendor_id == vendor_id
-            ).first()
-
-            if not category:
-                return {'error': 'Category not found'}, 404
-
-            # Soft delete - set is_active to False
-            category.is_active = False
-            
-            # Also deactivate all menu items in this category
-            db.session.query(ExtraServiceMenu).filter(
-                ExtraServiceMenu.category_id == category_id
-            ).update({'is_active': False})
-
-            db.session.commit()
-
-            return {
-                'success': True,
-                'message': 'Category deleted successfully'
-            }, 200
-
-        except Exception as e:
-            db.session.rollback()
-            return {'error': str(e)}, 500
-
+    
     @staticmethod
     def delete_menu_item(vendor_id, category_id, menu_id):
         """Delete menu item (soft delete by setting is_active to False)"""
@@ -320,3 +217,115 @@ class ExtraServiceService:
         except Exception as e:
             db.session.rollback()
             return {'error': str(e)}, 500
+        
+
+    @staticmethod
+    def create_menu_item(vendor_id, category_id, data, image_file=None):
+        """Create menu item with optional image"""
+        try:
+        # Validate category belongs to vendor
+            category = db.session.query(ExtraServiceCategory).filter(
+                  ExtraServiceCategory.id == category_id,
+                  ExtraServiceCategory.vendor_id == vendor_id,
+                  ExtraServiceCategory.is_active == True
+            ).first()
+
+            if not category:
+               return {'error': 'Category not found'}, 404
+
+            name = data.get('name', '').strip()
+            price = data.get('price')
+            description = data.get('description', '').strip()
+
+            if not name:
+               return {'error': 'Menu item name is required'}, 400
+
+            try:
+                price = float(price)
+                if price < 0:
+                    return {'error': 'Price must be non-negative'}, 400
+            except (TypeError, ValueError):
+                 return {'error': 'Invalid price format'}, 400
+
+        # Check if menu item name already exists in this category
+            existing = db.session.query(ExtraServiceMenu).filter(
+                   ExtraServiceMenu.category_id == category_id,
+                   ExtraServiceMenu.name.ilike(name)
+            ).first()
+
+            if existing:
+                return {'error': 'Menu item name already exists in this category'}, 400
+
+            menu_item = ExtraServiceMenu(
+                 category_id=category_id,
+                 name=name,
+                 price=price,
+                 description=description,
+                 is_active=True
+            )
+
+            db.session.add(menu_item)
+            db.session.flush()  # Get the ID
+
+        # Handle image upload if provided
+            menu_images = []
+            if image_file and image_file.filename:
+                current_app.logger.info(f"Processing image upload for menu item: {name}")
+            
+            # Use the dedicated Cloudinary service
+                upload_result = CloudinaryMenuImageService.upload_menu_item_image(
+                    image_file=image_file,
+                    vendor_id=vendor_id,
+                    category_name=category.name,
+                    item_name=name
+                )
+            
+                if upload_result['success']:
+                   current_app.logger.info(f"Image uploaded successfully: {upload_result['url']}")
+                
+                # Create image record in database
+                   menu_image = ExtraServiceMenuImage(
+                       menu_id=menu_item.id,
+                       image_url=upload_result['url'],
+                       public_id=upload_result['public_id']
+                    )
+                
+                   db.session.add(menu_image)
+                   db.session.flush()  # Get the image ID
+                
+                # Add to response images array
+                   menu_images.append({
+                       'id': menu_image.id,
+                        'image_url': upload_result['url'],
+                        'public_id': upload_result['public_id']
+                    })
+                
+                else:
+                   current_app.logger.error(f"Failed to upload image: {upload_result['error']}")
+                # Continue without image if upload fails
+
+            db.session.commit()
+            current_app.logger.info(f"Menu item created successfully: {name} (ID: {menu_item.id})")
+        
+        # FIXED: Include all necessary fields including images
+            result = {
+               'id': menu_item.id,
+                 'name': menu_item.name,
+                 'price': float(menu_item.price),  # Ensure float for JSON consistency
+                 'description': menu_item.description,
+                 'category_id': menu_item.category_id,
+                  'is_active': menu_item.is_active,
+                  'images': menu_images  # CRITICAL: Include images array in response
+            }
+
+            return {
+               'success': True,
+                'message': 'Menu item created successfully',
+                'menu_item': result
+            }, 201
+
+        except Exception as e:
+          db.session.rollback()
+          current_app.logger.error(f"Error creating menu item for vendor {vendor_id}: {str(e)}")
+          return {'error': str(e)}, 500
+    
