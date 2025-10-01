@@ -1,7 +1,4 @@
 # app/__init__.py
-from gevent import monkey
-monkey.patch_all()
-
 import os
 import logging
 
