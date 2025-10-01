@@ -15,7 +15,7 @@ from app.services.payload_formatters import format_upcoming_booking_from_upstrea
 # -----------------------------------------------------------------------------
 socketio = SocketIO(
     cors_allowed_origins="*",
-    async_mode=None,  # gevent/eventlet auto if patched; falls back to threading
+    async_mode="eventlet",  # gevent/eventlet auto if patched; falls back to threading
 )
 
 # -----------------------------------------------------------------------------
