@@ -1,11 +1,10 @@
 from gevent import monkey
-monkey.patch_all()
+monkey.patch_all()  # MUST be first
 
 from app import create_app, socketio
 
-app = create_app()  # your Flask app with routes + WebSocket setup
+app = create_app()  # Flask app
 
-# For local dev/debug
-if __name__ == "__main__":
-    # This runs both HTTP endpoints and WebSocket server
-    socketio.run(app, host="0.0.0.0", port=5054, debug=True)
+# Expose a callable for Gunicorn
+# Gunicorn will use this 'socketio' object with eventlet
+application = socketio.WSGIApp(app)
