@@ -21,6 +21,7 @@ services:
       - BOOKING_BRIDGE_NAMESPACE=<placeholder>
     volumes:
       - .:/app
-    command: ["gunicorn", "-k", "gevent", "-w", "1", "-b", "0.0.0.0:5054", "run:app"]
+    command: ["gunicorn", "-k", "geventwebsocket.gunicorn.workers.GeventWebSocketWorker", "-w", "1", "-b", "0.0.0.0:5054", "run:app"]
+
 
 
