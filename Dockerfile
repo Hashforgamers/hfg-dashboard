@@ -8,5 +8,6 @@ RUN pip install -r requirements.txt
 COPY . .
 
 # Gunicorn must point to the socketio object
-CMD ["gunicorn", "-k", "eventlet", "-w", "1", "-b", "0.0.0.0:5054", "run:application"]
+CMD ["gunicorn", "-k", "eventlet", "-w", "1", "-b", "0.0.0.0:5054", "run:app"]
+
 
