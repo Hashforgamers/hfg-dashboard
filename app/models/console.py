@@ -2,7 +2,7 @@
 from sqlalchemy import Column, Integer, String, Date, ForeignKey
 from sqlalchemy.orm import relationship
 from app.extension.extensions import db
-from .available_game import available_game_console
+from app.models.available_game import available_game_console
 
 class Console(db.Model):
     __tablename__ = 'consoles'
