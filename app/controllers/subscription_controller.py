@@ -4,7 +4,7 @@ from app.services.subscription_service import (
     get_active_subscription, change_subscription, provision_default_subscription, get_vendor_pc_limit
 )
 
-bp_subs = Blueprint('subscriptions', __name__, url_prefix='/vendors/<int:vendor_id>/subscription')
+bp_subs = Blueprint('subscriptions', __name__, url_prefix='/api/vendors/<int:vendor_id>/subscription')
 
 @bp_subs.get('/')
 def get_subscription(vendor_id):

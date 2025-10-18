@@ -32,9 +32,9 @@ def create_app():
     Migrate(app, db)   
 
     app.register_blueprint(dashboard_service, url_prefix='/api')
-    app.register_blueprint(bp_packages, url_prefix='/api')
-    app.register_blueprint(bp_subs, url_prefix='/api')
-    app.register_blueprint(bp_vendor_pc, url_prefix='/api')            
+    app.register_blueprint(bp_packages)
+    app.register_blueprint(bp_subs)
+    app.register_blueprint(bp_vendor_pc)            
 
     socketio.init_app(app, cors_allowed_origins="*")
     register_dashboard_events()

@@ -4,7 +4,7 @@ from app.services.link_service import list_vendor_pcs, create_link, close_link, 
 from app.services.subscription_service import get_vendor_pc_limit
 from app.models.console_link_session import ConsoleLinkSession
 
-bp_vendor_pc = Blueprint('vendor_pc', __name__, url_prefix='/vendors/<int:vendor_id>/pcs')
+bp_vendor_pc = Blueprint('vendor_pc', __name__, url_prefix='/api/vendors/<int:vendor_id>/pcs')
 
 def _auth_vendor(vendor_id):
     # optional: check JWT claim vendor_id == path vendor_id

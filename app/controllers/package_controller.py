@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required
 from app.services.package_service import list_packages, create_package, update_package
 
-bp_packages = Blueprint('packages', __name__, url_prefix='/packages')
+bp_packages = Blueprint('packages', __name__, url_prefix='/api/packages')
 
 @bp_packages.get('/')
 def get_packages():
