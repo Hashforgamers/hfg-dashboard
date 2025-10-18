@@ -139,6 +139,8 @@ class Vendor(db.Model):
         cascade="all, delete-orphan"
     )
 
+    consoles = relationship('Console', back_populates='vendor', cascade="all, delete-orphan")
+    
     subscriptions = relationship('Subscription', back_populates='vendor', cascade="all, delete-orphan")
 
     # One-to-One relationship with VendorCredential
