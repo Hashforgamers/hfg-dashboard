@@ -24,7 +24,7 @@ class Console(db.Model):
     price_and_cost = relationship('PriceAndCost', back_populates='console', uselist=False, cascade="all, delete-orphan")
     additional_details = relationship('AdditionalDetails', back_populates='console', uselist=False, cascade="all, delete-orphan")
 
-    available_games = relationship('AvailableGame', secondary=available_game_console, back_populates='consoles')
+    available_games = relationship('AvailableGame', secondary='available_game_console', back_populates='consoles')
 
     def __repr__(self):
         return f"<Console vendor_id={self.vendor_id} number={self.console_number} type={self.console_type}>"
