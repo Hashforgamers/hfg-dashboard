@@ -16,3 +16,4 @@ cloudinary==1.36.0
 eventlet>=0.33
 gevent-websocket
 eventlet
+flask-jwt-extended
