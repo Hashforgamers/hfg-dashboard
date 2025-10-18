@@ -17,3 +17,4 @@ eventlet>=0.33
 gevent-websocket
 eventlet
 flask-jwt-extended
+python-dateutil
