@@ -24,8 +24,6 @@ from app.models.paymentMethod import PaymentMethod
 from app.models.paymentVendorMap import PaymentVendorMap
 from app.models.bookingExtraService import BookingExtraService
 
-
-
 from .models.hardwareSpecification import HardwareSpecification
 from .models.maintenanceStatus import MaintenanceStatus
 from .models.priceAndCost import PriceAndCost
@@ -44,9 +42,6 @@ from collections import Counter
 from datetime import datetime, timedelta, date
 from app.services.websocket_service import socketio
 
-WEEKDAY_ORDER = ["mon","tue","wed","thu","fri","sat","sun"]
-
-
 from app.models.vendor import Vendor  # adjust import as per your structure
 from app.models.uploadedImage import Image
 from app.models.documentSubmitted import DocumentSubmitted
@@ -58,7 +53,6 @@ from app.models.extraServiceCategory import ExtraServiceCategory
 from app.models.bookingExtraService import BookingExtraService
 from app.models.extraServiceMenu import ExtraServiceMenu
 from app.services.extra_service_service import ExtraServiceService
-
 
 WEEKDAY_ORDER = ["mon","tue","wed","thu","fri","sat","sun"]
 
@@ -860,7 +854,6 @@ def get_landing_page_vendor(vendor_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
 def to_24h(s: str) -> str:
     if not s:
         return ""
@@ -1513,7 +1506,6 @@ def update_extra_service_category(vendor_id, category_id):
         current_app.logger.error(f"Error updating category: {e}")
         return jsonify({"error": "Failed to update category"}), 500
 
-
 # Soft delete category (deactivate)
 @dashboard_service.route('/vendor/<int:vendor_id>/extras/category/<int:category_id>', methods=['DELETE'])
 def delete_extra_service_category(vendor_id, category_id):
@@ -1706,10 +1698,6 @@ def deactivate_cafe_pass(vendor_id, pass_id):
     except Exception as e:
         current_app.logger.error(f"Error deactivating pass {pass_id} for vendor {vendor_id}: {e}")
         return jsonify({"error": "Failed to deactivate pass"}), 500
-    
-    
-   
-
 
 # Add these routes to your dashboard_service blueprint
 
@@ -1990,7 +1978,6 @@ def delete_vendor_profile_image(vendor_id):
         
    # update business details
 
-
 @dashboard_service.route('/vendor/<int:vendor_id>/business-details', methods=['PATCH'])
 def update_business_details(vendor_id):
     """Update vendor business details including website, phone, email, and address"""
@@ -2093,7 +2080,6 @@ def update_business_details(vendor_id):
         current_app.logger.exception(f"Unexpected error updating business details: {e}")
         return jsonify({'success': False, 'message': 'Internal server error'}), 500
 
-
 # Get bank details for vendor
 @dashboard_service.route('/vendor/<int:vendor_id>/bank-details', methods=['GET'])
 def get_bank_details(vendor_id):
@@ -2142,7 +2128,6 @@ def get_bank_details(vendor_id):
             "success": False,
             "message": "Failed to fetch bank details"
         }), 500
-
 
 # Add or update bank details
 @dashboard_service.route('/vendor/<int:vendor_id>/bank-details', methods=['POST', 'PUT'])
@@ -2255,7 +2240,6 @@ def add_or_update_bank_details(vendor_id):
             "success": False,
             "message": "Failed to update payment details"
         }), 500
-
 
 # Get payout history
 @dashboard_service.route('/vendor/<int:vendor_id>/payouts', methods=['GET'])
@@ -2415,7 +2399,6 @@ def get_all_payment_methods_for_vendor(vendor_id):
         current_app.logger.error(f"Error fetching payment methods for vendor {vendor_id}: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-
 @dashboard_service.route('/vendor/<int:vendor_id>/paymentMethods/toggle', methods=['POST'])
 def toggle_payment_method_for_vendor(vendor_id):
     """Toggle payment method for vendor - registers/unregisters vendor in payment_vendor_map"""
@@ -2480,7 +2463,6 @@ def toggle_payment_method_for_vendor(vendor_id):
         current_app.logger.error(f"Error toggling payment method for vendor {vendor_id}: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-
 # Get payment methods statistics for vendor
 @dashboard_service.route('/vendor/<int:vendor_id>/payment-methods/stats', methods=['GET'])
 def get_payment_method_stats(vendor_id):
@@ -2536,7 +2518,6 @@ def get_payment_method_stats(vendor_id):
     except Exception as e:
         current_app.logger.error(f"Error fetching payment method stats for vendor {vendor_id}: {str(e)}")
         return jsonify({'error': str(e)}), 500
-
 
 @dashboard_service.route('/booking/<int:booking_id>/details', methods=['GET'])
 def get_booking_details(booking_id):
@@ -2595,3 +2576,74 @@ def get_booking_details(booking_id):
     except Exception as e:
         current_app.logger.error(f"Error fetching booking details for booking_id {booking_id}: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
+
+@dashboard_service.route('/vendor/<int:vendor_id>/getAllPc', methods=['GET'])
+def get_all_pc(vendor_id):
+    vendor = Vendor.query.filter_by(id=vendor_id).first_or_404()
+    # plan capacity
+    plan_limit = vendor.plan_pc_limit  # e.g., 3 for basic, 5 for pro, N for custom
+    # count active links
+    active_links = db.session.query(ConsoleLinkSession).filter_by(
+        vendor_id=vendor_id, status='active'
+    ).count()
+    remaining = max(0, plan_limit - active_links)
+
+    pcs = Console.query.filter_by(vendor_id=vendor_id, console_type='pc').all()
+
+    return jsonify({
+        "plan_limit": plan_limit,
+        "active_links": active_links,
+        "remaining_capacity": remaining,
+        "pcs": [
+            {
+                "id": c.id,
+                "number": c.console_number,
+                "brand": c.brand,
+                "model": c.model_number,
+                "linked": db.session.query(ConsoleLinkSession).filter_by(
+                    console_id=c.id, status='active'
+                ).count() > 0
+            } for c in pcs
+        ]
+    }), 200
+
+@dashboard_service.route('/vendor/<int:vendor_id>/link', methods=['POST'])
+def link_pc(vendor_id):
+    data = request.get_json()
+    console_id = data['console_id']
+
+    with db.session.begin_nested():  # allows SERIALIZABLE outside
+        # lock vendor row
+        vendor = db.session.query(Vendor).filter_by(id=vendor_id).with_for_update().first_or_404()
+        plan_limit = vendor.plan_pc_limit
+
+        # ensure console belongs to vendor and is a PC
+        console = db.session.query(Console).filter_by(
+            id=console_id, vendor_id=vendor_id, console_type='pc'
+        ).with_for_update().first_or_404()
+
+        # prevent duplicate active link for this console
+        existing = db.session.query(ConsoleLinkSession).filter_by(
+            console_id=console_id, status='active'
+        ).with_for_update().first()
+        if existing:
+            return jsonify({"error": "Console already linked"}), 409
+
+        # enforce plan limit
+        active_links = db.session.query(ConsoleLinkSession).filter_by(
+            vendor_id=vendor_id, status='active'
+        ).with_for_update().count()
+        if active_links >= plan_limit:
+            return jsonify({"error": "Plan limit reached"}), 402  # Payment Required or 409
+
+        # create session
+        token = secrets.token_urlsafe(24)
+        sess = ConsoleLinkSession(
+            vendor_id=vendor_id, console_id=console_id,
+            started_at=datetime.utcnow(), status='active',
+            session_token=token
+        )
+        db.session.add(sess)
+
+    db.session.commit()
+    return jsonify({"session_token": token, "ws_url": f"wss://.../ws?token={token}"}), 201

@@ -9,6 +9,9 @@ from flask_migrate import Migrate
 from app.config import Config
 from app.extension.extensions import db
 from .routes import dashboard_service
+from app.controllers.package_controller import bp_packages
+from app.controllers.subscription_controller import bp_subs
+from app.controllers.vendor_pc_controller import bp_vendor_pc
 
 from app.services.websocket_service import (
     socketio,
@@ -29,6 +32,9 @@ def create_app():
     Migrate(app, db)   
 
     app.register_blueprint(dashboard_service, url_prefix='/api')
+    app.register_blueprint(bp_packages, url_prefix='/api')
+    app.register_blueprint(bp_subs, url_prefix='/api')
+    app.register_blueprint(bp_vendor_pc, url_prefix='/api')            
 
     socketio.init_app(app, cors_allowed_origins="*")
     register_dashboard_events()

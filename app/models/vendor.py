@@ -16,6 +16,7 @@ from app.models.bankTransferDetails import BankTransferDetails, PayoutTransactio
 from sqlalchemy.sql import and_
 from app.models.vendorAccount import VendorAccount
 from app.models.website import Website
+from app.models.subscription import Subscription
 
 class Vendor(db.Model):
     __tablename__ = 'vendors'
@@ -138,7 +139,9 @@ class Vendor(db.Model):
         cascade="all, delete-orphan"
     )
 
-       # One-to-One relationship with VendorCredential
+    subscriptions = relationship('Subscription', back_populates='vendor', cascade="all, delete-orphan")
+
+    # One-to-One relationship with VendorCredential
     credential = None
 
 
