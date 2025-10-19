@@ -1,8 +1,8 @@
 import json
 import logging
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify
 from datetime import datetime
-from app.services.websocket_service import socketio # your initialized SocketIO
+from app.services.websocket_service import socketio  # your initialized SocketIO
 
 bp_internal_ws = Blueprint('internal_ws', __name__, url_prefix='/internal/ws')
 
@@ -46,10 +46,10 @@ def internal_send_unlock():
         # Log received unlock request
         logger.info(f"🔓 Unlock request received: {json.dumps(payload, indent=2)}")
 
-        # Emit over socket
-        socketio.emit('message', payload, room=f"console:{console_id}")
+        # Emit globally (no room)
+        socketio.emit('message', payload)
 
-        logger.debug(f"📤 Emitted unlock event to room console:{console_id}")
+        logger.debug(f"📤 Emitted global unlock event for console_id={console_id}, booking_id={booking_id}")
 
         return jsonify({"ok": True})
 
