@@ -12,6 +12,7 @@ from .routes import dashboard_service
 from app.controllers.package_controller import bp_packages
 from app.controllers.subscription_controller import bp_subs
 from app.controllers.vendor_pc_controller import bp_vendor_pc
+from app.controllers.internal_ws_controller import bp_internal_ws
 
 from app.services.websocket_service import (
     socketio,
@@ -34,7 +35,8 @@ def create_app():
     app.register_blueprint(dashboard_service, url_prefix='/api')
     app.register_blueprint(bp_packages)
     app.register_blueprint(bp_subs)
-    app.register_blueprint(bp_vendor_pc)            
+    app.register_blueprint(bp_vendor_pc)     
+    app.register_blueprint(bp_internal_ws)           
 
     socketio.init_app(app, cors_allowed_origins="*")
     register_dashboard_events()
