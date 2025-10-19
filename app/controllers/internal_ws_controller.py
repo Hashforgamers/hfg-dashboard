@@ -6,14 +6,14 @@ from app.models.user import User
 from app.models.availableGame import AvailableGame
 from app.models.vendor import Vendor
 from app.extension.extensions import db
+from app.services.websocket_service import _emit_to_kiosk
 
 bp_internal_ws = Blueprint('internal_ws', __name__, url_prefix='/internal/ws')
-
 
 @bp_internal_ws.post('/unlock')
 def internal_send_unlock():
     """
-    Internal endpoint to broadcast unlock events globally over WebSocket.
+    Internal endpoint to broadcast unlock events to a specific vendor room over WebSocket.
     """
     try:
         data = request.get_json(silent=True) or {}
@@ -27,7 +27,7 @@ def internal_send_unlock():
             return jsonify({"error": "Missing required fields"}), 400
 
         # Fetch booking details
-        booking = (
+        booking_record = (
             db.session.query(Booking)
             .filter(Booking.id == booking_id)
             .join(AvailableGame, Booking.game_id == AvailableGame.id)
@@ -39,10 +39,10 @@ def internal_send_unlock():
             .first()
         )
 
-        if not booking:
+        if not booking_record:
             return jsonify({"error": "Booking not found"}), 404
 
-        booking, game, user, vendor = booking  # unpack
+        booking, game, user, vendor = booking_record  # unpack
 
         # Construct payload
         payload = {
@@ -61,9 +61,9 @@ def internal_send_unlock():
             },
         }
 
-        # Emit globally (no room)
-        socketio.emit("message", payload)
+        _emit_to_kiosk(kiosk_id=console_id, event="unlock_request", data=payload)
 
+        current_app.logger.info("Unlock request sent to vendor room %s", room)
         return jsonify({"ok": True}), 200
 
     except Exception as e:

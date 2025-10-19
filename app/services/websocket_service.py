@@ -98,6 +98,15 @@ def _emit_downstream_to_vendor(vendor_id: Optional[int], event: str, data: Dict[
     except Exception:
         _log_err("Downstream emit failed event=%s vendor=%s", event, vendor_id)
 
+def _emit_to_kiosk(kiosk_id: int, event: str, data: Dict[str, Any]):
+    try:
+        room = f"kiosk_{kiosk_id}"
+        _log_info("Emitting %s to kiosk room %s", event, room)
+        socketio.emit(event, data, room=room)
+    except Exception as e:
+        _log_err("Kiosk emit failed: %s", e)
+
+
 # -----------------------------------------------------------------------------
 # Upstream helpers
 # -----------------------------------------------------------------------------
@@ -377,3 +386,14 @@ def register_dashboard_events():
             socketio.emit("booking_updated", data)
         except Exception as e:
             _log_err("booking_updated_demo error: %s", e)
+
+    @socketio.on("kiosk_join")
+    def _on_kiosk_join(data: Dict[str, Any]):
+        kiosk_id = data.get("kiosk_id")
+        if not kiosk_id:
+            _log_warn("kiosk_join missing kiosk_id")
+            return
+        room = f"kiosk_{kiosk_id}"
+        join_room(room)
+        _log_info("Kiosk client joined room %s", room)
+
