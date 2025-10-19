@@ -2,7 +2,7 @@ import json
 import logging
 from flask import Blueprint, request, jsonify, current_app
 from datetime import datetime
-from app.socket import socketio  # your initialized SocketIO
+from app.services.websocket_service import socketio # your initialized SocketIO
 
 bp_internal_ws = Blueprint('internal_ws', __name__, url_prefix='/internal/ws')
 
