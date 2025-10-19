@@ -63,7 +63,7 @@ def internal_send_unlock():
 
         _emit_to_kiosk(kiosk_id=console_id, event="unlock_request", data=payload)
 
-        current_app.logger.info("Unlock request sent to vendor room %s", room)
+        current_app.logger.info("Unlock request sent to kiosk room ")
         return jsonify({"ok": True}), 200
 
     except Exception as e:
