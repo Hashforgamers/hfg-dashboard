@@ -1,58 +1,72 @@
 import json
-import logging
-from flask import Blueprint, request, jsonify
-from datetime import datetime
-from app.services.websocket_service import socketio  # your initialized SocketIO
+from flask import Blueprint, request, jsonify, current_app
+from app.services.websocket_service import socketio
+from app.models.booking import Booking
+from app.models.user import User
+from app.models.availableGame import AvailableGame
+from app.models.vendor import Vendor
+from app.extension.extensions import db
 
 bp_internal_ws = Blueprint('internal_ws', __name__, url_prefix='/internal/ws')
-
-# Configure logger (only once)
-logger = logging.getLogger(__name__)
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter(
-        "%(asctime)s [%(levelname)s] - %(message)s", "%Y-%m-%d %H:%M:%S"
-    )
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-    logger.setLevel(logging.DEBUG)
 
 
 @bp_internal_ws.post('/unlock')
 def internal_send_unlock():
+    """
+    Internal endpoint to broadcast unlock events globally over WebSocket.
+    """
     try:
-        # Parse JSON safely
-        data = request.get_json(force=True)
-        console_id = data.get('console_id')
-        booking_id = data.get('booking_id')
-        start_time = data.get('start_time')
-        end_time = data.get('end_time')
+        data = request.get_json(silent=True) or {}
+        console_id = data.get("console_id")
+        booking_id = data.get("booking_id")
+        start_time = data.get("start_time")
+        end_time = data.get("end_time")
 
-        # Validate inputs
+        # Validate input
         if not all([console_id, booking_id, start_time, end_time]):
-            logger.warning(f"⚠️ Missing fields in request: {data}")
             return jsonify({"error": "Missing required fields"}), 400
 
+        # Fetch booking details
+        booking = (
+            db.session.query(Booking)
+            .filter(Booking.id == booking_id)
+            .join(AvailableGame, Booking.game_id == AvailableGame.id)
+            .join(User, Booking.user_id == User.id)
+            .join(Vendor, AvailableGame.vendor_id == Vendor.id)
+            .add_entity(AvailableGame)
+            .add_entity(User)
+            .add_entity(Vendor)
+            .first()
+        )
+
+        if not booking:
+            return jsonify({"error": "Booking not found"}), 404
+
+        booking, game, user, vendor = booking  # unpack
+
+        # Construct payload
         payload = {
             "type": "unlock_request",
             "console_id": console_id,
             "data": {
-                "booking_id": booking_id,
+                "booking_id": booking.id,
                 "start_time": start_time,
                 "end_time": end_time,
+                "user_id": user.id,
+                "user_name": user.name,
+                "vendor_id": vendor.id,
+                "vendor_name": vendor.cafe_name,
+                "game_id": booking.game_id,
+                "game_name": game.game_name
             },
         }
 
-        # Log received unlock request
-        logger.info(f"🔓 Unlock request received: {json.dumps(payload, indent=2)}")
-
         # Emit globally (no room)
-        socketio.emit('message', payload)
+        socketio.emit("message", payload)
 
-        logger.debug(f"📤 Emitted global unlock event for console_id={console_id}, booking_id={booking_id}")
-
-        return jsonify({"ok": True})
+        return jsonify({"ok": True}), 200
 
     except Exception as e:
-        logger.exception(f"❌ Internal WS Unlock failed: {e}")
+        current_app.logger.exception("Internal WS Unlock failed")
+        db.session.rollback()
         return jsonify({"error": str(e)}), 500
