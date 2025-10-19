@@ -5,7 +5,7 @@ from app.models.hardwareSpecification import HardwareSpecification
 from app.models.maintenanceStatus import MaintenanceStatus
 from app.models.priceAndCost import PriceAndCost
 from app.models.additionalDetails import AdditionalDetails
-from app.models.availableGame import AvailableGame, available_game_console  # ✅ Import association table
+from app.models.availableGame import AvailableGame  # ✅ Import association table
 from app.models.slot import Slot
 from sqlalchemy.sql import text
 from sqlalchemy.exc import ProgrammingError
