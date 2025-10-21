@@ -7,26 +7,38 @@ from app.models.availableGame import AvailableGame
 from app.models.vendor import Vendor
 from app.extension.extensions import db
 from app.services.websocket_service import _emit_to_kiosk
+from datetime import datetime, timezone as dt_timezone
+import pytz
 
 bp_internal_ws = Blueprint('internal_ws', __name__, url_prefix='/internal/ws')
+
+# Define IST
+IST = pytz.timezone("Asia/Kolkata")
+
+def ensure_ist(dt_obj):
+    """Ensure a datetime is timezone-aware in IST (idempotent)."""
+    if dt_obj is None:
+        return None
+    if dt_obj.tzinfo is None:
+        return IST.localize(dt_obj)
+    return dt_obj.astimezone(IST)
+
 
 @bp_internal_ws.post('/unlock')
 def internal_send_unlock():
     """
-    Internal endpoint to broadcast unlock events to a specific vendor room over WebSocket.
+    Internal endpoint to broadcast unlock events to a specific kiosk (console)
+    for the merged booking time window (e.g., 22:00 → 23:00 IST).
     """
     try:
         data = request.get_json(silent=True) or {}
         console_id = data.get("console_id")
         booking_id = data.get("booking_id")
-        start_time = data.get("start_time")
-        end_time = data.get("end_time")
 
-        # Validate input
-        if not all([console_id, booking_id, start_time, end_time]):
+        if not all([console_id, booking_id]):
             return jsonify({"error": "Missing required fields"}), 400
 
-        # Fetch booking details
+        # Fetch booking details and linked entities
         booking_record = (
             db.session.query(Booking)
             .filter(Booking.id == booking_id)
@@ -42,7 +54,15 @@ def internal_send_unlock():
         if not booking_record:
             return jsonify({"error": "Booking not found"}), 404
 
-        booking, game, user, vendor = booking_record  # unpack
+        booking, game, user, vendor = booking_record
+
+        # Handle time fields correctly
+        start_time = ensure_ist(booking.start_time)
+        end_time = ensure_ist(booking.end_time)
+
+        # Convert to plain ISO with IST offset (+05:30)
+        start_iso = start_time.isoformat()
+        end_iso = end_time.isoformat()
 
         # Construct payload
         payload = {
@@ -50,8 +70,8 @@ def internal_send_unlock():
             "console_id": console_id,
             "data": {
                 "booking_id": booking.id,
-                "start_time": start_time,
-                "end_time": end_time,
+                "start_time": start_iso,
+                "end_time": end_iso,
                 "user_id": user.id,
                 "user_name": user.name,
                 "vendor_id": vendor.id,
@@ -61,9 +81,10 @@ def internal_send_unlock():
             },
         }
 
+        # Emit to kiosk
         _emit_to_kiosk(kiosk_id=console_id, event="unlock_request", data=payload)
 
-        current_app.logger.info("Unlock request sent to kiosk room ")
+        current_app.logger.info(f"Unlock request sent to kiosk {console_id}: {start_iso} → {end_iso}")
         return jsonify({"ok": True}), 200
 
     except Exception as e:
