@@ -429,33 +429,70 @@ def register_dashboard_events():
         join_room(room)
         _log_info("Kiosk client joined room %s", room)
 
-    @socketio.on("next_slot_check")
-    def _on_next_slot_check(data: Dict[str, Any]):
-        try:
-            vendor_id = int(data["vendor_id"]); console_id = int(data["console_id"]); game_id = int(data["game_id"])
-            current_end = data.get("current_end_time")
-            if not current_end:
-                emit("next_slot_reply", {"type":"next_slot_reply","ok":False,"reason":"missing_end"}); return
 
-            end_dt = datetime.fromisoformat(current_end.replace("Z","+00:00"))
+    @socketio.on("next_slot_check")
+    def _on_next_slot_check(data: Any):
+        try:
+            # --- Handle both JSON string and dict ---
+            if isinstance(data, str):
+                try:
+                    data = json.loads(data)
+                except json.JSONDecodeError:
+                    emit("next_slot_reply", {"type": "next_slot_reply", "ok": False, "reason": "invalid_json"})
+                    return
+
+            if not isinstance(data, dict):
+                emit("next_slot_reply", {"type": "next_slot_reply", "ok": False, "reason": "invalid_format"})
+                return
+
+            # --- Extract and validate required fields ---
+            vendor_id = int(data.get("vendor_id", 0))
+            console_id = int(data.get("console_id", 0))
+            game_id = int(data.get("game_id", 0))
+            current_end = data.get("current_end_time")
+
+            if not all([vendor_id, console_id, game_id, current_end]):
+                emit("next_slot_reply", {"type": "next_slot_reply", "ok": False, "reason": "missing_fields"})
+                return
+
+            # --- Parse time (handle both UTC and IST formats) ---
+            try:
+                end_dt = datetime.fromisoformat(current_end.replace("Z", "+00:00"))
+            except Exception:
+                emit("next_slot_reply", {"type": "next_slot_reply", "ok": False, "reason": "invalid_time"})
+                return
+
             today = end_dt.date()
 
+            # --- Get next slot ---
             next_slot = _get_next_slot_for_today(game_id, end_dt)
             if not next_slot:
-                emit("next_slot_reply", {"type":"next_slot_reply","ok":False,"reason":"no_next_slot"}); return
+                emit("next_slot_reply", {"type": "next_slot_reply", "ok": False, "reason": "no_next_slot"})
+                return
 
+            # --- Check vendor slot availability ---
             is_avail, avail_count = _vendor_slot_availability(vendor_id, next_slot.id, today)
             if is_avail is None:
-                emit("next_slot_reply", {"type":"next_slot_reply","ok":False,"reason":"slot_row_missing"}); return
+                emit("next_slot_reply", {"type": "next_slot_reply", "ok": False, "reason": "slot_row_missing"})
+                return
 
-            # Look up price
-            price_row = db.session.execute(text("SELECT single_slot_price FROM available_games WHERE id=:gid"),
-                                        {"gid": game_id}).fetchone()
+            # --- Get price ---
+            price_row = db.session.execute(
+                text("SELECT single_slot_price FROM available_games WHERE id = :gid"),
+                {"gid": game_id}
+            ).fetchone()
             price = int(price_row.single_slot_price) if price_row and price_row.single_slot_price is not None else None
 
+            # --- Build candidate slot info ---
             candidate_start = end_dt
-            candidate_end = end_dt.replace(hour=next_slot.end_time.hour, minute=next_slot.end_time.minute, second=0, microsecond=0)
+            candidate_end = end_dt.replace(
+                hour=next_slot.end_time.hour,
+                minute=next_slot.end_time.minute,
+                second=0,
+                microsecond=0,
+            )
 
+            # --- Send response ---
             emit("next_slot_reply", {
                 "type": "next_slot_reply",
                 "ok": bool(is_avail and avail_count > 0),
@@ -473,9 +510,15 @@ def register_dashboard_events():
                     "price": price
                 }
             })
-        except Exception:
+
+        except Exception as e:
             current_app.logger.exception("next_slot_check error")
-            emit("next_slot_reply", {"type":"next_slot_reply","ok":False,"reason":"server_error"})
+            emit("next_slot_reply", {
+                "type": "next_slot_reply",
+                "ok": False,
+                "reason": "server_error",
+                "detail": str(e)
+            })
 
     @socketio.on("next_slot_book")
     def _on_next_slot_book(data: Dict[str, Any]):
