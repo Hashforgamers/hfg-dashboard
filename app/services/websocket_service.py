@@ -10,7 +10,7 @@ from flask_socketio import SocketIO, join_room, emit
 import socketio as pwsio   # python-socketio client (aliased)
 from app.services.payload_formatters import format_upcoming_booking_from_upstream
 from datetime import datetime, timedelta, timezone as dt_timezone
-from datetime import time
+from datetime import time as dt_time
 from sqlalchemy import text
 import uuid
 
