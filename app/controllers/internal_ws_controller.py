@@ -78,7 +78,7 @@ def internal_send_unlock():
         # Emit to kiosk
         _emit_to_kiosk(kiosk_id=console_id, event="unlock_request", data=payload)
 
-        current_app.logger.info(f"Unlock request sent to kiosk {console_id}: {start_iso} → {end_iso}")
+        current_app.logger.info(f"Unlock request sent to kiosk {console_id}: {start_time} → {end_time}")
         return jsonify({"ok": True}), 200
 
     except Exception as e:
