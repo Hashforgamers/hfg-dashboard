@@ -34,6 +34,8 @@ def internal_send_unlock():
         data = request.get_json(silent=True) or {}
         console_id = data.get("console_id")
         booking_id = data.get("booking_id")
+        start_time = data.get("start_time")
+        end_time = data.get("end_time")
 
         if not all([console_id, booking_id]):
             return jsonify({"error": "Missing required fields"}), 400
@@ -56,22 +58,14 @@ def internal_send_unlock():
 
         booking, game, user, vendor = booking_record
 
-        # Handle time fields correctly
-        start_time = ensure_ist(booking.start_time)
-        end_time = ensure_ist(booking.end_time)
-
-        # Convert to plain ISO with IST offset (+05:30)
-        start_iso = start_time.isoformat()
-        end_iso = end_time.isoformat()
-
         # Construct payload
         payload = {
             "type": "unlock_request",
             "console_id": console_id,
             "data": {
                 "booking_id": booking.id,
-                "start_time": start_iso,
-                "end_time": end_iso,
+                "start_time": start_time,
+                "end_time": end_time,
                 "user_id": user.id,
                 "user_name": user.name,
                 "vendor_id": vendor.id,
