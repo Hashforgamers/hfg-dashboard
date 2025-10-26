@@ -58,20 +58,27 @@ def internal_send_unlock():
 
         booking, game, user, vendor = booking_record
 
-        # Construct payload
+        # Convert start_time and end_time to IST (if provided)
+        def to_ist_iso(dt_str):
+            if not dt_str:
+                return None
+            dt = datetime.fromisoformat(dt_str)
+            dt_ist = ensure_ist(dt)
+            return dt_ist.isoformat()
+
         payload = {
             "type": "unlock_request",
             "console_id": console_id,
             "data": {
                 "booking_id": booking.id,
-                "start_time": start_time,
-                "end_time": end_time,
+                "start_time": to_ist_iso(start_time),
+                "end_time": to_ist_iso(end_time),
                 "user_id": user.id,
                 "user_name": user.name,
                 "vendor_id": vendor.id,
                 "vendor_name": vendor.cafe_name,
                 "game_id": booking.game_id,
-                "game_name": game.game_name
+                "game_name": game.game_name,
             },
         }
 
