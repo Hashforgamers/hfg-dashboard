@@ -9,6 +9,15 @@ from flask import current_app
 from flask_socketio import SocketIO, join_room, emit
 import socketio as pwsio   # python-socketio client (aliased)
 from app.services.payload_formatters import format_upcoming_booking_from_upstream
+from datetime import datetime, timedelta, timezone as dt_timezone
+from datetime import time
+from sqlalchemy import text
+import uuid
+
+from app.extension.extensions import db
+from app.models.slot import Slot
+from app.models.booking import Booking
+
 
 # -----------------------------------------------------------------------------
 # Dashboard Socket.IO server (clients connect here)
@@ -52,6 +61,29 @@ _REJOIN_QUIET_SECS = 60        # if no traffic for this long, re-join admin
 # -----------------------------------------------------------------------------
 # Helpers
 # -----------------------------------------------------------------------------
+def _vendor_slot_availability(vendor_id: int, slot_id: int, on_date: datetime.date):
+    table = f"VENDOR_{vendor_id}_SLOT"
+    row = db.session.execute(text(f"""
+        SELECT is_available, available_slot
+        FROM {table}
+        WHERE vendor_id = :vid AND date = :dt AND slot_id = :sid
+    """), {"vid": vendor_id, "dt": on_date, "sid": slot_id}).mappings().first()
+    if not row:
+        return None, None
+    return bool(row["is_available"]), int(row["available_slot"])
+
+
+def _get_next_slot_for_today(game_id: int, current_end_dt: datetime):
+    next_slot = (db.session.query(Slot)
+                 .filter(Slot.gaming_type_id == int(game_id),
+                         Slot.start_time == current_end_dt.time())
+                 .order_by(Slot.start_time.asc())
+                 .first())
+    return next_slot
+
+def _iso(dt):
+    return dt.astimezone(dt_timezone.utc).isoformat().replace("+00:00","Z")
+
 def _ns() -> Optional[str]:
     """Normalize namespace: return None for default, otherwise '/name'."""
     ns = (BOOKING_NAMESPACE or "").strip()
@@ -397,3 +429,149 @@ def register_dashboard_events():
         join_room(room)
         _log_info("Kiosk client joined room %s", room)
 
+    @socketio.on("next_slot_check")
+    def _on_next_slot_check(data: Dict[str, Any]):
+        try:
+            vendor_id = int(data["vendor_id"]); console_id = int(data["console_id"]); game_id = int(data["game_id"])
+            current_end = data.get("current_end_time")
+            if not current_end:
+                emit("next_slot_reply", {"type":"next_slot_reply","ok":False,"reason":"missing_end"}); return
+
+            end_dt = datetime.fromisoformat(current_end.replace("Z","+00:00"))
+            today = end_dt.date()
+
+            next_slot = _get_next_slot_for_today(game_id, end_dt)
+            if not next_slot:
+                emit("next_slot_reply", {"type":"next_slot_reply","ok":False,"reason":"no_next_slot"}); return
+
+            is_avail, avail_count = _vendor_slot_availability(vendor_id, next_slot.id, today)
+            if is_avail is None:
+                emit("next_slot_reply", {"type":"next_slot_reply","ok":False,"reason":"slot_row_missing"}); return
+
+            # Look up price
+            price_row = db.session.execute(text("SELECT single_slot_price FROM available_games WHERE id=:gid"),
+                                        {"gid": game_id}).fetchone()
+            price = int(price_row.single_slot_price) if price_row and price_row.single_slot_price is not None else None
+
+            candidate_start = end_dt
+            candidate_end = end_dt.replace(hour=next_slot.end_time.hour, minute=next_slot.end_time.minute, second=0, microsecond=0)
+
+            emit("next_slot_reply", {
+                "type": "next_slot_reply",
+                "ok": bool(is_avail and avail_count > 0),
+                "reason": None if (is_avail and avail_count > 0) else "unavailable",
+                "vendor_id": vendor_id,
+                "console_id": console_id,
+                "game_id": game_id,
+                "current_booking_id": int(data.get("current_booking_id")) if data.get("current_booking_id") else None,
+                "candidate": {
+                    "slot_id": next_slot.id,
+                    "start_time": _iso(candidate_start),
+                    "end_time": _iso(candidate_end),
+                    "available": bool(is_avail),
+                    "available_count": avail_count,
+                    "price": price
+                }
+            })
+        except Exception:
+            current_app.logger.exception("next_slot_check error")
+            emit("next_slot_reply", {"type":"next_slot_reply","ok":False,"reason":"server_error"})
+
+    @socketio.on("next_slot_book")
+    def _on_next_slot_book(data: Dict[str, Any]):
+        try:
+            vendor_id = int(data["vendor_id"]); console_id = int(data["console_id"])
+            game_id = int(data["game_id"]); curr_booking_id = int(data["current_booking_id"])
+            start_dt = datetime.fromisoformat(data["start_time"].replace("Z","+00:00"))
+            end_dt = datetime.fromisoformat(data["end_time"].replace("Z","+00:00"))
+            slot_id = int(data.get("slot_id")) if data.get("slot_id") else None
+
+            # Validate schedule and resolve slot_id if not provided
+            next_slot = _get_next_slot_for_today(game_id, start_dt)
+            if not next_slot or next_slot.end_time != end_dt.time():
+                emit("next_slot_error", {"type":"next_slot_error","reason":"invalid_candidate"}); return
+            if slot_id is None:
+                slot_id = next_slot.id
+
+            vendor_slot_table = f"VENDOR_{vendor_id}_SLOT"
+            today = start_dt.date()
+
+            # 1) Lock vendor slot row and ensure availability
+            row = db.session.execute(text(f"""
+                SELECT is_available, available_slot
+                FROM {vendor_slot_table}
+                WHERE vendor_id=:vid AND date=:dt AND slot_id=:sid
+                FOR UPDATE
+            """), {"vid": vendor_id, "dt": today, "sid": slot_id}).mappings().first()
+            if not row:
+                emit("next_slot_error", {"type":"next_slot_error","reason":"slot_row_missing"}); db.session.rollback(); return
+            if not row["is_available"] or int(row["available_slot"]) <= 0:
+                emit("next_slot_error", {"type":"next_slot_error","reason":"unavailable"}); db.session.rollback(); return
+
+            # 2) Decrement available_slot
+            db.session.execute(text(f"""
+                UPDATE {vendor_slot_table}
+                SET available_slot = available_slot - 1,
+                    is_available = CASE WHEN available_slot - 1 > 0 THEN TRUE ELSE FALSE END
+                WHERE vendor_id=:vid AND date=:dt AND slot_id=:sid
+            """), {"vid": vendor_id, "dt": today, "sid": slot_id})
+
+            # 3) Lock console row and ensure it can be occupied for next hour (optional)
+            console_table = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
+            row2 = db.session.execute(text(f"""
+                SELECT is_available FROM {console_table}
+                WHERE console_id=:cid AND game_id=:gid
+                FOR UPDATE
+            """), {"cid": console_id, "gid": game_id}).first()
+            # Not strictly needed if availability table reflects only current hour
+
+            # 4) Create provisional booking and dashboard record (pending payment)
+            session_id = f"sess-{curr_booking_id}"
+            seg = str(uuid.uuid4())
+            booking = Booking(user_id=None, vendor_id=vendor_id, game_id=game_id, slot_id=slot_id)
+            db.session.add(booking)
+            db.session.flush()
+            new_book_id = booking.id
+
+            booking_table = f"VENDOR_{vendor_id}_DASHBOARD"
+            db.session.execute(text(f"""
+                INSERT INTO {booking_table}
+                    (book_id, game_id, date, start_time, end_time, book_status, console_id, payment_status, session_id, segment_id)
+                VALUES
+                    (:bid, :gid, :dt, :st, :et, 'upcoming', NULL, 'pending', :sid, :seg)
+            """), {"bid": new_book_id, "gid": game_id, "dt": today, "st": start_dt, "et": end_dt, "sid": session_id, "seg": seg})
+
+            # 5) Occupy console and flip to current
+            db.session.execute(text(f"""
+                UPDATE {console_table} SET is_available = FALSE
+                WHERE console_id=:cid AND game_id=:gid
+            """), {"cid": console_id, "gid": game_id})
+
+            db.session.execute(text(f"""
+                UPDATE {booking_table}
+                SET book_status='current', console_id=:cid
+                WHERE book_id=:bid AND game_id=:gid AND start_time=:st AND end_time=:et
+            """), {"cid": console_id, "bid": new_book_id, "gid": game_id, "st": start_dt, "et": end_dt})
+
+            db.session.commit()
+
+            # 6) Notify kiosk and vendor
+            socketio.emit("message", {
+                "type":"extend_confirm","console_id": console_id,
+                "data":{"booking_id": new_book_id, "new_end_time": _iso(end_dt), "provisional": True}
+            }, room=f"console:{console_id}")
+
+            socketio.emit("extend_confirm", {
+                "vendorId": vendor_id, "console_id": console_id,
+                "booking_id": new_book_id, "new_end_time": _iso(end_dt), "provisional": True
+            }, room=f"vendor_{vendor_id}")
+
+            emit("next_slot_confirm", {
+                "type":"next_slot_confirm","booking_id": new_book_id,
+                "console_id": console_id,"new_end_time": _iso(end_dt),
+                "provisional": True, "slot_id": slot_id
+            })
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception("next_slot_book error")
+            emit("next_slot_error", {"type":"next_slot_error","reason":"server_error"})
