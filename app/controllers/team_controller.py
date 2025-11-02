@@ -1,7 +1,8 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt
 from sqlalchemy.exc import IntegrityError
-from app.extension.extensions import db, socketio
+from app.services.websocket_service import socketio
+from app.extension.extensions import db
 from app.models.event import Event
 from app.models.team import Team
 from app.models.teamMember import TeamMember

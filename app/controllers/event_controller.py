@@ -1,7 +1,8 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt
 from app.services.event_service import create_event, list_events, update_event
-from app.extension.extensions import socketio
+from app.services.websocket_service import socketio
+from app.extension.extensions import db
 
 bp_events = Blueprint('events', __name__, url_prefix='/api/vendor/events')
 
