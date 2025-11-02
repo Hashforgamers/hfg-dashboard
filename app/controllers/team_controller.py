@@ -4,7 +4,7 @@ from sqlalchemy.exc import IntegrityError
 from app.extension.extensions import db, socketio
 from app.models.event import Event
 from app.models.team import Team
-from app.models.team_member import TeamMember
+from app.models.teamMember import TeamMember
 
 bp_teams = Blueprint('teams', __name__, url_prefix='/api/vendor/events/<uuid:event_id>/teams')
 

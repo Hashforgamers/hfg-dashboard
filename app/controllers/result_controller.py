@@ -3,7 +3,7 @@ from flask_jwt_extended import jwt_required, get_jwt
 from sqlalchemy.exc import IntegrityError
 from app.extension.extensions import db, socketio
 from app.models.event import Event, EventStatus
-from app.models.provisional_result import ProvisionalResult
+from app.models.provisionalResult import ProvisionalResult
 from app.models.winner import Winner
 
 bp_results = Blueprint('results', __name__, url_prefix='/api/vendor/events/<uuid:event_id>/results')
