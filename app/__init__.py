@@ -13,6 +13,11 @@ from app.controllers.package_controller import bp_packages
 from app.controllers.subscription_controller import bp_subs
 from app.controllers.vendor_pc_controller import bp_vendor_pc
 from app.controllers.internal_ws_controller import bp_internal_ws
+from app.controllers.event_controller import bp_events
+from app.controllers.registration_controller import bp_regs
+from app.controllers.result_controller import bp_results
+from app.controllers.team_controller import bp_teams
+
 
 from app.services.websocket_service import (
     socketio,
