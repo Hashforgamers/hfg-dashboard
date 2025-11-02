@@ -31,6 +31,13 @@ def create_app():
 
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
     app.logger.setLevel(os.getenv("LOG_LEVEL", "INFO"))
+    
+    app.config.setdefault("JWT_SECRET_KEY", os.getenv("JWT_SECRET_KEY", "change-me"))
+    app.config.setdefault("JWT_TOKEN_LOCATION", ["headers"])   # or ["headers","cookies"]
+    app.config.setdefault("JWT_HEADER_NAME", "Authorization")
+    app.config.setdefault("JWT_HEADER_TYPE", "Bearer")
+    app.config.setdefault("JWT_ALGORITHM", "HS256")
+    app.config.setdefault("JWT_ACCESS_TOKEN_EXPIRES", timedelta(hours=8))
 
     CORS(app)
 
