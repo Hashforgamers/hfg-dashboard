@@ -22,7 +22,8 @@ def create_app():
     app.logger.setLevel(os.getenv("LOG_LEVEL", "INFO"))
 
     # JWT config BEFORE blueprints
-    app.config.setdefault("JWT_SECRET_KEY", os.getenv("JWT_SECRET_KEY", "change-me"))
+    ## app.config.setdefault("JWT_SECRET_KEY", os.getenv("JWT_SECRET_KEY", "Hash@2025"))
+    app.config.setdefault("JWT_SECRET_KEY", "Hash@2025")
     app.config.setdefault("JWT_TOKEN_LOCATION", ["headers"])
     app.config.setdefault("JWT_HEADER_NAME", "Authorization")
     app.config.setdefault("JWT_HEADER_TYPE", "Bearer")
