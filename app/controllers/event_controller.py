@@ -1,4 +1,6 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
+import time, datetime
+import jwt  # PyJWT
 from flask_jwt_extended import jwt_required, get_jwt
 from app.services.event_service import create_event, list_events, update_event
 from app.services.websocket_service import socketio
@@ -9,6 +11,63 @@ bp_events = Blueprint('events', __name__, url_prefix='/api/vendor/events')
 def _vendor_id():
     sub = get_jwt().get("sub") or {}
     return int(sub.get("id"))
+
+@bp_events.post('/getJwt')
+def get_jwt():
+    """
+    Issue a short-lived JWT for vendor or service-to-service calls.
+    Body (JSON):
+    {
+      "vendor_id": 14,                 # required
+      "type": "vendor",                # optional, default "vendor"
+      "ttl_minutes": 480,              # optional, default 480 (8h)
+      "extra": { "email": "owner@x" }  # optional, arbitrary claims to merge
+    }
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        vendor_id = data.get("vendor_id")
+        sub_type = (data.get("type") or "vendor").strip()
+        ttl_minutes = int(data.get("ttl_minutes") or 480)
+        extra = data.get("extra") or {}
+
+        if not vendor_id:
+            return jsonify({"error": "vendor_id is required"}), 400
+        if ttl_minutes <= 0 or ttl_minutes > 24*60:
+            return jsonify({"error": "ttl_minutes must be in 1..1440"}), 400
+
+        secret = current_app.config.get("JWT_SECRET_KEY")
+        alg = current_app.config.get("JWT_ALGORITHM", "HS256")
+        if not secret:
+            return jsonify({"error": "Server JWT not configured"}), 500
+
+        now = int(time.time())
+        exp = now + ttl_minutes * 60
+
+        # Minimal, vendor-scoped subject; align with your protectors expecting sub.id
+        payload = {
+            "sub": {"id": int(vendor_id), "type": sub_type},
+            "iat": now,
+            "exp": exp,
+        }
+
+        # Merge extra claims (avoid overwriting reserved)
+        for k, v in extra.items():
+            if k not in {"sub", "iat", "exp"}:
+                payload[k] = v
+
+        token = jwt.encode(payload, secret, algorithm=alg)
+        return jsonify({
+            "token": token,
+            "token_type": "Bearer",
+            "expires_in": ttl_minutes * 60,
+            "vendor_id": int(vendor_id)
+        }), 201
+
+    except Exception as e:
+        current_app.logger.exception("getJwt error")
+        return jsonify({"error": "failed_to_issue_token", "detail": str(e)}), 500
+
 
 @bp_events.post('/')
 @jwt_required()
