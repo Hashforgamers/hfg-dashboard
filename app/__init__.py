@@ -41,7 +41,11 @@ def create_app():
     app.register_blueprint(bp_packages)
     app.register_blueprint(bp_subs)
     app.register_blueprint(bp_vendor_pc)     
-    app.register_blueprint(bp_internal_ws)           
+    app.register_blueprint(bp_internal_ws)     
+    app.register_blueprint(bp_events)  
+    app.register_blueprint(bp_regs)  
+    app.register_blueprint(bp_results)  
+    app.register_blueprint(bp_teams)  
 
     socketio.init_app(app, cors_allowed_origins="*")
     register_dashboard_events()
