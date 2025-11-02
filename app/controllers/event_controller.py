@@ -9,8 +9,8 @@ from app.extension.extensions import db
 bp_events = Blueprint('events', __name__, url_prefix='/api/vendor/events')
 
 def _vendor_id():
-    sub = get_jwt().get("sub") or {}
-    return int(sub.get("id"))
+    vendor = get_jwt().get("vendor") or {}
+    return int(vendor.get("id"))
 
 @bp_events.post('/getJwt')
 def get_jwt():
@@ -27,7 +27,6 @@ def get_jwt():
     try:
         data = request.get_json(silent=True) or {}
         vendor_id = data.get("vendor_id")
-        sub_type = (data.get("type") or "vendor").strip()
         ttl_minutes = int(data.get("ttl_minutes") or 480)
         extra = data.get("extra") or {}
 
@@ -46,7 +45,8 @@ def get_jwt():
 
         # Minimal, vendor-scoped subject; align with your protectors expecting sub.id
         payload = {
-            "sub": {"id": int(vendor_id), "type": sub_type},
+            "sub": str(vendor_id),                     # must be a string!
+            "vendor": {"id": int(vendor_id)},          # put your dict here instead
             "iat": now,
             "exp": exp,
         }
