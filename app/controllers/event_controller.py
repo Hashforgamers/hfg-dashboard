@@ -13,15 +13,15 @@ def _vendor_id():
     return int(vendor.get("id"))
 
 @bp_events.post('/getJwt')
-def get_jwt():
+def issue_jwt():   # ✅ renamed function to avoid shadowing
     """
     Issue a short-lived JWT for vendor or service-to-service calls.
     Body (JSON):
     {
-      "vendor_id": 14,                 # required
-      "type": "vendor",                # optional, default "vendor"
-      "ttl_minutes": 480,              # optional, default 480 (8h)
-      "extra": { "email": "owner@x" }  # optional, arbitrary claims to merge
+      "vendor_id": 14,
+      "type": "vendor",
+      "ttl_minutes": 480,
+      "extra": { "email": "owner@x" }
     }
     """
     try:
@@ -43,15 +43,13 @@ def get_jwt():
         now = int(time.time())
         exp = now + ttl_minutes * 60
 
-        # Minimal, vendor-scoped subject; align with your protectors expecting sub.id
         payload = {
-            "sub": str(vendor_id),                     # must be a string!
-            "vendor": {"id": int(vendor_id)},          # put your dict here instead
+            "sub": str(vendor_id),
+            "vendor": {"id": int(vendor_id)},
             "iat": now,
             "exp": exp,
         }
 
-        # Merge extra claims (avoid overwriting reserved)
         for k, v in extra.items():
             if k not in {"sub", "iat", "exp"}:
                 payload[k] = v
@@ -65,7 +63,7 @@ def get_jwt():
         }), 201
 
     except Exception as e:
-        current_app.logger.exception("getJwt error")
+        current_app.logger.exception("issue_jwt error")
         return jsonify({"error": "failed_to_issue_token", "detail": str(e)}), 500
 
 
