@@ -8,9 +8,9 @@ from app.services.console_service import ConsoleService
 from .models.console import Console
 from .models.availableGame import AvailableGame, available_game_console
 from .models.booking import Booking
-from .models.cafePass import CafePass
-from .models.passType import PassType
-from .models.userPass import UserPass
+from .models.passModels import CafePass
+from .models.passModels import PassType
+from .models.passModels import UserPass
 from .models.physicalAddress import PhysicalAddress
 from .models.contactInfo import ContactInfo
 from .models.vendorDaySlotConfig import VendorDaySlotConfig
@@ -1607,7 +1607,7 @@ def delete_extra_service_menu(vendor_id, category_id, menu_id):
         return jsonify({"error": "Failed to delete menu item"}), 500
 
 # List all passes for this cafe
-@dashboard_service.route("/vendor/<int:vendor_id>/passes", methods=["GET"])
+"""@dashboard_service.route("/vendor/<int:vendor_id>/passes", methods=["GET"])
 def list_cafe_passes(vendor_id):
     passes = CafePass.query.filter_by(vendor_id=vendor_id, is_active=True).all()
     return jsonify([
@@ -1619,10 +1619,10 @@ def list_cafe_passes(vendor_id):
             "description": p.description,
             "pass_type": p.pass_type.name
         } for p in passes
-    ])
+    ])"""
 
 # Add a new cafe pass
-@dashboard_service.route("/vendor/<int:vendor_id>/passes", methods=["POST"])
+"""@dashboard_service.route("/vendor/<int:vendor_id>/passes", methods=["POST"])
 def create_cafe_pass(vendor_id):
     data = request.json
     name = data["name"]
@@ -1641,7 +1641,7 @@ def create_cafe_pass(vendor_id):
     )
     db.session.add(cafe_pass)
     db.session.commit()
-    return jsonify({"message": "Pass created"}), 200
+    return jsonify({"message": "Pass created"}), 200"""
 
 # Edit, delete, deactivate similar to your current pattern
 @dashboard_service.route('/pass_types', methods=['GET'])
@@ -1696,7 +1696,7 @@ def add_pass_type():
         db.session.rollback()
         return jsonify({'error': 'An error occurred', 'details': str(e)}), 500
 
-@dashboard_service.route("/vendor/<int:vendor_id>/passes/<int:pass_id>", methods=["DELETE"])
+"""@dashboard_service.route("/vendor/<int:vendor_id>/passes/<int:pass_id>", methods=["DELETE"])
 def deactivate_cafe_pass(vendor_id, pass_id):
     try:
         cafe_pass = CafePass.query.filter_by(id=pass_id, vendor_id=vendor_id, is_active=True).first_or_404()
@@ -1705,7 +1705,7 @@ def deactivate_cafe_pass(vendor_id, pass_id):
         return jsonify({"message": "Pass deactivated successfully"}), 200
     except Exception as e:
         current_app.logger.error(f"Error deactivating pass {pass_id} for vendor {vendor_id}: {e}")
-        return jsonify({"error": "Failed to deactivate pass"}), 500
+        return jsonify({"error": "Failed to deactivate pass"}), 500"""
     
     
    
@@ -2595,3 +2595,167 @@ def get_booking_details(booking_id):
     except Exception as e:
         current_app.logger.error(f"Error fetching booking details for booking_id {booking_id}: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+# app/routes.py - Pass Management Routes
+
+@dashboard_service.route('/vendor/<int:vendor_id>/passes', methods=['GET'])
+def get_vendor_passes(vendor_id):
+    """Get all passes for a vendor (both date-based and hour-based)"""
+    try:
+        from app.models.passModels import CafePass
+        
+        passes = CafePass.query.filter_by(vendor_id=vendor_id, is_active=True).all()
+        
+        return jsonify({
+            'passes': [p.to_dict() for p in passes]
+        }), 200
+    except Exception as e:
+        current_app.logger.error(f"Error fetching passes for vendor {vendor_id}: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+@dashboard_service.route('/vendor/<int:vendor_id>/passes', methods=['POST'])  # ✅ FIXED: Removed /create
+def create_vendor_pass(vendor_id):
+    """Create new pass (date-based or hour-based)"""
+    try:
+        from app.models.passModels import CafePass, PassType
+        
+        data = request.get_json()
+        
+        # Validate required fields for BOTH types
+        required = ['name', 'price', 'pass_mode', 'days_valid']  # ✅ days_valid required for both
+        if not all(k in data for k in required):
+            return jsonify({'error': 'Missing required fields: name, price, pass_mode, days_valid'}), 400
+        
+        pass_mode = data['pass_mode']
+        if pass_mode not in ['date_based', 'hour_based']:
+            return jsonify({'error': 'Invalid pass_mode. Must be date_based or hour_based'}), 400
+        
+        # Validate hour-based specific fields
+        if pass_mode == 'hour_based':
+            required_hour = ['total_hours', 'hour_calculation_mode']
+            if not all(k in data for k in required_hour):
+                return jsonify({'error': 'total_hours and hour_calculation_mode required for hour_based pass'}), 400
+            
+            # Validate calculation mode
+            if data['hour_calculation_mode'] not in ['actual_duration', 'vendor_config']:
+                return jsonify({'error': 'hour_calculation_mode must be actual_duration or vendor_config'}), 400
+            
+            if data['hour_calculation_mode'] == 'vendor_config' and 'hours_per_slot' not in data:
+                return jsonify({'error': 'hours_per_slot required when hour_calculation_mode is vendor_config'}), 400
+        
+        # Create pass
+        new_pass = CafePass(
+            vendor_id=vendor_id,
+            pass_type_id=data.get('pass_type_id'),
+            name=data['name'],
+            price=float(data['price']),
+            description=data.get('description'),
+            pass_mode=pass_mode,
+            days_valid=int(data['days_valid']),  # ✅ Always required
+            total_hours=float(data['total_hours']) if data.get('total_hours') else None,
+            hour_calculation_mode=data.get('hour_calculation_mode'),
+            hours_per_slot=float(data['hours_per_slot']) if data.get('hours_per_slot') else None,
+            is_active=True
+        )
+        
+        db.session.add(new_pass)
+        db.session.commit()
+        
+        current_app.logger.info(f"Pass created: {new_pass.name} (ID: {new_pass.id}) for vendor {vendor_id}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Pass created successfully',
+            'pass': new_pass.to_dict()
+        }), 201
+        
+    except ValueError as ve:
+        return jsonify({'error': f'Invalid data format: {str(ve)}'}), 400
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error creating pass for vendor {vendor_id}: {str(e)}")
+        return jsonify({'error': f'Failed to create pass: {str(e)}'}), 500
+
+
+@dashboard_service.route('/vendor/<int:vendor_id>/passes/<int:pass_id>', methods=['PUT'])
+def update_vendor_pass(vendor_id, pass_id):
+    """Update existing pass"""
+    try:
+        from app.models.passModels import CafePass
+        
+        cafe_pass = CafePass.query.filter_by(id=pass_id, vendor_id=vendor_id).first()
+        if not cafe_pass:
+            return jsonify({'error': 'Pass not found'}), 404
+        
+        data = request.get_json()
+        
+        # Update common fields
+        if 'name' in data:
+            cafe_pass.name = data['name']
+        if 'price' in data:
+            cafe_pass.price = float(data['price'])
+        if 'description' in data:
+            cafe_pass.description = data['description']
+        if 'is_active' in data:
+            cafe_pass.is_active = bool(data['is_active'])
+        if 'days_valid' in data:  # ✅ Can update for both types
+            cafe_pass.days_valid = int(data['days_valid'])
+        if 'pass_type_id' in data:
+            cafe_pass.pass_type_id = data['pass_type_id']
+        
+        # Mode-specific updates
+        if cafe_pass.pass_mode == 'hour_based':
+            if 'total_hours' in data:
+                cafe_pass.total_hours = float(data['total_hours'])
+            if 'hour_calculation_mode' in data:
+                if data['hour_calculation_mode'] not in ['actual_duration', 'vendor_config']:
+                    return jsonify({'error': 'Invalid hour_calculation_mode'}), 400
+                cafe_pass.hour_calculation_mode = data['hour_calculation_mode']
+            if 'hours_per_slot' in data:
+                cafe_pass.hours_per_slot = float(data['hours_per_slot']) if data['hours_per_slot'] else None
+        
+        db.session.commit()
+        
+        current_app.logger.info(f"Pass updated: {cafe_pass.name} (ID: {pass_id})")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Pass updated successfully',
+            'pass': cafe_pass.to_dict()
+        }), 200
+        
+    except ValueError as ve:
+        return jsonify({'error': f'Invalid data format: {str(ve)}'}), 400
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error updating pass {pass_id}: {str(e)}")
+        return jsonify({'error': f'Failed to update pass: {str(e)}'}), 500
+
+
+@dashboard_service.route('/vendor/<int:vendor_id>/passes/<int:pass_id>', methods=['DELETE'])
+def delete_vendor_pass(vendor_id, pass_id):
+    """Deactivate a pass (soft delete)"""
+    try:
+        from app.models.passModels import CafePass
+        
+        cafe_pass = CafePass.query.filter_by(id=pass_id, vendor_id=vendor_id).first()
+        if not cafe_pass:
+            return jsonify({'error': 'Pass not found'}), 404
+        
+        cafe_pass.is_active = False
+        db.session.commit()
+        
+        current_app.logger.info(f"Pass deactivated: {cafe_pass.name} (ID: {pass_id})")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Pass deactivated successfully'
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error deactivating pass {pass_id}: {str(e)}")
+        return jsonify({'error': f'Failed to deactivate pass: {str(e)}'}), 500
+
