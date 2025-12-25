@@ -24,8 +24,6 @@ from app.models.paymentMethod import PaymentMethod
 from app.models.paymentVendorMap import PaymentVendorMap
 from app.models.bookingExtraService import BookingExtraService
 
-
-
 from .models.hardwareSpecification import HardwareSpecification
 from .models.maintenanceStatus import MaintenanceStatus
 from .models.priceAndCost import PriceAndCost
@@ -44,9 +42,6 @@ from collections import Counter
 from datetime import datetime, timedelta, date
 from app.services.websocket_service import socketio
 
-WEEKDAY_ORDER = ["mon","tue","wed","thu","fri","sat","sun"]
-
-
 from app.models.vendor import Vendor  # adjust import as per your structure
 from app.models.uploadedImage import Image
 from app.models.documentSubmitted import DocumentSubmitted
@@ -58,7 +53,6 @@ from app.models.extraServiceCategory import ExtraServiceCategory
 from app.models.bookingExtraService import BookingExtraService
 from app.models.extraServiceMenu import ExtraServiceMenu
 from app.services.extra_service_service import ExtraServiceService
-
 
 WEEKDAY_ORDER = ["mon","tue","wed","thu","fri","sat","sun"]
 
@@ -860,7 +854,6 @@ def get_landing_page_vendor(vendor_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
 def to_24h(s: str) -> str:
     if not s:
         return ""
@@ -1513,7 +1506,6 @@ def update_extra_service_category(vendor_id, category_id):
         current_app.logger.error(f"Error updating category: {e}")
         return jsonify({"error": "Failed to update category"}), 500
 
-
 # Soft delete category (deactivate)
 @dashboard_service.route('/vendor/<int:vendor_id>/extras/category/<int:category_id>', methods=['DELETE'])
 def delete_extra_service_category(vendor_id, category_id):
@@ -1705,11 +1697,7 @@ def deactivate_cafe_pass(vendor_id, pass_id):
         return jsonify({"message": "Pass deactivated successfully"}), 200
     except Exception as e:
         current_app.logger.error(f"Error deactivating pass {pass_id} for vendor {vendor_id}: {e}")
-        return jsonify({"error": "Failed to deactivate pass"}), 500"""
-    
-    
-   
-
+        return jsonify({"error": "Failed to deactivate pass"}), 500
 
 # Add these routes to your dashboard_service blueprint
 
@@ -1990,7 +1978,6 @@ def delete_vendor_profile_image(vendor_id):
         
    # update business details
 
-
 @dashboard_service.route('/vendor/<int:vendor_id>/business-details', methods=['PATCH'])
 def update_business_details(vendor_id):
     """Update vendor business details including website, phone, email, and address"""
@@ -2093,7 +2080,6 @@ def update_business_details(vendor_id):
         current_app.logger.exception(f"Unexpected error updating business details: {e}")
         return jsonify({'success': False, 'message': 'Internal server error'}), 500
 
-
 # Get bank details for vendor
 @dashboard_service.route('/vendor/<int:vendor_id>/bank-details', methods=['GET'])
 def get_bank_details(vendor_id):
@@ -2142,7 +2128,6 @@ def get_bank_details(vendor_id):
             "success": False,
             "message": "Failed to fetch bank details"
         }), 500
-
 
 # Add or update bank details
 @dashboard_service.route('/vendor/<int:vendor_id>/bank-details', methods=['POST', 'PUT'])
@@ -2255,7 +2240,6 @@ def add_or_update_bank_details(vendor_id):
             "success": False,
             "message": "Failed to update payment details"
         }), 500
-
 
 # Get payout history
 @dashboard_service.route('/vendor/<int:vendor_id>/payouts', methods=['GET'])
@@ -2415,7 +2399,6 @@ def get_all_payment_methods_for_vendor(vendor_id):
         current_app.logger.error(f"Error fetching payment methods for vendor {vendor_id}: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-
 @dashboard_service.route('/vendor/<int:vendor_id>/paymentMethods/toggle', methods=['POST'])
 def toggle_payment_method_for_vendor(vendor_id):
     """Toggle payment method for vendor - registers/unregisters vendor in payment_vendor_map"""
@@ -2480,7 +2463,6 @@ def toggle_payment_method_for_vendor(vendor_id):
         current_app.logger.error(f"Error toggling payment method for vendor {vendor_id}: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-
 # Get payment methods statistics for vendor
 @dashboard_service.route('/vendor/<int:vendor_id>/payment-methods/stats', methods=['GET'])
 def get_payment_method_stats(vendor_id):
@@ -2536,7 +2518,6 @@ def get_payment_method_stats(vendor_id):
     except Exception as e:
         current_app.logger.error(f"Error fetching payment method stats for vendor {vendor_id}: {str(e)}")
         return jsonify({'error': str(e)}), 500
-
 
 @dashboard_service.route('/booking/<int:booking_id>/details', methods=['GET'])
 def get_booking_details(booking_id):
