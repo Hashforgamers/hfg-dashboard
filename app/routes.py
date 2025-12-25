@@ -1599,41 +1599,41 @@ def delete_extra_service_menu(vendor_id, category_id, menu_id):
         return jsonify({"error": "Failed to delete menu item"}), 500
 
 # List all passes for this cafe
-"""@dashboard_service.route("/vendor/<int:vendor_id>/passes", methods=["GET"])
-def list_cafe_passes(vendor_id):
-    passes = CafePass.query.filter_by(vendor_id=vendor_id, is_active=True).all()
-    return jsonify([
-        {
-            "id": p.id,
-            "name": p.name,
-            "price": p.price,
-            "days_valid": p.days_valid,
-            "description": p.description,
-            "pass_type": p.pass_type.name
-        } for p in passes
-    ])"""
+#@dashboard_service.route("/vendor/<int:vendor_id>/passes", methods=["GET"])
+#def list_cafe_passes(vendor_id):
+ #   passes = CafePass.query.filter_by(vendor_id=vendor_id, is_active=True).all()
+  #  return jsonify([
+   #     {
+    #        "id": p.id,
+     #       "name": p.name,
+      #      "price": p.price,
+       #     "days_valid": p.days_valid,
+     #       "description": p.description,
+     #       "pass_type": p.pass_type.name
+     #   } for p in passes
+   # ])"""
 
 # Add a new cafe pass
-"""@dashboard_service.route("/vendor/<int:vendor_id>/passes", methods=["POST"])
-def create_cafe_pass(vendor_id):
-    data = request.json
-    name = data["name"]
-    price = data["price"]
-    days_valid = data["days_valid"]
-    pass_type_id = data["pass_type_id"]   # links to PassType (daily/monthly/...)
-    description = data.get("description", "")
+#@dashboard_service.route("/vendor/<int:vendor_id>/passes", methods=["POST"])
+#def create_cafe_pass(vendor_id):
+ #   data = request.json
+  #  name = data["name"]
+   # price = data["price"]
+    #days_valid = data["days_valid"]
+    #pass_type_id = data["pass_type_id"]   # links to PassType (daily/monthly/...)
+#    description = data.get("description", "")
 
-    cafe_pass = CafePass(
-        vendor_id=vendor_id,
-        name=name,
-        price=price,
-        days_valid=days_valid,
-        pass_type_id=pass_type_id,
-        description=description
-    )
-    db.session.add(cafe_pass)
-    db.session.commit()
-    return jsonify({"message": "Pass created"}), 200"""
+ #   cafe_pass = CafePass(
+#        vendor_id=vendor_id,
+ #        name=name,
+  #      price=price,
+   #     days_valid=days_valid,
+  #      pass_type_id=pass_type_id,
+  #      description=description
+   # )
+   # db.session.add(cafe_pass)
+   # db.session.commit()
+  #  return jsonify({"message": "Pass created"}), 200
 
 # Edit, delete, deactivate similar to your current pattern
 @dashboard_service.route('/pass_types', methods=['GET'])
@@ -1688,16 +1688,16 @@ def add_pass_type():
         db.session.rollback()
         return jsonify({'error': 'An error occurred', 'details': str(e)}), 500
 
-"""@dashboard_service.route("/vendor/<int:vendor_id>/passes/<int:pass_id>", methods=["DELETE"])
-def deactivate_cafe_pass(vendor_id, pass_id):
-    try:
-        cafe_pass = CafePass.query.filter_by(id=pass_id, vendor_id=vendor_id, is_active=True).first_or_404()
-        cafe_pass.is_active = False
-        db.session.commit()
-        return jsonify({"message": "Pass deactivated successfully"}), 200
-    except Exception as e:
-        current_app.logger.error(f"Error deactivating pass {pass_id} for vendor {vendor_id}: {e}")
-        return jsonify({"error": "Failed to deactivate pass"}), 500
+#dashboard_service.route("/vendor/<int:vendor_id>/passes/<int:pass_id>", methods=["DELETE"])
+#def deactivate_cafe_pass(vendor_id, pass_id):
+ #   try:
+  #      cafe_pass = CafePass.query.filter_by(id=pass_id, vendor_id=vendor_id, is_active=True).first_or_404()
+   #     cafe_pass.is_active = False
+    #    db.session.commit()
+     #   return jsonify({"message": "Pass deactivated successfully"}), 200
+    #except Exception as e:
+     #   current_app.logger.error(f"Error deactivating pass {pass_id} for vendor {vendor_id}: {e}")
+      #  return jsonify({"error": "Failed to deactivate pass"}), 500
 
 # Add these routes to your dashboard_service blueprint
 
