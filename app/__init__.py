@@ -47,6 +47,7 @@ def create_app():
     from app.controllers.registration_controller import bp_regs
     from app.controllers.result_controller import bp_results
     from app.controllers.team_controller import bp_teams
+    from app.controllers.vendor_games import vendor_games_bp
 
     # Register blueprints
     app.register_blueprint(dashboard_service, url_prefix="/api")
@@ -58,6 +59,7 @@ def create_app():
     app.register_blueprint(bp_regs)
     app.register_blueprint(bp_results)
     app.register_blueprint(bp_teams)
+    app.register_blueprint(vendor_games_bp)
 
     # Socket events
     register_dashboard_events()
