@@ -1,7 +1,8 @@
-from sqlalchemy import Column, Integer, String, Text, Float, Date, Boolean, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, Float, Date, Boolean, DateTime
 from sqlalchemy.orm import relationship
 from app.extension.extensions import db
 from datetime import datetime
+
 
 class Game(db.Model):
     __tablename__ = 'games'
@@ -17,11 +18,21 @@ class Game(db.Model):
     multiplayer = Column(Boolean, default=False)
     image_url = Column(String(500))
     trailer_url = Column(String(500))
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Many-to-many with vendors via VendorGame
-    vendor_games = relationship('VendorGame', back_populates='game', cascade='all, delete-orphan')
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False
+    )
+
+    # Relationship with vendor_games table
+    vendor_games = relationship(
+        'VendorGame',
+        back_populates='game',
+        cascade='all, delete-orphan'
+    )
 
     def __repr__(self):
-        return f'<Game {self.name} ({self.platform})>'
+        return f"<Game {self.name} ({self.platform})>"
