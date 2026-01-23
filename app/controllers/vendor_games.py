@@ -4,6 +4,13 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 
 vendor_games_bp = Blueprint('vendor_games', __name__)
 
+@vendor_games_bp.route('/games', methods=['GET'])
+def get_all_games():
+    """Fetch all available games in the system"""
+    games = GameService.get_all_games()
+    return jsonify([game.to_dict() for game in games])
+
+
 @vendor_games_bp.route('/vendor/<int:vendor_id>/games', methods=['GET'])
 def list_vendor_games(vendor_id):
     games = GameService.get_vendor_games(vendor_id)
