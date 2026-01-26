@@ -17,6 +17,7 @@ class Game(db.Model):
     esrb_rating = Column(String(50))
     multiplayer = Column(Boolean, default=False)
     image_url = Column(String(500))
+    cloudinary_public_id = Column(String(255))
     trailer_url = Column(String(500))
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
