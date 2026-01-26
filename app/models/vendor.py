@@ -16,6 +16,8 @@ from app.models.bankTransferDetails import BankTransferDetails, PayoutTransactio
 from sqlalchemy.sql import and_
 from app.models.vendorAccount import VendorAccount
 from app.models.website import Website
+from app.models.subscription import Subscription
+from app.models.vendorGame import VendorGame
 
 class Vendor(db.Model):
     __tablename__ = 'vendors'
@@ -106,7 +108,8 @@ class Vendor(db.Model):
     # Add this relationship to your Vendor class
     payment_methods = relationship('PaymentVendorMap', back_populates='vendor', cascade='all, delete-orphan')
 
-    available_games = relationship('AvailableGame', back_populates='vendor', cascade="all, delete-orphan")
+    available_games = relationship('AvailableGame', back_populates='vendor', cascade="all, delete-orphan") ## here available games is console type as PC, PS, XBOX etc.
+    vendor_games = relationship('VendorGame', back_populates='vendor', cascade="all, delete-orphan") ## here vendor games is available games.
 
     # Relationship to Amenity
     amenities = relationship(
@@ -138,7 +141,11 @@ class Vendor(db.Model):
         cascade="all, delete-orphan"
     )
 
-       # One-to-One relationship with VendorCredential
+    consoles = relationship('Console', back_populates='vendor', cascade="all, delete-orphan")
+    
+    subscriptions = relationship('Subscription', back_populates='vendor', cascade="all, delete-orphan")
+
+    # One-to-One relationship with VendorCredential
     credential = None
 
 

@@ -24,7 +24,8 @@ class AvailableGame(db.Model):
     vendor = relationship('Vendor', back_populates='available_games')
 
     # Foreign key to Console
-    consoles = relationship('Console', secondary=available_game_console, back_populates='available_games')
+    # available_game.py
+    consoles = relationship('Console', secondary='available_game_console', back_populates='available_games')
 
     # Relationship with Booking (one-to-many)
     bookings = relationship('Booking', back_populates='game', cascade="all, delete-orphan")
