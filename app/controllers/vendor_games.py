@@ -3,7 +3,7 @@ from app.services.game_service import GameService
 from app.models.game import Game
 from app.models.vendorGame import VendorGame
 from app.models.console import Console
-from app.models.available_game import AvailableGame
+from app.models.availableGame import AvailableGame
 from app.extension.extensions import db
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
