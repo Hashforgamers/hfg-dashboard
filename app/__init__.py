@@ -49,6 +49,7 @@ def create_app():
     from app.controllers.team_controller import bp_teams
     from app.controllers.vendor_games import vendor_games_bp
     from app.controllers.admin_games_controller import admin_games_bp
+    from app.controllers.pricingController import pricing_blueprint
     from app.commands import register_commands
 
     # Register blueprints
@@ -63,6 +64,7 @@ def create_app():
     app.register_blueprint(bp_teams)
     app.register_blueprint(vendor_games_bp)
     app.register_blueprint(admin_games_bp)
+    app.register_blueprint(pricing_blueprint)
     register_commands(app)
 
     # Socket events
