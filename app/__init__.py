@@ -64,7 +64,7 @@ def create_app():
     app.register_blueprint(bp_teams)
     app.register_blueprint(vendor_games_bp)
     app.register_blueprint(admin_games_bp)
-    app.register_blueprint(pricing_blueprint)
+    app.register_blueprint(pricing_blueprint, url_prefix="/api")
     register_commands(app)
 
     # Socket events
