@@ -376,3 +376,21 @@ def delete_pricing_offer(vendor_id, offer_id):
         db.session.rollback()
         current_app.logger.error(f"❌ Error deleting pricing offer: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# In your controller
+@pricing_blueprint.route('/vendor/<int:vendor_id>/available-games', methods=['GET'])
+def get_vendor_available_games(vendor_id):
+    """Get available games (console types) for vendor"""
+    try:
+        games = AvailableGame.query.filter_by(vendor_id=vendor_id).all()
+        return jsonify({
+            'success': True,
+            'games': [{
+                'id': g.id,
+                'game_name': g.game_name,
+                'single_slot_price': float(g.single_slot_price)
+            } for g in games]
+        }), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
