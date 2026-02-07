@@ -21,7 +21,7 @@ def get_available_games(vendor_id):
     
     return jsonify([{
         'id': ag.id,
-        'platform_type': ag.game_name,  # "PC", "PS5", "Xbox", "VR"
+        'platform_type': ag.game_name.lower(),  # ✅ Ensure lowercase
         'total_consoles': len(ag.consoles),
         'consoles': [{
             'id': c.id,
@@ -32,6 +32,7 @@ def get_available_games(vendor_id):
     } for ag in available_games]), 200
 
 
+
 # ==================== CONSOLES FOR SPECIFIC PLATFORM ====================
 
 @vendor_games_bp.route('/vendor/<int:vendor_id>/platforms/<string:platform_type>/consoles', methods=['GET'])
@@ -40,27 +41,62 @@ def get_consoles_by_platform(vendor_id, platform_type):
     Get all consoles for a specific platform type
     Example: /vendor/1/platforms/pc/consoles
     """
-    # Find the AvailableGame entry for this platform
-    available_game = AvailableGame.query.filter_by(
-        vendor_id=vendor_id,
-        game_name=platform_type.upper()
-    ).first()
-    
-    if not available_game:
-        return jsonify({'error': f'{platform_type.upper()} platform not found for this vendor'}), 404
-    
-    # Get consoles linked to this AvailableGame
-    consoles = available_game.consoles
-    
-    return jsonify([{
-        'id': c.id,
-        'console_number': c.console_number,
-        'console_type': c.console_type,
-        'brand': c.brand,
-        'model_number': c.model_number,
-        'serial_number': c.serial_number,
-        'description': c.description
-    } for c in consoles]), 200
+    try:
+        # Convert to lowercase to match database
+        platform_type_lower = platform_type.lower()
+        
+        # Find the AvailableGame entry (case-insensitive)
+        available_game = AvailableGame.query.filter(
+            AvailableGame.vendor_id == vendor_id,
+            db.func.lower(AvailableGame.game_name) == platform_type_lower
+        ).first()
+        
+        if not available_game:
+            # Fallback: Get consoles directly by console_type
+            consoles = Console.query.filter(
+                Console.vendor_id == vendor_id,
+                db.func.lower(Console.console_type) == platform_type_lower
+            ).all()
+            
+            if not consoles:
+                return jsonify({'error': f'{platform_type} platform not found for this vendor'}), 404
+            
+            # Return consoles directly
+            return jsonify([{
+                'id': c.id,
+                'console_number': c.console_number,
+                'console_type': c.console_type,
+                'brand': c.brand,
+                'model_number': c.model_number,
+                'serial_number': c.serial_number,
+                'description': c.description
+            } for c in consoles]), 200
+        
+        # Get consoles linked to this AvailableGame
+        consoles = available_game.consoles
+        
+        if not consoles or len(consoles) == 0:
+            # No consoles linked, try to get them by console_type instead
+            consoles = Console.query.filter(
+                Console.vendor_id == vendor_id,
+                db.func.lower(Console.console_type) == platform_type_lower
+            ).all()
+        
+        return jsonify([{
+            'id': c.id,
+            'console_number': c.console_number,
+            'console_type': c.console_type,
+            'brand': c.brand,
+            'model_number': c.model_number,
+            'serial_number': c.serial_number,
+            'description': c.description
+        } for c in consoles]), 200
+        
+    except Exception as e:
+        return jsonify({
+            'error': 'Internal server error',
+            'details': str(e)
+        }), 500
 
 
 # ==================== GAME CATALOG ====================
