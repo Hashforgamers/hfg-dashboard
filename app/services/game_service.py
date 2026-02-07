@@ -3,6 +3,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from app.models.game import Game
 from app.models.vendorGame import VendorGame
+from app.models.availableGame import AvailableGame
+from app.models.console import Console
 from app.extension.extensions import db
 from app.services.cloudinary_game_service import CloudinaryGameImageService
 from datetime import datetime
@@ -16,13 +18,7 @@ class GameService:
 
     @staticmethod
     def search_games(search_term: str):
-        """
-        Search games by name (case-insensitive, partial match)
-        Returns games ordered by relevance:
-        - Games starting with search term come first
-        - Then games containing the search term
-        - All alphabetically sorted within each group
-        """
+        """Search games by name (case-insensitive, partial match)"""
         if not search_term or search_term.strip() == "":
             return GameService.get_all_games()
         
@@ -31,60 +27,63 @@ class GameService:
         games = Game.query.filter(
             Game.name.ilike(search_pattern)
         ).order_by(
-            # Games starting with search term come first
             Game.name.ilike(f"{search_term}%").desc(),
-            # Then alphabetical
             Game.name.asc()
         ).all()
         
         return games
 
     @staticmethod
-    def get_vendor_games(vendor_id: int):
-        """Get all games for a vendor"""
-        return db.session.query(VendorGame, Game).\
-            join(Game, VendorGame.game_id == Game.id).\
-            filter(VendorGame.vendor_id == vendor_id, VendorGame.is_available == True).all()
+    def get_vendor_games_grouped(vendor_id: int):
+        """
+        Get all vendor games grouped by game
+        Returns dict with game as key and list of consoles as value
+        """
+        vendor_games = VendorGame.query.filter_by(
+            vendor_id=vendor_id,
+            is_available=True
+        ).all()
+        
+        games_dict = {}
+        for vg in vendor_games:
+            game_id = vg.game_id
+            if game_id not in games_dict:
+                games_dict[game_id] = {
+                    'game': vg.game,
+                    'consoles': []
+                }
+            
+            games_dict[game_id]['consoles'].append({
+                'console': vg.console,
+                'vendor_game_id': vg.id,
+                'price_per_hour': vg.price_per_hour
+            })
+        
+        return games_dict
 
     @staticmethod
-    def add_game_to_vendor(vendor_id: int, game_id: int, console_type: str, price_per_hour: float, max_slots: int = 1):
-        """Add a game to vendor with specific console type"""
-        valid_consoles = ['pc', 'ps5', 'xbox']
-        if console_type.lower() not in valid_consoles:
-            raise ValueError(f"Invalid console type. Must be one of: {', '.join(valid_consoles)}")
-        
-        existing = VendorGame.query.filter_by(
-            vendor_id=vendor_id, 
-            game_id=game_id, 
-            console_type=console_type.lower()
+    def get_consoles_by_platform(vendor_id: int, platform_type: str):
+        """Get all consoles for a specific platform (PC, PS5, Xbox, VR)"""
+        available_game = AvailableGame.query.filter_by(
+            vendor_id=vendor_id,
+            game_name=platform_type.upper()
         ).first()
         
-        if existing:
-            raise ValueError(f"Game already exists for this console type")
+        if not available_game:
+            return []
         
-        vendor_game = VendorGame(
-            vendor_id=vendor_id, 
-            game_id=game_id, 
-            console_type=console_type.lower(),
-            price_per_hour=price_per_hour,
-            max_slots=max_slots
-        )
-        db.session.add(vendor_game)
-        db.session.commit()
-        return vendor_game
+        return available_game.consoles
 
     @staticmethod
     def update_game_image(game_id: int, image_file):
-        """Update game cover image using Cloudinary (overwrites RAWG image)"""
+        """Update game cover image using Cloudinary"""
         game = Game.query.get(game_id)
         if not game:
             return {'success': False, 'error': 'Game not found'}
 
-        # Delete old Cloudinary image if exists
         if game.cloudinary_public_id:
             CloudinaryGameImageService.delete_game_image(game.cloudinary_public_id)
 
-        # Upload new image to Cloudinary
         upload_result = CloudinaryGameImageService.upload_game_cover_image(
             image_file, 
             game.id, 
@@ -92,7 +91,7 @@ class GameService:
         )
 
         if upload_result['success']:
-            game.image_url = upload_result['url']  # Replace RAWG image with Cloudinary
+            game.image_url = upload_result['url']
             game.cloudinary_public_id = upload_result['public_id']
             db.session.commit()
             return {
@@ -105,7 +104,7 @@ class GameService:
 
     @staticmethod
     def delete_game_image(game_id: int):
-        """Delete Cloudinary image (reverts to RAWG image if available)"""
+        """Delete Cloudinary image"""
         game = Game.query.get(game_id)
         if not game:
             return {'success': False, 'error': 'Game not found'}
@@ -113,7 +112,6 @@ class GameService:
         if game.cloudinary_public_id:
             result = CloudinaryGameImageService.delete_game_image(game.cloudinary_public_id)
             if result['success']:
-                # Note: image_url still has RAWG URL unless manually cleared
                 game.cloudinary_public_id = None
                 db.session.commit()
             return result
@@ -122,30 +120,18 @@ class GameService:
     
     @staticmethod
     def sync_game_from_rawg(rawg_data, update_existing=True):
-        """
-        Sync single game from RAWG API
-        
-        Args:
-            rawg_data: Game dictionary from RAWG API
-            update_existing: Whether to update if game already exists
-        
-        Returns:
-            tuple: (game_instance, was_created)
-        """
+        """Sync single game from RAWG API"""
         game_id = rawg_data['id']
         existing_game = Game.query.filter_by(id=game_id).first()
         
         if existing_game:
             if update_existing:
-                # Update fields
                 existing_game.slug = rawg_data['slug']
                 existing_game.name = rawg_data['name']
                 
-                # Only update image_url if no custom Cloudinary image
                 if not existing_game.cloudinary_public_id:
                     existing_game.image_url = rawg_data.get('background_image')
                 
-                # Update other fields
                 if rawg_data.get('genres') and len(rawg_data['genres']) > 0:
                     existing_game.genre = rawg_data['genres'][0]['name']
                 
@@ -180,7 +166,6 @@ class GameService:
             else:
                 return (existing_game, False)
         else:
-            # Create new game with RAWG image
             new_game = Game.from_rawg_api(rawg_data)
             db.session.add(new_game)
             db.session.commit()
