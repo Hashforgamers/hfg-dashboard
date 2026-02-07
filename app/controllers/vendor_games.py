@@ -5,29 +5,52 @@ from app.models.vendorGame import VendorGame
 from app.models.console import Console
 from app.models.availableGame import AvailableGame
 from app.extension.extensions import db
-from flask_jwt_extended import jwt_required, get_jwt_identity
 
 vendor_games_bp = Blueprint('vendor_games', __name__)
 
 
-# ==================== CONSOLE ENDPOINTS ====================
+# ==================== AVAILABLE GAMES (PLATFORM TYPES) ====================
 
-@vendor_games_bp.route('/vendor/<int:vendor_id>/consoles', methods=['GET'])
-def get_vendor_consoles(vendor_id):
+@vendor_games_bp.route('/vendor/<int:vendor_id>/available-games', methods=['GET'])
+def get_available_games(vendor_id):
     """
-    Get all consoles for a vendor
-    Query params:
-        - console_type: Filter by type (pc, ps5, xbox)
-    Example: /vendor/1/consoles?console_type=pc
+    Get platform types available at vendor (PC, PS5, Xbox, VR)
+    Returns AvailableGame entries which represent platform categories
     """
-    console_type = request.args.get('console_type', '').strip().lower()
+    available_games = AvailableGame.query.filter_by(vendor_id=vendor_id).all()
     
-    query = Console.query.filter_by(vendor_id=vendor_id)
+    return jsonify([{
+        'id': ag.id,
+        'platform_type': ag.game_name,  # "PC", "PS5", "Xbox", "VR"
+        'total_consoles': len(ag.consoles),
+        'consoles': [{
+            'id': c.id,
+            'console_number': c.console_number,
+            'brand': c.brand,
+            'model_number': c.model_number
+        } for c in ag.consoles]
+    } for ag in available_games]), 200
+
+
+# ==================== CONSOLES FOR SPECIFIC PLATFORM ====================
+
+@vendor_games_bp.route('/vendor/<int:vendor_id>/platforms/<string:platform_type>/consoles', methods=['GET'])
+def get_consoles_by_platform(vendor_id, platform_type):
+    """
+    Get all consoles for a specific platform type
+    Example: /vendor/1/platforms/pc/consoles
+    """
+    # Find the AvailableGame entry for this platform
+    available_game = AvailableGame.query.filter_by(
+        vendor_id=vendor_id,
+        game_name=platform_type.upper()
+    ).first()
     
-    if console_type:
-        query = query.filter_by(console_type=console_type)
+    if not available_game:
+        return jsonify({'error': f'{platform_type.upper()} platform not found for this vendor'}), 404
     
-    consoles = query.order_by(Console.console_type.asc(), Console.console_number.asc()).all()
+    # Get consoles linked to this AvailableGame
+    consoles = available_game.consoles
     
     return jsonify([{
         'id': c.id,
@@ -36,20 +59,16 @@ def get_vendor_consoles(vendor_id):
         'brand': c.brand,
         'model_number': c.model_number,
         'serial_number': c.serial_number,
-        'description': c.description,
-        'release_date': c.release_date.isoformat() if c.release_date else None
+        'description': c.description
     } for c in consoles]), 200
 
 
-# ==================== GAME ENDPOINTS ====================
+# ==================== GAME CATALOG ====================
 
 @vendor_games_bp.route('/games', methods=['GET'])
 def get_all_games():
     """
-    Fetch all available games with optional search
-    Query params:
-        - search: Search term for filtering games by name
-    Example: /games?search=gta
+    Fetch all games from master catalog with optional search
     """
     search = request.args.get('search', '').strip()
     
@@ -74,56 +93,71 @@ def get_game_details(game_id):
     return jsonify(game.to_dict()), 200
 
 
-# ==================== VENDOR GAME MANAGEMENT (Console-Specific) ====================
+# ==================== VENDOR GAMES (GAMES ON SPECIFIC CONSOLES) ====================
 
-@vendor_games_bp.route('/vendor/<int:vendor_id>/available-games', methods=['GET'])
-def list_vendor_available_games(vendor_id):
+@vendor_games_bp.route('/vendor/<int:vendor_id>/vendor-games', methods=['GET'])
+def list_vendor_games(vendor_id):
     """
-    List all available games for a vendor with console details
-    Returns games with the specific consoles they're available on
+    List all games added by vendor with console details
+    Groups games and shows which consoles have each game
     """
-    available_games = AvailableGame.query.filter_by(vendor_id=vendor_id).all()
+    vendor_games = VendorGame.query.filter_by(
+        vendor_id=vendor_id,
+        is_available=True
+    ).all()
     
-    result = []
-    for ag in available_games:
-        # Get the actual Game details from games table
-        game = Game.query.filter_by(name=ag.game_name).first()
+    # Group by game
+    games_dict = {}
+    for vg in vendor_games:
+        game_id = vg.game_id
+        if game_id not in games_dict:
+            games_dict[game_id] = {
+                'game': vg.game.to_dict(),
+                'consoles': [],
+                'prices': []
+            }
         
+        games_dict[game_id]['consoles'].append({
+            'id': vg.console.id,
+            'console_number': vg.console.console_number,
+            'console_type': vg.console.console_type,
+            'brand': vg.console.brand,
+            'model_number': vg.console.model_number,
+            'vendor_game_id': vg.id,
+            'price_per_hour': vg.price_per_hour
+        })
+        games_dict[game_id]['prices'].append(vg.price_per_hour)
+    
+    # Format result
+    result = []
+    for game_id, data in games_dict.items():
         result.append({
-            'available_game_id': ag.id,
-            'game_name': ag.game_name,
-            'total_slots': ag.total_slot,
-            'price_per_slot': ag.single_slot_price,
-            'game_details': game.to_dict() if game else None,
-            'consoles': [{
-                'id': console.id,
-                'console_number': console.console_number,
-                'console_type': console.console_type,
-                'brand': console.brand,
-                'model_number': console.model_number
-            } for console in ag.consoles]
+            'game': data['game'],
+            'total_consoles': len(data['consoles']),
+            'consoles': data['consoles'],
+            'avg_price': sum(data['prices']) / len(data['prices']) if data['prices'] else 0
         })
     
     return jsonify(result), 200
 
 
-@vendor_games_bp.route('/vendor/<int:vendor_id>/available-games', methods=['POST'])
-def add_game_to_vendor_consoles(vendor_id):
+@vendor_games_bp.route('/vendor/<int:vendor_id>/vendor-games', methods=['POST'])
+def add_game_to_consoles(vendor_id):
     """
-    Add a game to specific consoles at a vendor
+    Add a game to specific consoles
     
     Request body:
     {
         "game_id": 3498,
-        "console_ids": [1, 2, 5],  // Array of console IDs
-        "price_per_slot": 50.0
+        "console_ids": [1, 2, 5],
+        "price_per_hour": 50.0
     }
     """
     data = request.json
     
     game_id = data.get('game_id')
     console_ids = data.get('console_ids', [])
-    price_per_slot = data.get('price_per_slot', 50.0)
+    price_per_hour = data.get('price_per_hour', 50.0)
     
     # Validation
     if not game_id:
@@ -132,8 +166,8 @@ def add_game_to_vendor_consoles(vendor_id):
     if not console_ids or len(console_ids) == 0:
         return jsonify({'error': 'At least one console_id is required'}), 400
     
-    if price_per_slot <= 0:
-        return jsonify({'error': 'price_per_slot must be greater than 0'}), 400
+    if price_per_hour <= 0:
+        return jsonify({'error': 'price_per_hour must be greater than 0'}), 400
     
     # Check if game exists
     game = Game.query.get(game_id)
@@ -150,47 +184,46 @@ def add_game_to_vendor_consoles(vendor_id):
         return jsonify({'error': 'One or more console IDs are invalid or do not belong to this vendor'}), 400
     
     try:
-        # Check if AvailableGame already exists for this game + vendor
-        available_game = AvailableGame.query.filter_by(
-            vendor_id=vendor_id,
-            game_name=game.name
-        ).first()
+        added_count = 0
+        skipped_count = 0
+        vendor_game_ids = []
         
-        if available_game:
-            # Update existing: add new consoles if not already linked
-            for console in consoles:
-                if console not in available_game.consoles:
-                    available_game.consoles.append(console)
-            
-            # Update total slots and price
-            available_game.total_slot = len(available_game.consoles)
-            available_game.single_slot_price = price_per_slot
-        else:
-            # Create new AvailableGame
-            available_game = AvailableGame(
+        # Create VendorGame entry for each console
+        for console in consoles:
+            # Check if game already exists on this console
+            existing = VendorGame.query.filter_by(
                 vendor_id=vendor_id,
-                game_name=game.name,
-                total_slot=len(consoles),
-                single_slot_price=price_per_slot
+                game_id=game_id,
+                console_id=console.id
+            ).first()
+            
+            if existing:
+                skipped_count += 1
+                continue
+            
+            vendor_game = VendorGame(
+                vendor_id=vendor_id,
+                game_id=game_id,
+                console_id=console.id,
+                price_per_hour=price_per_hour,
+                is_available=True
             )
-            available_game.consoles = consoles
-            db.session.add(available_game)
+            db.session.add(vendor_game)
+            vendor_game_ids.append(vendor_game)
+            added_count += 1
         
         db.session.commit()
         
         return jsonify({
-            'message': 'Game added to consoles successfully',
-            'available_game': {
-                'id': available_game.id,
-                'game_name': available_game.game_name,
-                'total_slots': available_game.total_slot,
-                'price_per_slot': available_game.single_slot_price,
-                'consoles': [{
-                    'id': c.id,
-                    'console_number': c.console_number,
-                    'console_type': c.console_type
-                } for c in available_game.consoles]
-            }
+            'message': f'Game added to {added_count} console(s) successfully',
+            'added': added_count,
+            'skipped': skipped_count,
+            'game': game.to_dict(),
+            'consoles': [{
+                'id': c.id,
+                'console_number': c.console_number,
+                'console_type': c.console_type
+            } for c in consoles]
         }), 201
         
     except Exception as e:
@@ -198,67 +231,42 @@ def add_game_to_vendor_consoles(vendor_id):
         return jsonify({'error': f'Failed to add game: {str(e)}'}), 500
 
 
-@vendor_games_bp.route('/vendor/<int:vendor_id>/available-games/<int:available_game_id>', methods=['PUT'])
-def update_vendor_available_game(vendor_id, available_game_id):
+@vendor_games_bp.route('/vendor/<int:vendor_id>/vendor-games/<int:vendor_game_id>', methods=['PUT'])
+def update_vendor_game(vendor_id, vendor_game_id):
     """
-    Update available game configuration (price, consoles)
+    Update a specific vendor game (price, availability)
     
     Request body:
     {
-        "console_ids": [1, 3, 4],  // New list of console IDs
-        "price_per_slot": 60.0
+        "price_per_hour": 60.0,
+        "is_available": true
     }
     """
     data = request.json
     
     try:
-        available_game = AvailableGame.query.filter_by(
-            id=available_game_id,
+        vendor_game = VendorGame.query.filter_by(
+            id=vendor_game_id,
             vendor_id=vendor_id
         ).first()
         
-        if not available_game:
-            return jsonify({'error': 'Available game not found'}), 404
+        if not vendor_game:
+            return jsonify({'error': 'Vendor game not found'}), 404
         
-        # Update console IDs if provided
-        if 'console_ids' in data:
-            console_ids = data['console_ids']
-            
-            if not console_ids or len(console_ids) == 0:
-                return jsonify({'error': 'At least one console_id is required'}), 400
-            
-            # Verify consoles belong to vendor
-            consoles = Console.query.filter(
-                Console.id.in_(console_ids),
-                Console.vendor_id == vendor_id
-            ).all()
-            
-            if len(consoles) != len(console_ids):
-                return jsonify({'error': 'One or more console IDs are invalid'}), 400
-            
-            # Replace consoles
-            available_game.consoles = consoles
-            available_game.total_slot = len(consoles)
+        # Update fields if provided
+        if 'price_per_hour' in data:
+            if data['price_per_hour'] <= 0:
+                return jsonify({'error': 'price_per_hour must be greater than 0'}), 400
+            vendor_game.price_per_hour = data['price_per_hour']
         
-        # Update price if provided
-        if 'price_per_slot' in data:
-            available_game.single_slot_price = data['price_per_slot']
+        if 'is_available' in data:
+            vendor_game.is_available = data['is_available']
         
         db.session.commit()
         
         return jsonify({
             'message': 'Game updated successfully',
-            'available_game': {
-                'id': available_game.id,
-                'game_name': available_game.game_name,
-                'total_slots': available_game.total_slot,
-                'price_per_slot': available_game.single_slot_price,
-                'consoles': [{
-                    'id': c.id,
-                    'console_number': c.console_number,
-                    'console_type': c.console_type
-                } for c in available_game.consoles]
-            }
+            'vendor_game': vendor_game.to_dict()
         }), 200
         
     except Exception as e:
@@ -266,81 +274,71 @@ def update_vendor_available_game(vendor_id, available_game_id):
         return jsonify({'error': f'Failed to update game: {str(e)}'}), 500
 
 
-@vendor_games_bp.route('/vendor/<int:vendor_id>/available-games/<int:available_game_id>', methods=['DELETE'])
-def remove_vendor_available_game(vendor_id, available_game_id):
+@vendor_games_bp.route('/vendor/<int:vendor_id>/vendor-games/<int:vendor_game_id>', methods=['DELETE'])
+def delete_vendor_game(vendor_id, vendor_game_id):
     """
-    Remove a game from vendor (deletes all console associations)
+    Remove a game from a specific console
     """
     try:
-        available_game = AvailableGame.query.filter_by(
-            id=available_game_id,
+        vendor_game = VendorGame.query.filter_by(
+            id=vendor_game_id,
             vendor_id=vendor_id
         ).first()
         
-        if not available_game:
-            return jsonify({'error': 'Available game not found'}), 404
+        if not vendor_game:
+            return jsonify({'error': 'Vendor game not found'}), 404
         
-        db.session.delete(available_game)
+        game_name = vendor_game.game.name
+        console_number = vendor_game.console.console_number
+        
+        db.session.delete(vendor_game)
         db.session.commit()
         
-        return jsonify({'message': 'Game removed successfully'}), 200
+        return jsonify({
+            'message': f'{game_name} removed from Console #{console_number} successfully'
+        }), 200
         
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': f'Failed to remove game: {str(e)}'}), 500
 
 
-@vendor_games_bp.route('/vendor/<int:vendor_id>/available-games/<int:available_game_id>/consoles/<int:console_id>', methods=['DELETE'])
-def remove_console_from_game(vendor_id, available_game_id, console_id):
+@vendor_games_bp.route('/vendor/<int:vendor_id>/games/<int:game_id>/bulk-delete', methods=['DELETE'])
+def bulk_delete_game(vendor_id, game_id):
     """
-    Remove a specific console from a game
-    (Decreases total_slot count)
+    Remove a game from ALL consoles at once
     """
     try:
-        available_game = AvailableGame.query.filter_by(
-            id=available_game_id,
-            vendor_id=vendor_id
-        ).first()
+        vendor_games = VendorGame.query.filter_by(
+            vendor_id=vendor_id,
+            game_id=game_id
+        ).all()
         
-        if not available_game:
-            return jsonify({'error': 'Available game not found'}), 404
+        if not vendor_games:
+            return jsonify({'error': 'Game not found on any console'}), 404
         
-        console = Console.query.filter_by(
-            id=console_id,
-            vendor_id=vendor_id
-        ).first()
+        count = len(vendor_games)
+        game_name = vendor_games[0].game.name
         
-        if not console:
-            return jsonify({'error': 'Console not found'}), 404
+        for vg in vendor_games:
+            db.session.delete(vg)
         
-        if console in available_game.consoles:
-            available_game.consoles.remove(console)
-            available_game.total_slot = len(available_game.consoles)
-            
-            # If no consoles left, delete the available_game
-            if available_game.total_slot == 0:
-                db.session.delete(available_game)
-            
-            db.session.commit()
-            return jsonify({'message': 'Console removed from game successfully'}), 200
-        else:
-            return jsonify({'error': 'Console is not associated with this game'}), 400
+        db.session.commit()
+        
+        return jsonify({
+            'message': f'{game_name} removed from {count} console(s) successfully'
+        }), 200
         
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': f'Failed to remove console: {str(e)}'}), 500
+        return jsonify({'error': f'Failed to remove game: {str(e)}'}), 500
 
 
-# ==================== IMAGE UPLOAD ENDPOINTS ====================
+# ==================== IMAGE UPLOAD ====================
 
 @vendor_games_bp.route('/games/<int:game_id>/image', methods=['POST'])
 def upload_game_image(game_id):
-    """
-    Upload or update game cover image to Cloudinary
-    
-    Form data:
-        - image: Image file
-    """
+    """Upload game cover image to Cloudinary"""
     if 'image' not in request.files:
         return jsonify({'error': 'No image file provided'}), 400
     
@@ -363,28 +361,10 @@ def upload_game_image(game_id):
 
 @vendor_games_bp.route('/games/<int:game_id>/image', methods=['DELETE'])
 def delete_game_image(game_id):
-    """
-    Delete game cover image from Cloudinary
-    (Reverts to RAWG image if available)
-    """
+    """Delete game cover image from Cloudinary"""
     result = GameService.delete_game_image(game_id)
     
     if result['success']:
         return jsonify({'message': 'Image deleted successfully'}), 200
     else:
         return jsonify({'error': result['error']}), 400
-
-
-# ==================== LEGACY VENDORGAME ENDPOINTS (Keep for backward compatibility) ====================
-
-@vendor_games_bp.route('/vendor/<int:vendor_id>/games', methods=['GET'])
-def list_vendor_games(vendor_id):
-    """
-    LEGACY: List all games for a specific vendor (VendorGame table)
-    Returns games with their vendor-specific configuration (console_type, price, etc.)
-    """
-    games = GameService.get_vendor_games(vendor_id)
-    return jsonify([{
-        'vendor_game': vg.to_dict(), 
-        'game': g.to_dict()
-    } for vg, g in games])
