@@ -18,10 +18,7 @@ class GameService:
 
     @staticmethod
     def search_games(search_term: str):
-        """
-        Search games by name (case-insensitive, partial match)
-        Returns games ordered by relevance
-        """
+        """Search games by name (case-insensitive, partial match)"""
         if not search_term or search_term.strip() == "":
             return GameService.get_all_games()
         
@@ -37,66 +34,45 @@ class GameService:
         return games
 
     @staticmethod
-    def get_vendor_games(vendor_id: int):
-        """LEGACY: Get all games for a vendor (VendorGame table)"""
-        return db.session.query(VendorGame, Game).\
-            join(Game, VendorGame.game_id == Game.id).\
-            filter(VendorGame.vendor_id == vendor_id, VendorGame.is_available == True).all()
-
-    @staticmethod
-    def get_vendor_available_games_with_consoles(vendor_id: int):
+    def get_vendor_games_grouped(vendor_id: int):
         """
-        Get all available games for a vendor with console details
-        Returns list of dicts with game info and associated consoles
+        Get all vendor games grouped by game
+        Returns dict with game as key and list of consoles as value
         """
-        available_games = AvailableGame.query.filter_by(vendor_id=vendor_id).all()
+        vendor_games = VendorGame.query.filter_by(
+            vendor_id=vendor_id,
+            is_available=True
+        ).all()
         
-        result = []
-        for ag in available_games:
-            game = Game.query.filter_by(name=ag.game_name).first()
+        games_dict = {}
+        for vg in vendor_games:
+            game_id = vg.game_id
+            if game_id not in games_dict:
+                games_dict[game_id] = {
+                    'game': vg.game,
+                    'consoles': []
+                }
             
-            result.append({
-                'available_game_id': ag.id,
-                'game_name': ag.game_name,
-                'total_slots': ag.total_slot,
-                'price_per_slot': ag.single_slot_price,
-                'game_details': game.to_dict() if game else None,
-                'consoles': [{
-                    'id': c.id,
-                    'console_number': c.console_number,
-                    'console_type': c.console_type,
-                    'brand': c.brand
-                } for c in ag.consoles]
+            games_dict[game_id]['consoles'].append({
+                'console': vg.console,
+                'vendor_game_id': vg.id,
+                'price_per_hour': vg.price_per_hour
             })
         
-        return result
+        return games_dict
 
     @staticmethod
-    def add_game_to_vendor(vendor_id: int, game_id: int, console_type: str, price_per_hour: float, max_slots: int = 1):
-        """LEGACY: Add a game to vendor with specific console type (VendorGame table)"""
-        valid_consoles = ['pc', 'ps5', 'xbox']
-        if console_type.lower() not in valid_consoles:
-            raise ValueError(f"Invalid console type. Must be one of: {', '.join(valid_consoles)}")
-        
-        existing = VendorGame.query.filter_by(
-            vendor_id=vendor_id, 
-            game_id=game_id, 
-            console_type=console_type.lower()
+    def get_consoles_by_platform(vendor_id: int, platform_type: str):
+        """Get all consoles for a specific platform (PC, PS5, Xbox, VR)"""
+        available_game = AvailableGame.query.filter_by(
+            vendor_id=vendor_id,
+            game_name=platform_type.upper()
         ).first()
         
-        if existing:
-            raise ValueError(f"Game already exists for this console type")
+        if not available_game:
+            return []
         
-        vendor_game = VendorGame(
-            vendor_id=vendor_id, 
-            game_id=game_id, 
-            console_type=console_type.lower(),
-            price_per_hour=price_per_hour,
-            max_slots=max_slots
-        )
-        db.session.add(vendor_game)
-        db.session.commit()
-        return vendor_game
+        return available_game.consoles
 
     @staticmethod
     def update_game_image(game_id: int, image_file):
