@@ -290,3 +290,48 @@ def debug_force_expire(vendor_id):
         return jsonify({"ok": True, "message": f"Subscription {sub.id} expired"})
     
     return jsonify({"error": "No active subscription"}), 404
+
+
+@bp_subs.get('/check-payment/<order_id>')
+def check_payment_status(vendor_id, order_id):
+    """
+    Check if a payment has been made for an order
+    Used for QR code payments where callback might not fire
+    """
+    try:
+        from app.services.razorpay_service import get_order_details
+        
+        current_app.logger.info(f"Checking payment status for order: {order_id}")
+        
+        # Get order details from Razorpay
+        order = get_order_details(order_id)
+        
+        current_app.logger.info(f"Order status: {order.get('status')}")
+        
+        # Check if order is paid
+        if order.get('status') == 'paid':
+            # Find the payment ID
+            payment_id = order.get('payments', [{}])[0].get('id') if order.get('payments') else None
+            
+            if payment_id:
+                current_app.logger.info(f"Payment found: {payment_id}")
+                
+                return jsonify({
+                    "paid": True,
+                    "order_id": order_id,
+                    "payment_id": payment_id,
+                    "amount": order.get('amount', 0) / 100
+                }), 200
+        
+        return jsonify({
+            "paid": False,
+            "order_id": order_id,
+            "status": order.get('status')
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f"Error checking payment status: {str(e)}")
+        return jsonify({
+            "error": "Failed to check payment status",
+            "details": str(e)
+        }), 500

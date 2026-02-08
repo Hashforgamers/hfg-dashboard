@@ -34,3 +34,4 @@ class Config:
     SUBSCRIPTION_DEV_MODE = os.getenv('SUBSCRIPTION_DEV_MODE', 'true').lower() == 'true'
     SUBSCRIPTION_TEST_PRICE = 1  # ₹1 for testing
     SUBSCRIPTION_TEST_DURATION_DAYS = 1  # 1 day for testing
+
