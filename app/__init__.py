@@ -1,18 +1,16 @@
-# app/__init__.py
-import os
-import logging
-from datetime import timedelta
-
-from flask import Flask
+from flask import Flask, request, make_response
 from flask_cors import CORS
 from flask_migrate import Migrate
 from flask_jwt_extended import JWTManager
+from datetime import timedelta
+import os
+import logging
 
 from app.config import Config
 from app.extension.extensions import db
 from app.services.websocket_service import socketio, register_dashboard_events, start_upstream_bridge
 
-jwt = JWTManager()  # global instance
+jwt = JWTManager()
 
 def create_app():
     app = Flask(__name__)
@@ -21,8 +19,7 @@ def create_app():
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
     app.logger.setLevel(os.getenv("LOG_LEVEL", "INFO"))
 
-    # JWT config BEFORE blueprints
-    ## app.config.setdefault("JWT_SECRET_KEY", os.getenv("JWT_SECRET_KEY", "Hash@2025"))
+    # JWT config
     app.config.setdefault("JWT_SECRET_KEY", "Hash@2025")
     app.config.setdefault("JWT_TOKEN_LOCATION", ["headers"])
     app.config.setdefault("JWT_HEADER_NAME", "Authorization")
@@ -31,13 +28,36 @@ def create_app():
     app.config.setdefault("JWT_ACCESS_TOKEN_EXPIRES", timedelta(hours=8))
     jwt.init_app(app)
 
+    # ✅ CORS - Allow all origins for development
+    CORS(app, 
+         resources={
+             r"/api/*": {
+                 "origins": "*",
+                 "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+                 "allow_headers": ["Content-Type", "Authorization", "X-Requested-With"],
+                 "expose_headers": ["Content-Type"],
+                 "supports_credentials": False,
+                 "max_age": 3600
+             }
+         })
+
+    # ✅ ADD: Global OPTIONS handler BEFORE blueprint registration
+    @app.before_request
+    def handle_preflight():
+        if request.method == "OPTIONS":
+            response = make_response()
+            response.headers.add("Access-Control-Allow-Origin", "*")
+            response.headers.add("Access-Control-Allow-Headers", "Content-Type,Authorization,X-Requested-With")
+            response.headers.add("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
+            response.headers.add("Access-Control-Max-Age", "3600")
+            return response, 200
+
     # Extensions
-    CORS(app)
     db.init_app(app)
     Migrate(app, db)
     socketio.init_app(app, cors_allowed_origins="*")
 
-    # Import blueprints AFTER extensions are inited to avoid premature current_app usage
+    # Import blueprints
     from .routes import dashboard_service
     from app.controllers.package_controller import bp_packages
     from app.controllers.subscription_controller import bp_subs
