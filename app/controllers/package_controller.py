@@ -2,7 +2,8 @@ from flask import Blueprint, jsonify, current_app
 from app.models.package import Package
 from app.services.subscription_service import get_package_price
 
-bp_packages = Blueprint('packages', __name__, url_prefix='/api/packages')
+
+bp_packages = Blueprint('packages', __name__)
 
 
 @bp_packages.get('/')
@@ -17,11 +18,12 @@ def list_packages():
     
     result = []
     for pkg in packages:
-        # Get actual or test price
-        if dev_mode:
-            price = current_app.config.get('SUBSCRIPTION_TEST_PRICE', 1) if pkg.code != 'early_onboard' else 0
-        else:
-            price = float(pkg.features.get('price_inr', 0))
+        # ✅ Use the service function for consistency
+        try:
+            price = get_package_price(pkg.code)
+        except ValueError:
+            # Fallback for packages without price
+            price = 0.0
         
         result.append({
             "id": pkg.id,
@@ -50,10 +52,11 @@ def get_package(package_code):
     
     dev_mode = current_app.config.get('SUBSCRIPTION_DEV_MODE', False)
     
-    if dev_mode and package.code != 'early_onboard':
-        price = current_app.config.get('SUBSCRIPTION_TEST_PRICE', 1)
-    else:
-        price = float(package.features.get('price_inr', 0))
+    # ✅ Use the service function
+    try:
+        price = get_package_price(package_code)
+    except ValueError:
+        price = 0.0
     
     return jsonify({
         "id": package.id,

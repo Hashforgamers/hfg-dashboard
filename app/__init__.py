@@ -54,8 +54,8 @@ def create_app():
 
     # Register blueprints
     app.register_blueprint(dashboard_service, url_prefix="/api")
-    app.register_blueprint(bp_packages)
-    app.register_blueprint(bp_subs)
+    app.register_blueprint(bp_packages, url_prefix='/api/packages')
+    app.register_blueprint(bp_subs, url_prefix='/api/vendors/<int:vendor_id>/subscription')
     app.register_blueprint(bp_vendor_pc)
     app.register_blueprint(bp_internal_ws)
     app.register_blueprint(bp_events)

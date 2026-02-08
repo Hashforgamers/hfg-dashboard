@@ -1,7 +1,7 @@
 import razorpay
 import hmac
 import hashlib
-from datetime import datetime
+from datetime import datetime, timezone  # ✅ ADD timezone
 from flask import current_app
 
 
@@ -37,7 +37,7 @@ def create_order(amount, currency='INR', receipt=None, notes=None):
     order_data = {
         'amount': amount_paise,
         'currency': currency,
-        'receipt': receipt or f'sub_{int(datetime.utcnow().timestamp())}',
+        'receipt': receipt or f'sub_{int(datetime.now(timezone.utc).timestamp())}',  # ✅ FIXED
         'notes': notes or {}
     }
     

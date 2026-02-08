@@ -306,13 +306,21 @@ def get_package_price(package_code):
     Returns:
         float: Price in INR
     """
-    # In dev mode, return test price
-    if current_app.config.get('SUBSCRIPTION_DEV_MODE', False):
-        return float(current_app.config.get('SUBSCRIPTION_TEST_PRICE', 1))
-    
-    # Production: get actual price from package
+    # Get package first to check original price
     package = Package.query.filter_by(code=package_code, active=True).first()
     if not package:
         raise ValueError(f"Package {package_code} not found")
     
-    return float(package.features.get('price_inr', 0))
+    original_price = float(package.features.get('price_inr', 0))
+    
+    # ✅ Free packages stay free even in dev mode
+    if original_price == 0:
+        return 0.0
+    
+    # ✅ In dev mode, paid packages cost test price
+    if current_app.config.get('SUBSCRIPTION_DEV_MODE', False):
+        return float(current_app.config.get('SUBSCRIPTION_TEST_PRICE', 1))
+    
+    # Production: return actual price
+    return original_price
+
