@@ -98,3 +98,18 @@ def get_test_price():
     if current_app.config.get('SUBSCRIPTION_DEV_MODE', False):
         return current_app.config.get('SUBSCRIPTION_TEST_PRICE', 1)
     return None
+
+def get_order_details(order_id):
+    """
+    Get order details from Razorpay
+    
+    Args:
+        order_id: Razorpay order ID
+        
+    Returns:
+        dict: Order details including payment status
+    """
+    client = get_razorpay_client()
+    order = client.order.fetch(order_id)
+    current_app.logger.info(f"Fetched order details: {order_id}")
+    return order
