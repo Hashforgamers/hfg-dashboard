@@ -20,3 +20,5 @@ eventlet
 flask-jwt-extended
 python-dateutil
 pytz
+setuptools==57.5.0
+razorpay==1.4.2

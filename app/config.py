@@ -26,3 +26,11 @@ class Config:
     # Booking bridge
     BOOKING_SOCKET_URL = os.getenv("BOOKING_SOCKET_URL", "wss://hfg-booking-hmnx.onrender.com")
     BOOKING_BRIDGE_NAMESPACE = os.getenv("BOOKING_BRIDGE_NAMESPACE") 
+    
+    RAZORPAY_KEY_ID = os.getenv('RAZORPAY_KEY_ID')
+    RAZORPAY_KEY_SECRET = os.getenv('RAZORPAY_KEY_SECRET')
+    
+     # 🆕 Development Mode Settings
+    SUBSCRIPTION_DEV_MODE = os.getenv('SUBSCRIPTION_DEV_MODE', 'true').lower() == 'true'
+    SUBSCRIPTION_TEST_PRICE = 1  # ₹1 for testing
+    SUBSCRIPTION_TEST_DURATION_DAYS = 1  # 1 day for testing
