@@ -86,15 +86,7 @@ def get_limit(vendor_id):
 
 @bp_subs.post('/create-order')
 def create_payment_order(vendor_id):
-    """
-    Create Razorpay order for subscription purchase
-    
-    Request body:
-    {
-        "package_code": "base" | "grow" | "elite",
-        "action": "new" | "renew"
-    }
-    """
+    """Create Razorpay order for subscription purchase"""
     try:
         data = request.get_json()
         package_code = data.get('package_code')
@@ -103,12 +95,10 @@ def create_payment_order(vendor_id):
         if not package_code:
             return jsonify({"error": "package_code is required"}), 400
         
-        # Get package details
         package = Package.query.filter_by(code=package_code, active=True).first()
         if not package:
             return jsonify({"error": "Invalid package code"}), 404
         
-        # ✅ Use service function (respects dev mode)
         price = get_package_price(package_code)
         
         if price == 0:
@@ -130,12 +120,17 @@ def create_payment_order(vendor_id):
             }
         )
         
+        # ✅ Determine if test or live mode
+        key_id = current_app.config['RAZORPAY_KEY_ID']
+        is_test_mode = key_id.startswith('rzp_test_')
+        
         return jsonify({
-            "success": True,  # ✅ ADD THIS for consistency
+            "success": True,
             "order_id": order['id'],
             "amount": price,
             "currency": "INR",
-            "key_id": current_app.config['RAZORPAY_KEY_ID'],
+            "key_id": key_id,
+            "test_mode": is_test_mode,  # ✅ ADD THIS
             "package": {
                 "code": package.code,
                 "name": package.name,
