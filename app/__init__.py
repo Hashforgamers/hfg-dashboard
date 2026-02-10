@@ -30,16 +30,12 @@ def create_app():
 
     # ✅ CORS - Allow all origins for development
     CORS(app, 
-         resources={
-             r"/api/*": {
-                 "origins": "*",
-                 "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-                 "allow_headers": ["Content-Type", "Authorization", "X-Requested-With"],
-                 "expose_headers": ["Content-Type"],
-                 "supports_credentials": False,
-                 "max_age": 3600
-             }
-         })
+     origins="*",
+     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+     allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
+     supports_credentials=False
+    )
+
 
     # ✅ ADD: Global OPTIONS handler BEFORE blueprint registration
     @app.before_request
