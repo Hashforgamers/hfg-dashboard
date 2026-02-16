@@ -25,6 +25,7 @@ class ConsoleService:
 
             # ✅ Create Console Entry
             console = Console(
+                vendor_id=vendor_id,
                 console_number=console_data["consoleNumber"],
                 model_number=console_data["modelNumber"],
                 serial_number=console_data["serialNumber"],
