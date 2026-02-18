@@ -6,8 +6,15 @@ from app.models.vendor import Vendor
 from app.extension.extensions import db
 from datetime import datetime, date, time as dt_time
 from sqlalchemy import and_, or_
+import pytz
 
 pricing_blueprint = Blueprint('pricing', __name__)
+
+IST = pytz.timezone('Asia/Kolkata')
+
+def get_ist_now():
+    """Returns current datetime in IST"""
+    return datetime.now(IST)
 
 
 # ================================
@@ -23,38 +30,32 @@ def get_pricing_offers(vendor_id):
     - ?current_only=true (only currently running offers)
     """
     try:
-        # Validate vendor
         vendor = Vendor.query.get(vendor_id)
         if not vendor:
             return jsonify({'success': False, 'message': 'Vendor not found'}), 404
-        
-        # Build query
+
         query = ConsolePricingOffer.query.filter_by(vendor_id=vendor_id)
-        
-        # Filter by console type (available_game_id)
+
         available_game_id = request.args.get('available_game_id', type=int)
         if available_game_id:
             query = query.filter_by(available_game_id=available_game_id)
-        
-        # Filter by active status
+
         active_only = request.args.get('active_only', 'false').lower() == 'true'
         if active_only:
             query = query.filter_by(is_active=True)
-        
-        # Get all offers
+
         offers = query.order_by(ConsolePricingOffer.start_date.desc()).all()
-        
-        # Filter by currently running (if requested)
+
         current_only = request.args.get('current_only', 'false').lower() == 'true'
         if current_only:
             offers = [offer for offer in offers if offer.is_currently_active()]
-        
+
         return jsonify({
             'success': True,
             'offers': [offer.to_dict() for offer in offers],
             'count': len(offers)
         }), 200
-        
+
     except Exception as e:
         current_app.logger.error(f"❌ Error fetching pricing offers: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -66,37 +67,36 @@ def get_pricing_offers(vendor_id):
 @pricing_blueprint.route('/vendor/<int:vendor_id>/active-pricing', methods=['GET'])
 def get_active_pricing(vendor_id):
     """
-    Get current active pricing for all console types
-    Returns offered_price if there's an active offer, else default_price from AvailableGame
+    Get current active pricing for all console types.
+    Returns offered_price if there's an active offer, else default single_slot_price.
+    Uses IST for all time comparisons.
     """
     try:
-        # Get all console types (AvailableGames) for this vendor
         available_games = AvailableGame.query.filter_by(vendor_id=vendor_id).all()
-        
+
         if not available_games:
             return jsonify({
                 'success': False,
                 'message': 'No console types found for this vendor'
             }), 404
-        
+
+        now_ist = get_ist_now()
+        current_app.logger.info(f"🕐 Current IST time: {now_ist.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+
         result = {}
-        
+
         for game in available_games:
-            # Check for active offers
             active_offers = ConsolePricingOffer.query.filter_by(
                 vendor_id=vendor_id,
                 available_game_id=game.id,
                 is_active=True
             ).all()
-            
-            # Find currently active offer
-            current_offer = None
-            for offer in active_offers:
-                if offer.is_currently_active():
-                    current_offer = offer
-                    break
-            
-            # Build response
+
+            current_offer = next(
+                (offer for offer in active_offers if offer.is_currently_active()),
+                None
+            )
+
             if current_offer:
                 result[game.game_name.lower()] = {
                     'available_game_id': game.id,
@@ -118,13 +118,13 @@ def get_active_pricing(vendor_id):
                     'is_offer': False,
                     'default_price': float(game.single_slot_price)
                 }
-        
+
         return jsonify({
             'success': True,
             'pricing': result,
-            'timestamp': datetime.now().isoformat()
+            'timestamp': now_ist.isoformat()
         }), 200
-        
+
     except Exception as e:
         current_app.logger.error(f"❌ Error fetching active pricing: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -136,39 +136,37 @@ def get_active_pricing(vendor_id):
 @pricing_blueprint.route('/vendor/<int:vendor_id>/pricing-offers', methods=['POST'])
 def create_pricing_offer(vendor_id):
     """
-    Create a new pricing offer
+    Create a new pricing offer.
     Body: {
         "available_game_id": 123,
         "offered_price": 80,
-        "start_date": "2026-02-07",
+        "start_date": "2026-02-18",
         "start_time": "15:00",
-        "end_date": "2026-02-09",
+        "end_date": "2026-02-20",
         "end_time": "20:00",
         "offer_name": "Weekend Special",
-        "offer_description": "Special weekend discount on PC gaming"
+        "offer_description": "Special weekend discount"
     }
     """
     try:
         data = request.json
-        
-        # Validate vendor
+
         vendor = Vendor.query.get(vendor_id)
         if not vendor:
             return jsonify({'success': False, 'message': 'Vendor not found'}), 404
-        
-        # Validate available_game
+
         available_game_id = data.get('available_game_id')
         available_game = AvailableGame.query.filter_by(
             id=available_game_id,
             vendor_id=vendor_id
         ).first()
-        
+
         if not available_game:
             return jsonify({
                 'success': False,
                 'message': 'Console type not found for this vendor'
             }), 404
-        
+
         # Parse dates and times
         try:
             start_date = datetime.strptime(data['start_date'], '%Y-%m-%d').date()
@@ -180,68 +178,66 @@ def create_pricing_offer(vendor_id):
                 'success': False,
                 'message': f'Invalid date/time format: {str(e)}'
             }), 400
-        
+
         # Validate dates
         if end_date < start_date:
             return jsonify({
                 'success': False,
                 'message': 'End date cannot be before start date'
             }), 400
-        
+
         if start_date == end_date and end_time <= start_time:
             return jsonify({
                 'success': False,
                 'message': 'End time must be after start time for same-day offers'
             }), 400
-        
+
         # Validate prices
         offered_price = float(data.get('offered_price', 0))
         default_price = float(available_game.single_slot_price)
-        
+
         if offered_price <= 0:
             return jsonify({
                 'success': False,
                 'message': 'Offered price must be greater than 0'
             }), 400
-        
+
         if offered_price > default_price:
             return jsonify({
                 'success': False,
-                'message': f'Offered price (₹{offered_price}) cannot be greater than default price (₹{default_price})'
+                'message': f'Offered price (₹{offered_price}) cannot exceed default price (₹{default_price})'
             }), 400
-        
-        # Check for overlapping offers
+
+        # Check for overlapping active offers
         overlapping = ConsolePricingOffer.query.filter(
             ConsolePricingOffer.vendor_id == vendor_id,
             ConsolePricingOffer.available_game_id == available_game_id,
             ConsolePricingOffer.is_active == True,
             or_(
-                # New offer starts during existing offer
                 and_(
                     ConsolePricingOffer.start_date <= start_date,
                     ConsolePricingOffer.end_date >= start_date
                 ),
-                # New offer ends during existing offer
                 and_(
                     ConsolePricingOffer.start_date <= end_date,
                     ConsolePricingOffer.end_date >= end_date
                 ),
-                # New offer completely contains existing offer
                 and_(
                     ConsolePricingOffer.start_date >= start_date,
                     ConsolePricingOffer.end_date <= end_date
                 )
             )
         ).first()
-        
+
         if overlapping:
             return jsonify({
                 'success': False,
-                'message': f'Overlapping offer exists: {overlapping.offer_name}',
+                'message': f'Overlapping offer exists: "{overlapping.offer_name}"',
                 'overlapping_offer': overlapping.to_dict()
             }), 400
-        
-        # Create new offer
+
+        now_ist = get_ist_now().replace(tzinfo=None)
+
         new_offer = ConsolePricingOffer(
             vendor_id=vendor_id,
             available_game_id=available_game_id,
@@ -253,20 +249,22 @@ def create_pricing_offer(vendor_id):
             end_time=end_time,
             offer_name=data.get('offer_name', 'Special Offer'),
             offer_description=data.get('offer_description'),
-            is_active=True
+            is_active=True,
+            created_at=now_ist,
+            updated_at=now_ist
         )
-        
+
         db.session.add(new_offer)
         db.session.commit()
-        
+
         current_app.logger.info(f"✅ Created pricing offer for vendor {vendor_id}: {new_offer.offer_name}")
-        
+
         return jsonify({
             'success': True,
             'message': 'Pricing offer created successfully',
             'offer': new_offer.to_dict()
         }), 201
-        
+
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"❌ Error creating pricing offer: {str(e)}")
@@ -286,58 +284,55 @@ def update_pricing_offer(vendor_id, offer_id):
             id=offer_id,
             vendor_id=vendor_id
         ).first()
-        
+
         if not offer:
             return jsonify({'success': False, 'message': 'Offer not found'}), 404
-        
+
         data = request.json
-        
-        # Update offered price
+
         if 'offered_price' in data:
             offered_price = float(data['offered_price'])
-            if offered_price > 0 and offered_price <= float(offer.default_price):
-                offer.offered_price = offered_price
-            else:
+            if offered_price <= 0 or offered_price > float(offer.default_price):
                 return jsonify({
                     'success': False,
-                    'message': 'Invalid offered price'
+                    'message': f'Offered price must be > 0 and ≤ ₹{offer.default_price}'
                 }), 400
-        
-        # Update dates/times
+            offer.offered_price = offered_price
+
         if 'start_date' in data:
             offer.start_date = datetime.strptime(data['start_date'], '%Y-%m-%d').date()
-        
+
         if 'start_time' in data:
             offer.start_time = datetime.strptime(data['start_time'], '%H:%M').time()
-        
+
         if 'end_date' in data:
             offer.end_date = datetime.strptime(data['end_date'], '%Y-%m-%d').date()
-        
+
         if 'end_time' in data:
             offer.end_time = datetime.strptime(data['end_time'], '%H:%M').time()
-        
-        # Update offer details
+
         if 'offer_name' in data:
             offer.offer_name = data['offer_name']
-        
+
         if 'offer_description' in data:
             offer.offer_description = data['offer_description']
-        
+
         if 'is_active' in data:
             offer.is_active = bool(data['is_active'])
-        
-        offer.updated_at = datetime.utcnow()
-        
+
+        # ✅ Use IST for updated_at
+        offer.updated_at = get_ist_now().replace(tzinfo=None)
+
         db.session.commit()
-        
+
         current_app.logger.info(f"✅ Updated pricing offer {offer_id}")
-        
+
         return jsonify({
             'success': True,
             'message': 'Pricing offer updated successfully',
             'offer': offer.to_dict()
         }), 200
-        
+
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"❌ Error updating pricing offer: {str(e)}")
@@ -349,36 +344,38 @@ def update_pricing_offer(vendor_id, offer_id):
 # ================================
 @pricing_blueprint.route('/vendor/<int:vendor_id>/pricing-offers/<int:offer_id>', methods=['DELETE'])
 def delete_pricing_offer(vendor_id, offer_id):
-    """Deactivate a pricing offer (soft delete)"""
+    """Soft delete — deactivates the pricing offer"""
     try:
         offer = ConsolePricingOffer.query.filter_by(
             id=offer_id,
             vendor_id=vendor_id
         ).first()
-        
+
         if not offer:
             return jsonify({'success': False, 'message': 'Offer not found'}), 404
-        
-        # Soft delete - deactivate
+
         offer.is_active = False
-        offer.updated_at = datetime.utcnow()
-        
+        # ✅ Use IST for updated_at
+        offer.updated_at = get_ist_now().replace(tzinfo=None)
+
         db.session.commit()
-        
+
         current_app.logger.info(f"✅ Deactivated pricing offer {offer_id}")
-        
+
         return jsonify({
             'success': True,
             'message': 'Pricing offer deactivated successfully'
         }), 200
-        
+
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"❌ Error deleting pricing offer: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-# In your controller
+# ================================
+# 6. GET AVAILABLE GAMES FOR VENDOR
+# ================================
 @pricing_blueprint.route('/vendor/<int:vendor_id>/available-games', methods=['GET'])
 def get_vendor_available_games(vendor_id):
     """Get available games (console types) for vendor"""
