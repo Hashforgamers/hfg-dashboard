@@ -19,7 +19,9 @@ def create_event(vendor_id, payload):
         allow_individual=payload.get("allow_individual", False),
         visibility=payload.get("visibility", True),
         status=payload.get("status", EventStatus.DRAFT),
-        qr_code_url=payload.get("qr_code_url")
+        qr_code_url=payload.get("qr_code_url"),
+        banner_image_url=payload.get("banner_image_url"),
+        banner_public_id=payload.get("banner_public_id"),
     )
     db.session.add(ev)
     db.session.commit()

@@ -29,6 +29,8 @@ class Event(db.Model):
     max_team_size = Column(Integer, default=5, nullable=False)
     allow_solo = Column(Boolean, default=False, nullable=False)
     allow_individual = Column(Boolean, default=False, nullable=False)
+    banner_image_url   = Column(Text)           # ← NEW
+    banner_public_id   = Column(Text)
     qr_code_url = Column(Text)
     status = Column(String(24), default=EventStatus.DRAFT, nullable=False)
     visibility = Column(Boolean, default=True, nullable=False)
