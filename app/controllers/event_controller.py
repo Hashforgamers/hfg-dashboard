@@ -85,7 +85,8 @@ def get_events():
     items = list_events(vid, status)
     return jsonify([{
         "id": str(e.id), "title": e.title, "status": e.status,
-        "start_at": e.start_at.isoformat(), "end_at": e.end_at.isoformat()
+        "start_at": e.start_at.isoformat(), "end_at": e.end_at.isoformat() ,
+        "banner_image_url":  e.banner_image_url, "banner_public_id":  e.banner_public_id,
     } for e in items]), 200
 
 @bp_events.patch('/<uuid:event_id>')
