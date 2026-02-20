@@ -3,6 +3,7 @@ import time, datetime
 import jwt  # PyJWT
 from flask_jwt_extended import jwt_required, get_jwt
 from app.services.event_service import create_event, list_events, update_event
+from app.services.cloudinary_event_service import CloudinaryEventImageService
 from app.services.websocket_service import socketio
 from app.extension.extensions import db
 
@@ -93,4 +94,52 @@ def patch_event(event_id):
     vid = _vendor_id()
     ev = update_event(vid, event_id, request.get_json() or {})
     socketio.emit("event_updated", {"event_id": str(ev.id), "status": ev.status}, room=f"vendor_{vid}")
+    return jsonify({"ok": True}), 200
+
+@bp_events.post('/upload-banner')
+@jwt_required()
+def upload_banner():
+    """
+    Upload event banner image to Cloudinary.
+    Accepts: multipart/form-data
+      - image (file)           ← required
+      - event_title (string)   ← optional, used for public_id naming
+    Returns: { url, public_id }
+    """
+    vid         = _vendor_id()
+    image_file  = request.files.get('image')
+    event_title = request.form.get('event_title', 'event')
+
+    if not image_file:
+        return jsonify({"error": "image file is required"}), 400
+
+    result = CloudinaryEventImageService.upload_event_banner(image_file, vid, event_title)
+
+    if not result['success']:
+        return jsonify({"error": result['error']}), 400
+
+    return jsonify({
+        "url":        result['url'],
+        "public_id":  result['public_id']
+    }), 200
+
+
+@bp_events.delete('/delete-banner')
+@jwt_required()
+def delete_banner():
+    """
+    Delete event banner from Cloudinary.
+    Body: { "public_id": "EVENT_BANNERS/..." }
+    """
+    data      = request.get_json(silent=True) or {}
+    public_id = data.get('public_id')
+
+    if not public_id:
+        return jsonify({"error": "public_id is required"}), 400
+
+    result = CloudinaryEventImageService.delete_event_banner(public_id)
+
+    if not result['success']:
+        return jsonify({"error": result['error']}), 400
+
     return jsonify({"ok": True}), 200
