@@ -19,7 +19,7 @@ def list_teams(event_id):
     teams = Team.query.filter_by(event_id=event_id).order_by(Team.created_at.asc()).all()
     return jsonify([{
         "id": str(t.id),
-        "name": t.name,
+        "name": t.team_name,
         "created_by_user": t.created_by_user,
         "created_at": t.created_at.isoformat(),
         "is_individual": t.is_individual
