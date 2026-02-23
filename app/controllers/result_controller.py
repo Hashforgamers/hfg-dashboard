@@ -15,48 +15,14 @@ def _vendor_id():
     return int(vendor.get("id"))
 
 
-def _default_platform_profiles():
-    return {
-        "pc": {},
-        "ps": {},
-        "xbox": {},
-        "vr": {}
-    }
-
-
-def _build_verified_snapshot(payload):
-    if isinstance(payload.get("verified_snapshot"), dict):
-        snapshot = dict(payload["verified_snapshot"])
-    else:
-        snapshot = {}
-
-    platform_profiles = snapshot.get("platform_profiles")
-    if not isinstance(platform_profiles, dict):
-        platform_profiles = _default_platform_profiles()
-    else:
-        for k in ("pc", "ps", "xbox", "vr"):
-            if k not in platform_profiles or not isinstance(platform_profiles[k], dict):
-                platform_profiles[k] = {}
-
-    # Convenience fields for common winners payload shapes.
-    if payload.get("platform"):
-        snapshot["platform"] = payload.get("platform")
-    if payload.get("game_title"):
-        snapshot["game_title"] = payload.get("game_title")
-    if payload.get("score") is not None:
-        snapshot["score"] = payload.get("score")
-    if payload.get("stats") is not None:
-        snapshot["stats"] = payload.get("stats")
-    if payload.get("highlights") is not None:
-        snapshot["highlights"] = payload.get("highlights")
-
-    # Allow direct short-hand profile keys in publish payload.
-    for platform_key in ("pc", "ps", "xbox", "vr"):
-        if isinstance(payload.get(platform_key), dict):
-            platform_profiles[platform_key] = payload.get(platform_key)
-
-    snapshot["platform_profiles"] = platform_profiles
-    return snapshot
+def _snapshot_url(value):
+    # verified_snapshot is stored as Cloudinary URL (string). Keep backward compatibility.
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        url = value.get("url") or value.get("secure_url")
+        return url if isinstance(url, str) else None
+    return None
 
 
 @bp_results.get('/winners')
@@ -103,9 +69,7 @@ def list_winners(event_id):
             "member_count": len(members_by_team.get(w.team_id, []))
         },
         "members": members_by_team.get(w.team_id, []),
-        "verified_snapshot": {
-            **(_build_verified_snapshot({"verified_snapshot": w.verified_snapshot}) if w.verified_snapshot else {"platform_profiles": _default_platform_profiles()})
-        }
+        "verified_snapshot": _snapshot_url(w.verified_snapshot)
     } for w in winners]), 200
 
 @bp_results.post('/publish')
@@ -123,11 +87,14 @@ def publish_winners(event_id):
     for w in winners:
         if not w.get("team_id") or w.get("rank") is None:
             return jsonify({"error": "team_id and rank required"}), 400
+        snapshot_url = w.get("verified_snapshot", w.get("result_image_url"))
+        if snapshot_url is not None and not isinstance(snapshot_url, str):
+            return jsonify({"error": "verified_snapshot must be a Cloudinary image URL string"}), 400
         db.session.add(Winner(
             event_id=event_id,
             team_id=w["team_id"],
             rank=int(w["rank"]),
-            verified_snapshot=_build_verified_snapshot(w)
+            verified_snapshot=snapshot_url
         ))
     ev.status = EventStatus.COMPLETED
     db.session.commit()
