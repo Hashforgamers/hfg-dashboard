@@ -1,6 +1,8 @@
 import click
 from flask.cli import with_appcontext
 from flask import current_app
+from sqlalchemy import text
+from app.extension.extensions import db
 from app.services.rawg_sync_service import RAWGSyncService
 
 
@@ -254,6 +256,46 @@ def fix_expired_subscriptions_command():
         click.echo("✓ All subscriptions are up to date")
 
 
+@click.command('init-pc-link-table')
+@with_appcontext
+def init_pc_link_table_command():
+    """
+    Create console_link_sessions table and indexes if they don't exist.
+
+    Usage:
+        flask init-pc-link-table
+    """
+    statements = [
+        """
+        CREATE TABLE IF NOT EXISTS console_link_sessions (
+            id SERIAL PRIMARY KEY,
+            vendor_id INTEGER NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+            console_id INTEGER NOT NULL REFERENCES consoles(id) ON DELETE CASCADE,
+            kiosk_id VARCHAR(64) NULL,
+            session_token VARCHAR(128) NOT NULL UNIQUE,
+            status VARCHAR(16) NOT NULL DEFAULT 'active',
+            started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            ended_at TIMESTAMPTZ NULL,
+            close_reason VARCHAR(64) NULL
+        );
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_console_link_sessions_vendor_id ON console_link_sessions (vendor_id);",
+        "CREATE INDEX IF NOT EXISTS ix_console_link_sessions_console_id ON console_link_sessions (console_id);",
+        "CREATE INDEX IF NOT EXISTS ix_console_link_sessions_status ON console_link_sessions (status);",
+        "CREATE INDEX IF NOT EXISTS ix_console_link_sessions_session_token ON console_link_sessions (session_token);",
+        "CREATE INDEX IF NOT EXISTS ix_cls_vendor_active ON console_link_sessions (vendor_id, status);",
+        "CREATE INDEX IF NOT EXISTS ix_cls_console_active ON console_link_sessions (console_id, status);",
+    ]
+
+    try:
+        with db.engine.begin() as conn:
+            for stmt in statements:
+                conn.execute(text(stmt))
+        click.echo("✓ console_link_sessions table is ready")
+    except Exception as e:
+        click.echo(f"❌ Failed to initialize console_link_sessions: {e}", err=True)
+
+
 # Register all commands
 def register_commands(app):
     """Register all Flask CLI commands"""
@@ -267,3 +309,4 @@ def register_commands(app):
     app.cli.add_command(test_subscription_command)
     app.cli.add_command(subscription_stats_command)
     app.cli.add_command(fix_expired_subscriptions_command)
+    app.cli.add_command(init_pc_link_table_command)
