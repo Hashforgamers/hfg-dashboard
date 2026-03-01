@@ -14,8 +14,27 @@ class ConsoleService:
     @staticmethod
     def add_console(data):
         try:
-            vendor_id = data.get("vendorId")
-            available_game_type = data.get("availablegametype")
+            vendor_id = (
+                data.get("vendorId")
+                or data.get("vendor_id")
+                or data.get("vendorID")
+            )
+            if vendor_id is None:
+                return {"error": "Missing required field: vendorId"}, 400
+            try:
+                vendor_id = int(vendor_id)
+            except (TypeError, ValueError):
+                return {"error": "Invalid vendorId. Expected an integer."}, 400
+            if vendor_id <= 0:
+                return {"error": "Invalid vendorId. Must be greater than 0."}, 400
+
+            available_game_type = (
+                data.get("availablegametype")
+                or data.get("availableGameType")
+                or data.get("available_game_type")
+            )
+            if not available_game_type:
+                return {"error": "Missing required field: availablegametype"}, 400
 
             console_data = data.get("consoleDetails", {})
             hardware_data = data.get("hardwareSpecifications", {})
