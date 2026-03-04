@@ -296,6 +296,53 @@ def init_pc_link_table_command():
         click.echo(f"❌ Failed to initialize console_link_sessions: {e}", err=True)
 
 
+@click.command('init-rbac-tables')
+@with_appcontext
+def init_rbac_tables_command():
+    """
+    Create RBAC tables if they do not exist.
+
+    Usage:
+        flask init-rbac-tables
+    """
+    statements = [
+        """
+        CREATE TABLE IF NOT EXISTS vendor_staff (
+            id SERIAL PRIMARY KEY,
+            vendor_id INTEGER NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+            name VARCHAR(120) NOT NULL,
+            role VARCHAR(32) NOT NULL DEFAULT 'staff',
+            pin_hash VARCHAR(255) NOT NULL,
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT uq_vendor_staff_name UNIQUE (vendor_id, name)
+        );
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_vendor_staff_vendor_id ON vendor_staff (vendor_id);",
+        "CREATE INDEX IF NOT EXISTS ix_vendor_staff_role ON vendor_staff (role);",
+        """
+        CREATE TABLE IF NOT EXISTS vendor_role_permissions (
+            id SERIAL PRIMARY KEY,
+            vendor_id INTEGER NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+            role VARCHAR(32) NOT NULL,
+            permission VARCHAR(64) NOT NULL,
+            CONSTRAINT uq_vendor_role_permission UNIQUE (vendor_id, role, permission)
+        );
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_vendor_role_permissions_vendor_id ON vendor_role_permissions (vendor_id);",
+        "CREATE INDEX IF NOT EXISTS ix_vendor_role_permissions_role ON vendor_role_permissions (role);",
+    ]
+
+    try:
+        with db.engine.begin() as conn:
+            for stmt in statements:
+                conn.execute(text(stmt))
+        click.echo("✓ RBAC tables are ready")
+    except Exception as e:
+        click.echo(f"❌ Failed to initialize RBAC tables: {e}", err=True)
+
+
 # Register all commands
 def register_commands(app):
     """Register all Flask CLI commands"""
@@ -310,3 +357,4 @@ def register_commands(app):
     app.cli.add_command(subscription_stats_command)
     app.cli.add_command(fix_expired_subscriptions_command)
     app.cli.add_command(init_pc_link_table_command)
+    app.cli.add_command(init_rbac_tables_command)

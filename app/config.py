@@ -3,6 +3,7 @@ import os
 class Config:
     SECRET_KEY = "DEV"
     DEBUG = True
+    RBAC_ENFORCEMENT = os.getenv("RBAC_ENFORCEMENT", "false").lower() == "true"
 
     SQLALCHEMY_DATABASE_URI = os.getenv(
         "DATABASE_URI",
@@ -34,4 +35,3 @@ class Config:
     SUBSCRIPTION_DEV_MODE = os.getenv('SUBSCRIPTION_DEV_MODE', 'true').lower() == 'true'
     SUBSCRIPTION_TEST_PRICE = 1  # ₹1 for testing
     SUBSCRIPTION_TEST_DURATION_DAYS = 1  # 1 day for testing
-
