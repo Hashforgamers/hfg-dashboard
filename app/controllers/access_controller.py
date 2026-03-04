@@ -1,3 +1,6 @@
+import os
+import jwt
+from jwt import ExpiredSignatureError, InvalidTokenError
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required, get_jwt
 from sqlalchemy.exc import IntegrityError
@@ -44,19 +47,48 @@ def _require_permission(vendor_id: int, permission: str):
 
 
 @bp_access.post("/session/owner")
-@jwt_required()
 def issue_owner_session(vendor_id: int):
     _, err = _ensure_vendor_exists(vendor_id)
     if err:
         return err
 
-    claims = get_jwt() or {}
-    claim_vid = claim_vendor_id(claims)
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return jsonify({"error": "Authorization header missing"}), 401
+
+    token = auth_header.split(" ", 1)[1].strip()
+    secret = os.getenv("JWT_SECRET_KEY", "dev")
+
+    try:
+        claims = jwt.decode(token, secret, algorithms=["HS256"])
+    except ExpiredSignatureError:
+        return jsonify({"error": "Token expired"}), 401
+    except InvalidTokenError:
+        return jsonify({"error": "Invalid token"}), 401
+
+    sub = claims.get("sub") or {}
+    claim_vid = None
+    owner_name = "Owner"
+
+    if isinstance(sub, dict):
+        if sub.get("id") is not None:
+            claim_vid = int(sub["id"])
+        if sub.get("name"):
+            owner_name = str(sub["name"])
+    elif isinstance(sub, str):
+        # Handle newer string-sub tokens
+        if sub.isdigit():
+            claim_vid = int(sub)
+
+    # Also accept explicit vendor_id claim when present
+    if claims.get("vendor_id") is not None:
+        try:
+            claim_vid = int(claims.get("vendor_id"))
+        except (TypeError, ValueError):
+            pass
+
     if claim_vid is not None and claim_vid != vendor_id:
         return jsonify({"error": "Vendor mismatch"}), 403
-
-    owner_name = (claims.get("sub") or {}).get("name") if isinstance(claims.get("sub"), dict) else None
-    owner_name = owner_name or "Owner"
 
     payload = create_access_token_payload(
         vendor_id=vendor_id,

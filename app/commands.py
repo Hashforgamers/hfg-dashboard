@@ -2,8 +2,13 @@ import click
 from flask.cli import with_appcontext
 from flask import current_app
 from sqlalchemy import text
+from werkzeug.security import generate_password_hash
 from app.extension.extensions import db
 from app.services.rawg_sync_service import RAWGSyncService
+from app.models.vendor import Vendor
+from app.models.vendorStaff import VendorStaff
+from app.models.vendorRolePermission import VendorRolePermission
+from app.services.rbac_service import DEFAULT_ROLE_PERMISSIONS, generate_unique_pin
 
 
 @click.command('sync-rawg-games')
@@ -343,6 +348,98 @@ def init_rbac_tables_command():
         click.echo(f"❌ Failed to initialize RBAC tables: {e}", err=True)
 
 
+@click.command('migrate-rbac-legacy')
+@click.option('--vendor-id', type=int, default=None, help='Migrate only a specific vendor ID')
+@click.option('--dry-run', is_flag=True, help='Preview migration without writing changes')
+@with_appcontext
+def migrate_rbac_legacy_command(vendor_id, dry_run):
+    """
+    Backfill RBAC for legacy vendors:
+    1) Ensure one owner staff account exists per vendor
+    2) Seed default role-permission rows if missing
+
+    Usage:
+        flask migrate-rbac-legacy
+        flask migrate-rbac-legacy --vendor-id=14
+        flask migrate-rbac-legacy --dry-run
+    """
+    query = Vendor.query
+    if vendor_id is not None:
+        query = query.filter(Vendor.id == vendor_id)
+
+    vendors = query.order_by(Vendor.id.asc()).all()
+    if not vendors:
+        click.echo("No vendors found for migration.")
+        return
+
+    created_owner_count = 0
+    seeded_perm_count = 0
+    unchanged_count = 0
+    owner_pin_rows = []
+
+    for vendor in vendors:
+        changed = False
+
+        owner_staff = VendorStaff.query.filter_by(vendor_id=vendor.id, role='owner').first()
+        if not owner_staff:
+            generated_pin = generate_unique_pin(vendor.id)
+            owner_name = (vendor.owner_name or "Owner").strip() or "Owner"
+
+            if not dry_run:
+                db.session.add(
+                    VendorStaff(
+                        vendor_id=vendor.id,
+                        name=owner_name,
+                        role='owner',
+                        pin_hash=generate_password_hash(generated_pin),
+                        is_active=True,
+                    )
+                )
+
+            created_owner_count += 1
+            changed = True
+            owner_pin_rows.append((vendor.id, vendor.cafe_name, owner_name, generated_pin))
+
+        existing_perm_count = VendorRolePermission.query.filter_by(vendor_id=vendor.id).count()
+        if existing_perm_count == 0:
+            if not dry_run:
+                for role, permissions in DEFAULT_ROLE_PERMISSIONS.items():
+                    for permission in permissions:
+                        db.session.add(
+                            VendorRolePermission(
+                                vendor_id=vendor.id,
+                                role=role,
+                                permission=permission,
+                            )
+                        )
+            seeded_perm_count += 1
+            changed = True
+
+        if not changed:
+            unchanged_count += 1
+
+    if dry_run:
+        db.session.rollback()
+    else:
+        db.session.commit()
+
+    click.echo("\nRBAC legacy migration summary")
+    click.echo("--------------------------------")
+    click.echo(f"Vendors scanned: {len(vendors)}")
+    click.echo(f"Owner staff created: {created_owner_count}")
+    click.echo(f"Role-permission sets seeded: {seeded_perm_count}")
+    click.echo(f"Unchanged vendors: {unchanged_count}")
+    click.echo(f"Mode: {'DRY RUN' if dry_run else 'APPLIED'}")
+
+    if owner_pin_rows:
+        click.echo("\nGenerated owner PINs (save securely):")
+        click.echo("vendor_id | cafe_name | owner_name | pin")
+        for row in owner_pin_rows:
+            click.echo(f"{row[0]} | {row[1]} | {row[2]} | {row[3]}")
+    else:
+        click.echo("\nNo new owner PINs were generated.")
+
+
 # Register all commands
 def register_commands(app):
     """Register all Flask CLI commands"""
@@ -358,3 +455,4 @@ def register_commands(app):
     app.cli.add_command(fix_expired_subscriptions_command)
     app.cli.add_command(init_pc_link_table_command)
     app.cli.add_command(init_rbac_tables_command)
+    app.cli.add_command(migrate_rbac_legacy_command)
