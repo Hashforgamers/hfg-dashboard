@@ -2,6 +2,8 @@
 from flask import Blueprint, request, jsonify, current_app
 from app.models.consolePricingOffer import ConsolePricingOffer
 from app.models.availableGame import AvailableGame
+from app.models.controllerPricingRule import ControllerPricingRule
+from app.models.controllerPricingTier import ControllerPricingTier
 from app.models.vendor import Vendor
 from app.extension.extensions import db
 from datetime import datetime, date, time as dt_time
@@ -11,10 +13,45 @@ import pytz
 pricing_blueprint = Blueprint('pricing', __name__)
 
 IST = pytz.timezone('Asia/Kolkata')
+SUPPORTED_CONTROLLER_TYPES = {"ps5", "xbox"}
 
 def get_ist_now():
     """Returns current datetime in IST"""
     return datetime.now(IST)
+
+
+def _normalize_console_type(value):
+    return str(value or "").strip().lower()
+
+
+def _calculate_controller_total(base_price, tiers, quantity):
+    if quantity <= 0:
+        return 0.0
+
+    dp = [float("inf")] * (quantity + 1)
+    dp[0] = 0.0
+
+    for q in range(1, quantity + 1):
+        dp[q] = min(dp[q], dp[q - 1] + base_price)
+        for tier in tiers:
+            tier_qty = int(tier["quantity"])
+            tier_total = float(tier["total_price"])
+            if tier_qty <= q:
+                dp[q] = min(dp[q], dp[q - tier_qty] + tier_total)
+
+    return float(dp[quantity] if dp[quantity] != float("inf") else quantity * base_price)
+
+
+def _serialize_controller_rule(rule, console_type, available_game_id):
+    active_tiers = [tier.to_dict() for tier in rule.tiers if tier.is_active]
+    active_tiers.sort(key=lambda t: t["quantity"])
+    return {
+        "console_type": console_type,
+        "available_game_id": available_game_id,
+        "base_price": float(rule.base_price),
+        "tiers": active_tiers,
+        "is_active": rule.is_active,
+    }
 
 
 # ================================
@@ -390,4 +427,240 @@ def get_vendor_available_games(vendor_id):
             } for g in games]
         }), 200
     except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@pricing_blueprint.route('/vendor/<int:vendor_id>/controller-pricing', methods=['GET'])
+def get_controller_pricing(vendor_id):
+    try:
+        vendor = Vendor.query.get(vendor_id)
+        if not vendor:
+            return jsonify({'success': False, 'message': 'Vendor not found'}), 404
+
+        available_games = AvailableGame.query.filter_by(vendor_id=vendor_id).all()
+        game_map = {_normalize_console_type(game.game_name): game for game in available_games}
+
+        pricing = {}
+        for console_type in sorted(SUPPORTED_CONTROLLER_TYPES):
+            game = game_map.get(console_type)
+            if not game:
+                pricing[console_type] = {
+                    "console_type": console_type,
+                    "available_game_id": None,
+                    "base_price": 0.0,
+                    "tiers": [],
+                    "is_active": False,
+                    "configured": False,
+                }
+                continue
+
+            rule = ControllerPricingRule.query.filter_by(
+                vendor_id=vendor_id,
+                available_game_id=game.id,
+                is_active=True
+            ).first()
+
+            if not rule:
+                pricing[console_type] = {
+                    "console_type": console_type,
+                    "available_game_id": game.id,
+                    "base_price": 0.0,
+                    "tiers": [],
+                    "is_active": False,
+                    "configured": False,
+                }
+                continue
+
+            serialized = _serialize_controller_rule(rule, console_type, game.id)
+            serialized["configured"] = True
+            pricing[console_type] = serialized
+
+        return jsonify({'success': True, 'pricing': pricing}), 200
+    except Exception as e:
+        current_app.logger.error(f"❌ Error fetching controller pricing: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@pricing_blueprint.route('/vendor/<int:vendor_id>/controller-pricing', methods=['PUT'])
+def upsert_controller_pricing(vendor_id):
+    try:
+        vendor = Vendor.query.get(vendor_id)
+        if not vendor:
+            return jsonify({'success': False, 'message': 'Vendor not found'}), 404
+
+        data = request.get_json(silent=True) or {}
+        payload_rules = []
+
+        if isinstance(data.get("pricing"), dict):
+            for console_type, rule_data in data["pricing"].items():
+                payload_rules.append({
+                    "console_type": console_type,
+                    "base_price": rule_data.get("base_price", 0),
+                    "tiers": rule_data.get("tiers", []),
+                })
+        elif isinstance(data.get("rules"), list):
+            payload_rules = data["rules"]
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Payload must include "pricing" object or "rules" array'
+            }), 400
+
+        if not payload_rules:
+            return jsonify({'success': False, 'message': 'No controller pricing rules provided'}), 400
+
+        available_games = AvailableGame.query.filter_by(vendor_id=vendor_id).all()
+        game_map = {_normalize_console_type(game.game_name): game for game in available_games}
+
+        updated = []
+        errors = []
+
+        for entry in payload_rules:
+            console_type = _normalize_console_type(entry.get("console_type"))
+            if console_type not in SUPPORTED_CONTROLLER_TYPES:
+                errors.append(f'Unsupported console_type "{console_type}"')
+                continue
+
+            game = game_map.get(console_type)
+            if not game:
+                errors.append(f'No available game configured for console_type "{console_type}"')
+                continue
+
+            try:
+                base_price = float(entry.get("base_price", 0))
+            except (TypeError, ValueError):
+                errors.append(f'Invalid base_price for "{console_type}"')
+                continue
+
+            if base_price < 0:
+                errors.append(f'base_price cannot be negative for "{console_type}"')
+                continue
+
+            incoming_tiers = entry.get("tiers") or []
+            normalized_tiers = []
+            tier_quantities = set()
+            tier_error = None
+
+            for tier in incoming_tiers:
+                try:
+                    quantity = int(tier.get("quantity"))
+                    total_price = float(tier.get("total_price"))
+                except (TypeError, ValueError):
+                    tier_error = f'Invalid tier values for "{console_type}"'
+                    break
+
+                if quantity < 2:
+                    tier_error = f'Tier quantity must be >= 2 for "{console_type}"'
+                    break
+                if total_price < 0:
+                    tier_error = f'Tier total_price cannot be negative for "{console_type}"'
+                    break
+                if quantity in tier_quantities:
+                    tier_error = f'Duplicate tier quantity {quantity} for "{console_type}"'
+                    break
+
+                tier_quantities.add(quantity)
+                normalized_tiers.append({"quantity": quantity, "total_price": total_price})
+
+            if tier_error:
+                errors.append(tier_error)
+                continue
+
+            rule = ControllerPricingRule.query.filter_by(
+                vendor_id=vendor_id,
+                available_game_id=game.id
+            ).first()
+
+            if not rule:
+                rule = ControllerPricingRule(
+                    vendor_id=vendor_id,
+                    available_game_id=game.id,
+                    base_price=base_price,
+                    is_active=True
+                )
+                db.session.add(rule)
+                db.session.flush()
+            else:
+                rule.base_price = base_price
+                rule.is_active = True
+
+            ControllerPricingTier.query.filter_by(rule_id=rule.id).delete()
+            db.session.flush()
+
+            for tier in normalized_tiers:
+                db.session.add(
+                    ControllerPricingTier(
+                        rule_id=rule.id,
+                        quantity=tier["quantity"],
+                        total_price=tier["total_price"],
+                        is_active=True
+                    )
+                )
+
+            db.session.flush()
+            db.session.refresh(rule)
+            updated.append(_serialize_controller_rule(rule, console_type, game.id))
+
+        if errors:
+            db.session.rollback()
+            return jsonify({'success': False, 'message': 'Validation failed', 'errors': errors}), 400
+
+        db.session.commit()
+
+        return jsonify({'success': True, 'updated_rules': updated}), 200
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"❌ Error saving controller pricing: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@pricing_blueprint.route('/vendor/<int:vendor_id>/controller-pricing/calculate', methods=['GET'])
+def calculate_controller_pricing(vendor_id):
+    try:
+        console_type = _normalize_console_type(request.args.get("console_type"))
+        quantity = request.args.get("quantity", type=int)
+
+        if console_type not in SUPPORTED_CONTROLLER_TYPES:
+            return jsonify({'success': False, 'message': 'console_type must be ps5 or xbox'}), 400
+        if quantity is None or quantity < 0:
+            return jsonify({'success': False, 'message': 'quantity must be >= 0'}), 400
+
+        game = AvailableGame.query.filter(
+            AvailableGame.vendor_id == vendor_id,
+            AvailableGame.game_name.ilike(console_type)
+        ).first()
+
+        if not game:
+            return jsonify({'success': False, 'message': f'Console type "{console_type}" not configured'}), 404
+
+        rule = ControllerPricingRule.query.filter_by(
+            vendor_id=vendor_id,
+            available_game_id=game.id,
+            is_active=True
+        ).first()
+
+        if not rule:
+            return jsonify({
+                'success': True,
+                'console_type': console_type,
+                'quantity': quantity,
+                'total_price': 0.0,
+                'base_price': 0.0,
+                'applied': 'no_rule',
+            }), 200
+
+        tiers = [tier.to_dict() for tier in rule.tiers if tier.is_active]
+        total_price = _calculate_controller_total(float(rule.base_price), tiers, quantity)
+
+        return jsonify({
+            'success': True,
+            'console_type': console_type,
+            'quantity': quantity,
+            'total_price': total_price,
+            'base_price': float(rule.base_price),
+            'tiers': tiers,
+            'applied': 'rule',
+        }), 200
+    except Exception as e:
+        current_app.logger.error(f"❌ Error calculating controller pricing: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
