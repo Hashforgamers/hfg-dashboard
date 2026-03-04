@@ -86,7 +86,14 @@ def issue_owner_session(vendor_id: int):
     secret = os.getenv("JWT_SECRET_KEY", "dev")
 
     try:
-        claims = jwt.decode(token, secret, algorithms=["HS256"])
+        # Legacy login-service tokens use object-shaped "sub".
+        # Keep signature+expiry verification, disable strict subject type check.
+        claims = jwt.decode(
+            token,
+            secret,
+            algorithms=["HS256"],
+            options={"verify_sub": False},
+        )
         _auth_debug(
             "session_owner_decode_ok",
             vendor_id=vendor_id,
