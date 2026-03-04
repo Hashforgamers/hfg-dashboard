@@ -230,25 +230,36 @@ def create_staff_member(vendor_id: int):
 @bp_access.patch("/staff/<int:staff_id>")
 @jwt_required()
 def update_staff_member(vendor_id: int, staff_id: int):
+    body = request.get_json(silent=True) or {}
+    _auth_debug(
+        "staff_update_start",
+        vendor_id=vendor_id,
+        staff_id=staff_id,
+        keys=sorted(list(body.keys())),
+        has_pin=("pin" in body),
+    )
+
     gate = _require_permission(vendor_id, "staff.manage")
     if gate:
+        _auth_debug("staff_update_permission_denied", vendor_id=vendor_id, staff_id=staff_id)
         return gate
 
     staff = VendorStaff.query.filter_by(id=staff_id, vendor_id=vendor_id).first()
     if not staff:
+        _auth_debug("staff_update_not_found", vendor_id=vendor_id, staff_id=staff_id)
         return jsonify({"error": "Staff not found"}), 404
-
-    body = request.get_json(silent=True) or {}
 
     if "name" in body:
         name = str(body.get("name", "")).strip()
         if not name:
+            _auth_debug("staff_update_invalid_name", vendor_id=vendor_id, staff_id=staff_id)
             return jsonify({"error": "name cannot be empty"}), 400
         staff.name = name
 
     if "role" in body:
         role = str(body.get("role", "")).strip().lower()
         if role not in VALID_ROLES or role == "owner":
+            _auth_debug("staff_update_invalid_role", vendor_id=vendor_id, staff_id=staff_id, role=role)
             return jsonify({"error": "role must be staff or manager"}), 400
         staff.role = role
 
@@ -258,8 +269,15 @@ def update_staff_member(vendor_id: int, staff_id: int):
     if "pin" in body:
         new_pin = str(body.get("pin", "")).strip()
         if not is_valid_pin_format(new_pin):
+            _auth_debug(
+                "staff_update_invalid_pin_format",
+                vendor_id=vendor_id,
+                staff_id=staff_id,
+                pin_length=len(new_pin),
+            )
             return jsonify({"error": "pin must be 4-6 digits"}), 400
         if is_pin_in_use(vendor_id, new_pin, exclude_staff_id=staff.id):
+            _auth_debug("staff_update_pin_in_use", vendor_id=vendor_id, staff_id=staff_id)
             return jsonify({"error": "pin already in use"}), 409
         staff.pin_code = new_pin
         staff.pin_hash = generate_password_hash(new_pin)
@@ -271,6 +289,14 @@ def update_staff_member(vendor_id: int, staff_id: int):
         staff.pin_hash = generate_password_hash(generated_pin)
 
     db.session.commit()
+    _auth_debug(
+        "staff_update_success",
+        vendor_id=vendor_id,
+        staff_id=staff_id,
+        role=staff.role,
+        is_active=staff.is_active,
+        has_pin=bool(staff.pin_code),
+    )
 
     payload = staff.to_dict(include_pin=True)
     if generated_pin:
