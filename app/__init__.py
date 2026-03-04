@@ -9,6 +9,7 @@ import logging
 from app.config import Config
 from app.extension.extensions import db
 from app.services.websocket_service import socketio, register_dashboard_events, start_upstream_bridge
+from app.middleware.rbac_guard import enforce_rbac_permissions
 
 jwt = JWTManager()
 
@@ -48,6 +49,10 @@ def create_app():
             response.headers.add("Access-Control-Max-Age", "3600")
             return response, 200
 
+    @app.before_request
+    def handle_rbac_guard():
+        return enforce_rbac_permissions()
+
     # Extensions
     db.init_app(app)
     Migrate(app, db)
@@ -66,6 +71,7 @@ def create_app():
     from app.controllers.vendor_games import vendor_games_bp
     from app.controllers.admin_games_controller import admin_games_bp
     from app.controllers.pricingController import pricing_blueprint
+    from app.controllers.access_controller import bp_access
     from app.commands import register_commands
 
     # Register blueprints
@@ -81,6 +87,7 @@ def create_app():
     app.register_blueprint(vendor_games_bp)
     app.register_blueprint(admin_games_bp)
     app.register_blueprint(pricing_blueprint, url_prefix="/api")
+    app.register_blueprint(bp_access)
     register_commands(app)
 
     # Socket events

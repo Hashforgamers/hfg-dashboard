@@ -5,7 +5,15 @@ from .paymentMethod import PaymentMethod
 from .paymentVendorMap import PaymentVendorMap  
 from .vendor import Vendor
 from .console_link_session import ConsoleLinkSession  # re-export for convenience
+from .vendorStaff import VendorStaff
+from .vendorRolePermission import VendorRolePermission
 
 
 # Make them available when importing from this module
-__all__ = ['PaymentMethod', 'PaymentVendorMap', 'Vendor']
+__all__ = [
+    'PaymentMethod',
+    'PaymentVendorMap',
+    'Vendor',
+    'VendorStaff',
+    'VendorRolePermission',
+]
