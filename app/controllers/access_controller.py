@@ -288,7 +288,26 @@ def update_staff_member(vendor_id: int, staff_id: int):
         staff.pin_code = generated_pin
         staff.pin_hash = generate_password_hash(generated_pin)
 
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError as e:
+        db.session.rollback()
+        _auth_debug(
+            "staff_update_integrity_error",
+            vendor_id=vendor_id,
+            staff_id=staff_id,
+            error=str(e),
+        )
+        return jsonify({"error": "PIN already in use or invalid update"}), 409
+    except Exception as e:
+        db.session.rollback()
+        _auth_debug(
+            "staff_update_commit_error",
+            vendor_id=vendor_id,
+            staff_id=staff_id,
+            error=str(e),
+        )
+        return jsonify({"error": "Failed to update staff"}), 500
     _auth_debug(
         "staff_update_success",
         vendor_id=vendor_id,
