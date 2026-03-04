@@ -17,6 +17,8 @@ from app.services.rbac_service import (
     create_staff,
     generate_unique_pin,
     get_role_permissions,
+    is_pin_in_use,
+    is_valid_pin_format,
     reset_role_permissions,
     set_role_permissions,
     verify_staff_pin,
@@ -196,7 +198,7 @@ def list_staff(vendor_id: int):
         .order_by(VendorStaff.created_at.asc())
         .all()
     )
-    return jsonify([r.to_dict() for r in records]), 200
+    return jsonify([r.to_dict(include_pin=True) for r in records]), 200
 
 
 @bp_access.post("/staff")
@@ -253,14 +255,24 @@ def update_staff_member(vendor_id: int, staff_id: int):
     if "is_active" in body:
         staff.is_active = bool(body.get("is_active"))
 
+    if "pin" in body:
+        new_pin = str(body.get("pin", "")).strip()
+        if not is_valid_pin_format(new_pin):
+            return jsonify({"error": "pin must be 4-6 digits"}), 400
+        if is_pin_in_use(vendor_id, new_pin, exclude_staff_id=staff.id):
+            return jsonify({"error": "pin already in use"}), 409
+        staff.pin_code = new_pin
+        staff.pin_hash = generate_password_hash(new_pin)
+
     generated_pin = None
     if body.get("regenerate_pin") is True:
         generated_pin = generate_unique_pin(vendor_id)
+        staff.pin_code = generated_pin
         staff.pin_hash = generate_password_hash(generated_pin)
 
     db.session.commit()
 
-    payload = staff.to_dict()
+    payload = staff.to_dict(include_pin=True)
     if generated_pin:
         payload["generated_pin"] = generated_pin
     return jsonify(payload), 200

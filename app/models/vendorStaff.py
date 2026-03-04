@@ -9,6 +9,7 @@ class VendorStaff(db.Model):
     vendor_id = db.Column(db.Integer, db.ForeignKey("vendors.id", ondelete="CASCADE"), nullable=False, index=True)
     name = db.Column(db.String(120), nullable=False)
     role = db.Column(db.String(32), nullable=False, default="staff")
+    pin_code = db.Column(db.String(6), nullable=True)
     pin_hash = db.Column(db.String(255), nullable=False)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
@@ -18,8 +19,8 @@ class VendorStaff(db.Model):
         db.UniqueConstraint("vendor_id", "name", name="uq_vendor_staff_name"),
     )
 
-    def to_dict(self):
-        return {
+    def to_dict(self, include_pin: bool = False):
+        payload = {
             "id": self.id,
             "vendor_id": self.vendor_id,
             "name": self.name,
@@ -28,3 +29,6 @@ class VendorStaff(db.Model):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
+        if include_pin:
+            payload["pin_code"] = self.pin_code
+        return payload

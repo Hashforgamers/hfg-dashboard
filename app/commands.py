@@ -317,6 +317,7 @@ def init_rbac_tables_command():
             vendor_id INTEGER NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
             name VARCHAR(120) NOT NULL,
             role VARCHAR(32) NOT NULL DEFAULT 'staff',
+            pin_code VARCHAR(6) NULL,
             pin_hash VARCHAR(255) NOT NULL,
             is_active BOOLEAN NOT NULL DEFAULT TRUE,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -324,6 +325,7 @@ def init_rbac_tables_command():
             CONSTRAINT uq_vendor_staff_name UNIQUE (vendor_id, name)
         );
         """,
+        "ALTER TABLE vendor_staff ADD COLUMN IF NOT EXISTS pin_code VARCHAR(6);",
         "CREATE INDEX IF NOT EXISTS ix_vendor_staff_vendor_id ON vendor_staff (vendor_id);",
         "CREATE INDEX IF NOT EXISTS ix_vendor_staff_role ON vendor_staff (role);",
         """
