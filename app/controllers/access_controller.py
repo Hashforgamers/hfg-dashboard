@@ -169,6 +169,8 @@ def unlock_staff_session(vendor_id: int):
     _auth_debug("unlock_start", vendor_id=vendor_id, pin_length=len(pin))
     if not pin:
         return jsonify({"error": "pin is required"}), 400
+    if not is_valid_pin_format(pin):
+        return jsonify({"error": "pin must be 4 digits"}), 400
 
     staff = verify_staff_pin(vendor_id, pin)
     if not staff:
@@ -275,7 +277,7 @@ def update_staff_member(vendor_id: int, staff_id: int):
                 staff_id=staff_id,
                 pin_length=len(new_pin),
             )
-            return jsonify({"error": "pin must be 4-6 digits"}), 400
+            return jsonify({"error": "pin must be 4 digits"}), 400
         if is_pin_in_use(vendor_id, new_pin, exclude_staff_id=staff.id):
             _auth_debug("staff_update_pin_in_use", vendor_id=vendor_id, staff_id=staff_id)
             return jsonify({"error": "pin already in use"}), 409

@@ -123,14 +123,7 @@ def generate_unique_pin(vendor_id: int) -> str:
         if all(not check_password_hash(s.pin_hash, candidate) for s in active_staff):
             return candidate
 
-    for _ in range(200):
-        candidate = str(random.randint(100000, 999999))
-        if candidate in existing_plain:
-            continue
-        if all(not check_password_hash(s.pin_hash, candidate) for s in active_staff):
-            return candidate
-
-    return str(random.randint(100000, 999999))
+    return str(random.randint(1000, 9999))
 
 
 def create_staff(vendor_id: int, name: str, role: str) -> dict:
@@ -165,7 +158,7 @@ def verify_staff_pin(vendor_id: int, pin: str) -> Optional[VendorStaff]:
 
 
 def is_valid_pin_format(pin: str) -> bool:
-    return pin.isdigit() and 4 <= len(pin) <= 6
+    return pin.isdigit() and len(pin) == 4
 
 
 def is_pin_in_use(vendor_id: int, pin: str, exclude_staff_id: Optional[int] = None) -> bool:
