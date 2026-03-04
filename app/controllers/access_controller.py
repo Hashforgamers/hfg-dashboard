@@ -96,8 +96,18 @@ def issue_owner_session(vendor_id: int):
     except ExpiredSignatureError:
         _auth_debug("session_owner_decode_expired", vendor_id=vendor_id)
         return jsonify({"error": "Token expired"}), 401
-    except InvalidTokenError:
-        _auth_debug("session_owner_decode_invalid", vendor_id=vendor_id)
+    except InvalidTokenError as e:
+        try:
+            unverified = jwt.decode(token, options={"verify_signature": False})
+            _auth_debug(
+                "session_owner_decode_invalid_unverified_claims",
+                vendor_id=vendor_id,
+                error=str(e),
+                claim_keys=list((unverified or {}).keys()),
+                sub_type=type((unverified or {}).get("sub")).__name__,
+            )
+        except Exception:
+            _auth_debug("session_owner_decode_invalid", vendor_id=vendor_id, error=str(e))
         return jsonify({"error": "Invalid token"}), 401
 
     sub = claims.get("sub") or {}
