@@ -24,6 +24,7 @@ services:
       - SUBSCRIPTION_DEV_MODE=true
       - SUBSCRIPTION_TEST_PRICE=1
       - SUBSCRIPTION_TEST_DURATION_DAYS=1
+      - JWT_SECRET_KEY=dev
 
     volumes:
       - .:/app

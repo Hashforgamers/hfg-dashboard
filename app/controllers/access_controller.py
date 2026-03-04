@@ -1,7 +1,7 @@
 import os
 import jwt
 from jwt import ExpiredSignatureError, InvalidTokenError
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, current_app
 from flask_jwt_extended import jwt_required, get_jwt
 from sqlalchemy.exc import IntegrityError
 
@@ -34,13 +34,33 @@ def _ensure_vendor_exists(vendor_id: int):
     return vendor, None
 
 
+def _auth_debug(message: str, **meta):
+    try:
+        current_app.logger.info("[RBAC_DEBUG] %s | %s", message, meta)
+    except Exception:
+        pass
+
+
 def _require_permission(vendor_id: int, permission: str):
     claims = get_jwt() or {}
     claim_vid = claim_vendor_id(claims)
+    _auth_debug(
+        "permission_check",
+        vendor_id=vendor_id,
+        claim_vendor_id=claim_vid,
+        required_permission=permission,
+        has_staff_claim=bool((claims or {}).get("staff")),
+    )
     if claim_vid is not None and claim_vid != vendor_id:
         return jsonify({"error": "Vendor mismatch"}), 403
 
     permissions = claims_permissions(claims, vendor_id)
+    _auth_debug(
+        "permission_check_resolved",
+        vendor_id=vendor_id,
+        permission_count=len(permissions),
+        permissions_preview=permissions[:5],
+    )
     if permission not in permissions:
         return jsonify({"error": "Forbidden", "required_permission": permission}), 403
     return None
@@ -53,6 +73,12 @@ def issue_owner_session(vendor_id: int):
         return err
 
     auth_header = request.headers.get("Authorization", "")
+    _auth_debug(
+        "session_owner_start",
+        vendor_id=vendor_id,
+        has_auth_header=bool(auth_header),
+        auth_prefix=(auth_header[:12] if auth_header else None),
+    )
     if not auth_header.startswith("Bearer "):
         return jsonify({"error": "Authorization header missing"}), 401
 
@@ -61,9 +87,17 @@ def issue_owner_session(vendor_id: int):
 
     try:
         claims = jwt.decode(token, secret, algorithms=["HS256"])
+        _auth_debug(
+            "session_owner_decode_ok",
+            vendor_id=vendor_id,
+            claim_keys=list((claims or {}).keys()),
+            sub_type=type((claims or {}).get("sub")).__name__,
+        )
     except ExpiredSignatureError:
+        _auth_debug("session_owner_decode_expired", vendor_id=vendor_id)
         return jsonify({"error": "Token expired"}), 401
     except InvalidTokenError:
+        _auth_debug("session_owner_decode_invalid", vendor_id=vendor_id)
         return jsonify({"error": "Invalid token"}), 401
 
     sub = claims.get("sub") or {}
@@ -87,6 +121,12 @@ def issue_owner_session(vendor_id: int):
         except (TypeError, ValueError):
             pass
 
+    _auth_debug(
+        "session_owner_claims_resolved",
+        vendor_id=vendor_id,
+        claim_vendor_id=claim_vid,
+        owner_name=owner_name,
+    )
     if claim_vid is not None and claim_vid != vendor_id:
         return jsonify({"error": "Vendor mismatch"}), 403
 
@@ -107,13 +147,16 @@ def unlock_staff_session(vendor_id: int):
 
     body = request.get_json(silent=True) or {}
     pin = str(body.get("pin", "")).strip()
+    _auth_debug("unlock_start", vendor_id=vendor_id, pin_length=len(pin))
     if not pin:
         return jsonify({"error": "pin is required"}), 400
 
     staff = verify_staff_pin(vendor_id, pin)
     if not staff:
+        _auth_debug("unlock_failed_invalid_pin", vendor_id=vendor_id)
         return jsonify({"error": "Invalid PIN"}), 401
 
+    _auth_debug("unlock_success", vendor_id=vendor_id, staff_id=staff.id, role=staff.role)
     payload = create_access_token_payload(
         vendor_id=vendor_id,
         staff_id=staff.id,
