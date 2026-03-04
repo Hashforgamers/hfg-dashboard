@@ -1,4 +1,7 @@
-from flask import Blueprint, jsonify, request
+import os
+import jwt
+from jwt import ExpiredSignatureError, InvalidTokenError
+from flask import Blueprint, jsonify, request, current_app
 from flask_jwt_extended import jwt_required, get_jwt
 from sqlalchemy.exc import IntegrityError
 
@@ -14,6 +17,8 @@ from app.services.rbac_service import (
     create_staff,
     generate_unique_pin,
     get_role_permissions,
+    is_pin_in_use,
+    is_valid_pin_format,
     reset_role_permissions,
     set_role_permissions,
     verify_staff_pin,
@@ -31,32 +36,118 @@ def _ensure_vendor_exists(vendor_id: int):
     return vendor, None
 
 
+def _auth_debug(message: str, **meta):
+    try:
+        current_app.logger.info("[RBAC_DEBUG] %s | %s", message, meta)
+    except Exception:
+        pass
+
+
 def _require_permission(vendor_id: int, permission: str):
     claims = get_jwt() or {}
     claim_vid = claim_vendor_id(claims)
+    _auth_debug(
+        "permission_check",
+        vendor_id=vendor_id,
+        claim_vendor_id=claim_vid,
+        required_permission=permission,
+        has_staff_claim=bool((claims or {}).get("staff")),
+    )
     if claim_vid is not None and claim_vid != vendor_id:
         return jsonify({"error": "Vendor mismatch"}), 403
 
     permissions = claims_permissions(claims, vendor_id)
+    _auth_debug(
+        "permission_check_resolved",
+        vendor_id=vendor_id,
+        permission_count=len(permissions),
+        permissions_preview=permissions[:5],
+    )
     if permission not in permissions:
         return jsonify({"error": "Forbidden", "required_permission": permission}), 403
     return None
 
 
 @bp_access.post("/session/owner")
-@jwt_required()
 def issue_owner_session(vendor_id: int):
     _, err = _ensure_vendor_exists(vendor_id)
     if err:
         return err
 
-    claims = get_jwt() or {}
-    claim_vid = claim_vendor_id(claims)
+    auth_header = request.headers.get("Authorization", "")
+    _auth_debug(
+        "session_owner_start",
+        vendor_id=vendor_id,
+        has_auth_header=bool(auth_header),
+        auth_prefix=(auth_header[:12] if auth_header else None),
+    )
+    if not auth_header.startswith("Bearer "):
+        return jsonify({"error": "Authorization header missing"}), 401
+
+    token = auth_header.split(" ", 1)[1].strip()
+    secret = os.getenv("JWT_SECRET_KEY", "dev")
+
+    try:
+        # Legacy login-service tokens use object-shaped "sub".
+        # Keep signature+expiry verification, disable strict subject type check.
+        claims = jwt.decode(
+            token,
+            secret,
+            algorithms=["HS256"],
+            options={"verify_sub": False},
+        )
+        _auth_debug(
+            "session_owner_decode_ok",
+            vendor_id=vendor_id,
+            claim_keys=list((claims or {}).keys()),
+            sub_type=type((claims or {}).get("sub")).__name__,
+        )
+    except ExpiredSignatureError:
+        _auth_debug("session_owner_decode_expired", vendor_id=vendor_id)
+        return jsonify({"error": "Token expired"}), 401
+    except InvalidTokenError as e:
+        try:
+            unverified = jwt.decode(token, options={"verify_signature": False})
+            _auth_debug(
+                "session_owner_decode_invalid_unverified_claims",
+                vendor_id=vendor_id,
+                error=str(e),
+                claim_keys=list((unverified or {}).keys()),
+                sub_type=type((unverified or {}).get("sub")).__name__,
+            )
+        except Exception:
+            _auth_debug("session_owner_decode_invalid", vendor_id=vendor_id, error=str(e))
+        return jsonify({"error": "Invalid token"}), 401
+
+    sub = claims.get("sub") or {}
+    claim_vid = None
+    owner_name = "Owner"
+
+    if isinstance(sub, dict):
+        if sub.get("id") is not None:
+            claim_vid = int(sub["id"])
+        if sub.get("name"):
+            owner_name = str(sub["name"])
+    elif isinstance(sub, str):
+        # Handle newer string-sub tokens
+        if sub.isdigit():
+            claim_vid = int(sub)
+
+    # Also accept explicit vendor_id claim when present
+    if claims.get("vendor_id") is not None:
+        try:
+            claim_vid = int(claims.get("vendor_id"))
+        except (TypeError, ValueError):
+            pass
+
+    _auth_debug(
+        "session_owner_claims_resolved",
+        vendor_id=vendor_id,
+        claim_vendor_id=claim_vid,
+        owner_name=owner_name,
+    )
     if claim_vid is not None and claim_vid != vendor_id:
         return jsonify({"error": "Vendor mismatch"}), 403
-
-    owner_name = (claims.get("sub") or {}).get("name") if isinstance(claims.get("sub"), dict) else None
-    owner_name = owner_name or "Owner"
 
     payload = create_access_token_payload(
         vendor_id=vendor_id,
@@ -75,13 +166,18 @@ def unlock_staff_session(vendor_id: int):
 
     body = request.get_json(silent=True) or {}
     pin = str(body.get("pin", "")).strip()
+    _auth_debug("unlock_start", vendor_id=vendor_id, pin_length=len(pin))
     if not pin:
         return jsonify({"error": "pin is required"}), 400
+    if not is_valid_pin_format(pin):
+        return jsonify({"error": "pin must be 4 digits"}), 400
 
     staff = verify_staff_pin(vendor_id, pin)
     if not staff:
+        _auth_debug("unlock_failed_invalid_pin", vendor_id=vendor_id)
         return jsonify({"error": "Invalid PIN"}), 401
 
+    _auth_debug("unlock_success", vendor_id=vendor_id, staff_id=staff.id, role=staff.role)
     payload = create_access_token_payload(
         vendor_id=vendor_id,
         staff_id=staff.id,
@@ -104,7 +200,7 @@ def list_staff(vendor_id: int):
         .order_by(VendorStaff.created_at.asc())
         .all()
     )
-    return jsonify([r.to_dict() for r in records]), 200
+    return jsonify([r.to_dict(include_pin=True) for r in records]), 200
 
 
 @bp_access.post("/staff")
@@ -136,39 +232,94 @@ def create_staff_member(vendor_id: int):
 @bp_access.patch("/staff/<int:staff_id>")
 @jwt_required()
 def update_staff_member(vendor_id: int, staff_id: int):
+    body = request.get_json(silent=True) or {}
+    _auth_debug(
+        "staff_update_start",
+        vendor_id=vendor_id,
+        staff_id=staff_id,
+        keys=sorted(list(body.keys())),
+        has_pin=("pin" in body),
+    )
+
     gate = _require_permission(vendor_id, "staff.manage")
     if gate:
+        _auth_debug("staff_update_permission_denied", vendor_id=vendor_id, staff_id=staff_id)
         return gate
 
     staff = VendorStaff.query.filter_by(id=staff_id, vendor_id=vendor_id).first()
     if not staff:
+        _auth_debug("staff_update_not_found", vendor_id=vendor_id, staff_id=staff_id)
         return jsonify({"error": "Staff not found"}), 404
-
-    body = request.get_json(silent=True) or {}
 
     if "name" in body:
         name = str(body.get("name", "")).strip()
         if not name:
+            _auth_debug("staff_update_invalid_name", vendor_id=vendor_id, staff_id=staff_id)
             return jsonify({"error": "name cannot be empty"}), 400
         staff.name = name
 
     if "role" in body:
         role = str(body.get("role", "")).strip().lower()
         if role not in VALID_ROLES or role == "owner":
+            _auth_debug("staff_update_invalid_role", vendor_id=vendor_id, staff_id=staff_id, role=role)
             return jsonify({"error": "role must be staff or manager"}), 400
         staff.role = role
 
     if "is_active" in body:
         staff.is_active = bool(body.get("is_active"))
 
+    if "pin" in body:
+        new_pin = str(body.get("pin", "")).strip()
+        if not is_valid_pin_format(new_pin):
+            _auth_debug(
+                "staff_update_invalid_pin_format",
+                vendor_id=vendor_id,
+                staff_id=staff_id,
+                pin_length=len(new_pin),
+            )
+            return jsonify({"error": "pin must be 4 digits"}), 400
+        if is_pin_in_use(vendor_id, new_pin, exclude_staff_id=staff.id):
+            _auth_debug("staff_update_pin_in_use", vendor_id=vendor_id, staff_id=staff_id)
+            return jsonify({"error": "pin already in use"}), 409
+        staff.pin_code = new_pin
+        staff.pin_hash = generate_password_hash(new_pin)
+
     generated_pin = None
     if body.get("regenerate_pin") is True:
         generated_pin = generate_unique_pin(vendor_id)
+        staff.pin_code = generated_pin
         staff.pin_hash = generate_password_hash(generated_pin)
 
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError as e:
+        db.session.rollback()
+        _auth_debug(
+            "staff_update_integrity_error",
+            vendor_id=vendor_id,
+            staff_id=staff_id,
+            error=str(e),
+        )
+        return jsonify({"error": "PIN already in use or invalid update"}), 409
+    except Exception as e:
+        db.session.rollback()
+        _auth_debug(
+            "staff_update_commit_error",
+            vendor_id=vendor_id,
+            staff_id=staff_id,
+            error=str(e),
+        )
+        return jsonify({"error": "Failed to update staff"}), 500
+    _auth_debug(
+        "staff_update_success",
+        vendor_id=vendor_id,
+        staff_id=staff_id,
+        role=staff.role,
+        is_active=staff.is_active,
+        has_pin=bool(staff.pin_code),
+    )
 
-    payload = staff.to_dict()
+    payload = staff.to_dict(include_pin=True)
     if generated_pin:
         payload["generated_pin"] = generated_pin
     return jsonify(payload), 200

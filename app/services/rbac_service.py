@@ -113,18 +113,17 @@ def reset_role_permissions(vendor_id: int) -> Dict[str, List[str]]:
 def generate_unique_pin(vendor_id: int) -> str:
     active_staff = VendorStaff.query.filter_by(vendor_id=vendor_id).all()
 
-    # Compare by checking hash for candidate instead of storing raw pins.
+    existing_plain = {s.pin_code for s in active_staff if s.pin_code}
+
+    # Prefer plain-pin uniqueness when available, then fallback to hash check.
     for _ in range(200):
         candidate = str(random.randint(1000, 9999))
+        if candidate in existing_plain:
+            continue
         if all(not check_password_hash(s.pin_hash, candidate) for s in active_staff):
             return candidate
 
-    for _ in range(200):
-        candidate = str(random.randint(100000, 999999))
-        if all(not check_password_hash(s.pin_hash, candidate) for s in active_staff):
-            return candidate
-
-    return str(random.randint(100000, 999999))
+    return str(random.randint(1000, 9999))
 
 
 def create_staff(vendor_id: int, name: str, role: str) -> dict:
@@ -136,13 +135,14 @@ def create_staff(vendor_id: int, name: str, role: str) -> dict:
         vendor_id=vendor_id,
         name=name.strip(),
         role=role,
+        pin_code=pin,
         pin_hash=generate_password_hash(pin),
         is_active=True,
     )
     db.session.add(staff)
     db.session.commit()
 
-    payload = staff.to_dict()
+    payload = staff.to_dict(include_pin=True)
     payload["generated_pin"] = pin
     return payload
 
@@ -150,9 +150,29 @@ def create_staff(vendor_id: int, name: str, role: str) -> dict:
 def verify_staff_pin(vendor_id: int, pin: str) -> Optional[VendorStaff]:
     staff = VendorStaff.query.filter_by(vendor_id=vendor_id, is_active=True).all()
     for member in staff:
+        if member.pin_code and member.pin_code == pin:
+            return member
         if check_password_hash(member.pin_hash, pin):
             return member
     return None
+
+
+def is_valid_pin_format(pin: str) -> bool:
+    return pin.isdigit() and len(pin) == 4
+
+
+def is_pin_in_use(vendor_id: int, pin: str, exclude_staff_id: Optional[int] = None) -> bool:
+    query = VendorStaff.query.filter_by(vendor_id=vendor_id)
+    if exclude_staff_id is not None:
+        query = query.filter(VendorStaff.id != exclude_staff_id)
+
+    staff = query.all()
+    for member in staff:
+        if member.pin_code and member.pin_code == pin:
+            return True
+        if check_password_hash(member.pin_hash, pin):
+            return True
+    return False
 
 
 def create_access_token_payload(vendor_id: int, staff_id: str, name: str, role: str) -> dict:

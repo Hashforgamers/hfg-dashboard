@@ -32,7 +32,7 @@ def create_app():
     # ✅ CORS - Allow all origins for development
     CORS(app, 
      origins="*",
-     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+     methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
      allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
      supports_credentials=False
     )
@@ -45,7 +45,7 @@ def create_app():
             response = make_response()
             response.headers.add("Access-Control-Allow-Origin", "*")
             response.headers.add("Access-Control-Allow-Headers", "Content-Type,Authorization,X-Requested-With")
-            response.headers.add("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
+            response.headers.add("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
             response.headers.add("Access-Control-Max-Age", "3600")
             return response, 200
 
