@@ -1,8 +1,12 @@
 from flask import Blueprint, request, jsonify, current_app
 from datetime import datetime,timedelta
+import re
+import time
+import threading
 from .models.transaction import Transaction
 from app.extension.extensions import db
 from sqlalchemy import cast, Date, text, func
+from sqlalchemy import case
 from app.services.console_service import ConsoleService
 
 from .models.console import Console
@@ -23,6 +27,7 @@ from app.models.bankTransferDetails import BankTransferDetails, PayoutTransactio
 from app.models.paymentMethod import PaymentMethod
 from app.models.paymentVendorMap import PaymentVendorMap
 from app.models.bookingExtraService import BookingExtraService
+from app.models.vendorTaxProfile import VendorTaxProfile
 
 from .models.hardwareSpecification import HardwareSpecification
 from .models.maintenanceStatus import MaintenanceStatus
@@ -55,45 +60,186 @@ from app.models.extraServiceMenu import ExtraServiceMenu
 from app.services.extra_service_service import ExtraServiceService
 
 WEEKDAY_ORDER = ["mon","tue","wed","thu","fri","sat","sun"]
+GSTIN_REGEX = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$")
+STATE_CODE_REGEX = re.compile(r"^[0-9A-Z]{2}$")
+LANDING_PAGE_CACHE_TTL_SEC = 5
+_landing_page_cache = {}
+_landing_page_cache_lock = threading.Lock()
+CONSOLES_CACHE_TTL_SEC = 10
+_vendor_consoles_cache = {}
+_vendor_consoles_cache_lock = threading.Lock()
+
+
+def _invalidate_vendor_caches(vendor_id: int):
+    key = f"vendor:{int(vendor_id)}"
+    with _landing_page_cache_lock:
+        _landing_page_cache.pop(key, None)
+    with _vendor_consoles_cache_lock:
+        _vendor_consoles_cache.pop(key, None)
 
 dashboard_service = Blueprint("dashboard_service", __name__)
 
 @dashboard_service.route('/transactionReport/<int:vendor_id>/<string:to_date>/<string:from_date>', methods=['GET'])
 def get_transaction_report(to_date, from_date, vendor_id):
     try:
-        # Convert date parameters to datetime objects
         to_date = datetime.strptime(to_date, "%Y%m%d").date()
-
         if not from_date or from_date.lower() == "null":
             from_date = datetime.utcnow().date()
         else:
             from_date = datetime.strptime(from_date, "%Y%m%d").date()
 
-        transactions = Transaction.query.filter(
-            Transaction.vendor_id == vendor_id and
-            cast(Transaction.booked_date, Date).between(from_date, to_date)
-        ).all()
+        rows = (
+            db.session.query(Transaction, User.name.label("user_name"))
+            .outerjoin(User, User.id == Transaction.user_id)
+            .filter(
+                Transaction.vendor_id == vendor_id,
+                Transaction.booking_date.between(from_date, to_date),
+            )
+            .order_by(
+                Transaction.booking_date.desc(),
+                Transaction.booking_time.desc(),
+                Transaction.id.desc(),
+            )
+            .all()
+        )
 
+        result = []
+        for txn, user_name in rows:
+            base_amount = float(txn.base_amount or 0)
+            meals_amount = float(txn.meals_amount or 0)
+            controller_amount = float(txn.controller_amount or 0)
+            waive_off_amount = float(txn.waive_off_amount or 0)
+            gst_rate = float(txn.gst_rate or 0)
 
-        current_app.logger.info(f"transactions {transactions} {to_date} {from_date}")
+            taxable_amount = float(txn.taxable_amount or 0)
+            if taxable_amount <= 0:
+                derived_taxable = base_amount + meals_amount + controller_amount - waive_off_amount
+                taxable_amount = round(derived_taxable if derived_taxable > 0 else float(txn.amount or 0), 2)
 
-        # Format response data
-        result = [{
-            "id": txn.id,
-            "slotDate": txn.booked_date.strftime("%Y-%m-%d"),
-            "slotTime": txn.booking_time.strftime("%I:%M %p"),
-            "userName": User.query.filter(User.id == txn.user_id).first().name if txn.user_id else None,
-            "amount": txn.amount,
-            "modeOfPayment": txn.mode_of_payment,
-            "bookingType": txn.booking_type,
-            "settlementStatus": txn.settlement_status,
-            "userId":txn.user_id,
-            "bookedOn":txn.booked_date
-        } for txn in transactions]
-        
+            cgst_amount = float(txn.cgst_amount or 0)
+            sgst_amount = float(txn.sgst_amount or 0)
+            igst_amount = float(txn.igst_amount or 0)
+            total_tax_amount = cgst_amount + sgst_amount + igst_amount
+
+            if total_tax_amount <= 0 and gst_rate > 0 and taxable_amount > 0:
+                estimated_tax = round((taxable_amount * gst_rate) / 100.0, 2)
+                if igst_amount > 0:
+                    igst_amount = estimated_tax
+                else:
+                    cgst_amount = round(estimated_tax / 2.0, 2)
+                    sgst_amount = round(estimated_tax - cgst_amount, 2)
+                total_tax_amount = cgst_amount + sgst_amount + igst_amount
+
+            total_with_tax = float(txn.total_with_tax or 0)
+            if total_with_tax <= 0:
+                total_with_tax = round(taxable_amount + total_tax_amount, 2)
+                if total_with_tax <= 0:
+                    total_with_tax = float(txn.amount or 0)
+
+            result.append({
+                "id": txn.id,
+                "bookingId": txn.booking_id,
+                "slotDate": txn.booking_date.strftime("%Y-%m-%d") if txn.booking_date else None,
+                "playDate": txn.booked_date.strftime("%Y-%m-%d") if txn.booked_date else None,
+                "slotTime": txn.booking_time.strftime("%I:%M %p") if txn.booking_time else None,
+                "userName": user_name,
+                "amount": txn.amount,
+                "originalAmount": txn.original_amount,
+                "discountedAmount": txn.discounted_amount,
+                "modeOfPayment": txn.mode_of_payment,
+                "paymentUseCase": txn.payment_use_case,
+                "bookingType": txn.booking_type,
+                "settlementStatus": txn.settlement_status,
+                "userId": txn.user_id,
+                "bookedOn": txn.booking_date,
+                "sourceChannel": txn.source_channel,
+                "staffId": txn.initiated_by_staff_id,
+                "staffName": txn.initiated_by_staff_name,
+                "staffRole": txn.initiated_by_staff_role,
+                "baseAmount": base_amount,
+                "mealsAmount": meals_amount,
+                "controllerAmount": controller_amount,
+                "waiveOffAmount": waive_off_amount,
+                "taxableAmount": taxable_amount,
+                "gstRate": gst_rate,
+                "cgstAmount": cgst_amount,
+                "sgstAmount": sgst_amount,
+                "igstAmount": igst_amount,
+                "totalWithTax": total_with_tax,
+            })
+
         return jsonify(result), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@dashboard_service.route('/vendor/<int:vendor_id>/tax-profile', methods=['GET', 'PUT'])
+def vendor_tax_profile(vendor_id):
+    try:
+        profile = VendorTaxProfile.query.filter_by(vendor_id=vendor_id).first()
+
+        if request.method == 'GET':
+            if not profile:
+                return jsonify({
+                    "success": True,
+                    "profile": {
+                        "vendor_id": vendor_id,
+                        "gst_registered": False,
+                        "gst_enabled": False,
+                        "gst_rate": 18.0,
+                        "tax_inclusive": False
+                    }
+                }), 200
+            return jsonify({"success": True, "profile": profile.to_dict()}), 200
+
+        body = request.get_json(silent=True) or {}
+        if not profile:
+            profile = VendorTaxProfile(vendor_id=vendor_id)
+            db.session.add(profile)
+
+        gst_registered = bool(body.get("gst_registered", profile.gst_registered))
+        gst_enabled = bool(body.get("gst_enabled", profile.gst_enabled))
+        tax_inclusive = bool(body.get("tax_inclusive", profile.tax_inclusive))
+        gst_rate = float(body.get("gst_rate", profile.gst_rate or 18.0))
+
+        gstin_raw = body.get("gstin", profile.gstin)
+        gstin = str(gstin_raw).strip().upper() if gstin_raw else None
+
+        state_code_raw = body.get("state_code", profile.state_code)
+        state_code = str(state_code_raw).strip().upper() if state_code_raw else None
+
+        place_raw = body.get("place_of_supply_state_code", profile.place_of_supply_state_code)
+        place_code = str(place_raw).strip().upper() if place_raw else None
+
+        if gst_rate < 0 or gst_rate > 100:
+            return jsonify({"success": False, "error": "gst_rate must be between 0 and 100"}), 400
+
+        if gst_registered and not gstin:
+            return jsonify({"success": False, "error": "gstin is required when gst_registered is true"}), 400
+
+        if gstin and not GSTIN_REGEX.match(gstin):
+            return jsonify({"success": False, "error": "Invalid GSTIN format"}), 400
+
+        if state_code and not STATE_CODE_REGEX.match(state_code):
+            return jsonify({"success": False, "error": "state_code must be exactly 2 alphanumeric characters"}), 400
+
+        if place_code and not STATE_CODE_REGEX.match(place_code):
+            return jsonify({"success": False, "error": "place_of_supply_state_code must be exactly 2 alphanumeric characters"}), 400
+
+        profile.gst_registered = gst_registered
+        profile.gstin = gstin
+        profile.legal_name = body.get("legal_name", profile.legal_name)
+        profile.state_code = state_code
+        profile.place_of_supply_state_code = place_code
+        profile.gst_enabled = gst_enabled
+        profile.gst_rate = gst_rate
+        profile.tax_inclusive = tax_inclusive
+
+        db.session.commit()
+        return jsonify({"success": True, "profile": profile.to_dict()}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @dashboard_service.route('/db-check', methods=['GET'])
 def check_db_connection():
@@ -112,6 +258,13 @@ def add_console():
             return jsonify({"error": "Invalid input data"}), 400
 
         response, status = ConsoleService.add_console(data)
+        if status < 400:
+            vendor_id = data.get("vendorId") or data.get("vendor_id") or data.get("vendorID")
+            if vendor_id is not None:
+                try:
+                    _invalidate_vendor_caches(int(vendor_id))
+                except Exception:
+                    pass
         return jsonify(response), status
 
     except Exception as e:
@@ -166,44 +319,68 @@ def update_console_pricing(vendor_id):
 
 @dashboard_service.route('/getConsoles/vendor/<int:vendor_id>', methods=['GET'])
 def get_consoles(vendor_id):
+    started_at = time.perf_counter()
+    cache_key = f"vendor:{vendor_id}"
+    now_ts = time.time()
+
+    with _vendor_consoles_cache_lock:
+        cached_entry = _vendor_consoles_cache.get(cache_key)
+    if cached_entry and cached_entry["expires_at"] > now_ts:
+        response = jsonify(cached_entry["payload"])
+        response.headers["X-Cache"] = "HIT"
+        response.headers["X-Response-Time-ms"] = f"{(time.perf_counter() - started_at) * 1000:.2f}"
+        return response, 200
+
     try:
         availability_table = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
-        # Fetch available games associated with the given vendor ID
-        available_games = AvailableGame.query.filter_by(vendor_id=vendor_id).all()
+        sql_query = text(f"""
+            SELECT DISTINCT ON (c.id)
+                c.id,
+                c.console_type,
+                c.model_number,
+                c.console_number,
+                c.brand,
+                hs.processor_type,
+                hs.graphics_card,
+                hs.ram_size,
+                hs.storage_capacity,
+                hs.console_model_type,
+                ca.is_available
+            FROM available_games ag
+            JOIN available_game_console agc ON agc.available_game_id = ag.id
+            JOIN consoles c ON c.id = agc.console_id
+            LEFT JOIN hardware_specifications hs ON hs.console_id = c.id
+            LEFT JOIN {availability_table} ca ON ca.console_id = c.id AND ca.vendor_id = :vendor_id
+            WHERE ag.vendor_id = :vendor_id
+            ORDER BY c.id
+        """)
 
-        # Extract consoles from the available games
-        consoles = []
-        for game in available_games:
-            for console in game.consoles:
-                # Get availability status for each console
-                availability_query = text(f"""
-                SELECT is_available 
-                FROM {availability_table} 
-                WHERE console_id = :console_id
-                """)
-                result = db.session.execute(availability_query, {"console_id": console.id})
-                available_status = result.scalar()  # Get the first value of the result, which is `is_available`
+        rows = db.session.execute(sql_query, {"vendor_id": vendor_id}).fetchall()
+        payload = [{
+            "id": row.id,
+            "type": row.console_type,
+            "name": row.model_number,
+            "number": row.console_number,
+            "icon": "Monitor" if "PC" in row.console_type else "Tv" if "PS" in row.console_type else "Gamepad",
+            "brand": row.brand,
+            "processor": row.processor_type if row.processor_type else "N/A",
+            "gpu": row.graphics_card if row.graphics_card else "N/A",
+            "ram": row.ram_size if row.ram_size else "N/A",
+            "storage": row.storage_capacity if row.storage_capacity else "N/A",
+            "status": row.is_available,
+            "consoleModelType": row.console_model_type if row.console_model_type else "N/A",
+        } for row in rows]
 
-                # Prepare the console data
-                console_data = {
-                    "id": console.id,
-                    "type": console.console_type,
-                    "name": console.model_number,
-                    "number": console.console_number,
-                    "icon": "Monitor" if "PC" in console.console_type else "Tv" if "PS" in console.console_type else "Gamepad",
-                    "brand": console.brand,
-                    "processor": console.hardware_specifications.processor_type if console.hardware_specifications else "N/A",
-                    "gpu": console.hardware_specifications.graphics_card if console.hardware_specifications else "N/A",
-                    "ram": console.hardware_specifications.ram_size if console.hardware_specifications else "N/A",
-                    "storage": console.hardware_specifications.storage_capacity if console.hardware_specifications else "N/A",
-                    "status": available_status,
-                    "consoleModelType": console.hardware_specifications.console_model_type if console.hardware_specifications else "N/A",
-                }
+        with _vendor_consoles_cache_lock:
+            _vendor_consoles_cache[cache_key] = {
+                "payload": payload,
+                "expires_at": time.time() + CONSOLES_CACHE_TTL_SEC,
+            }
 
-                # Append the console data to the list
-                consoles.append(console_data)
-
-        return jsonify(consoles), 200
+        response = jsonify(payload)
+        response.headers["X-Cache"] = "MISS"
+        response.headers["X-Response-Time-ms"] = f"{(time.perf_counter() - started_at) * 1000:.2f}"
+        return response, 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -280,6 +457,7 @@ def delete_console(vendor_id, console_id):
 
         # Commit all changes
         db.session.commit()
+        _invalidate_vendor_caches(vendor_id)
 
         return jsonify({"message": "Console deleted successfully, availability updated"}), 200
 
@@ -288,65 +466,89 @@ def delete_console(vendor_id, console_id):
         current_app.logger.error(f"Error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-@dashboard_service.route('/console/update/vendor/<vendor_id>', methods=['PUT'])
+@dashboard_service.route('/console/update/vendor/<int:vendor_id>', methods=['PUT'])
 def update_console(vendor_id):
+    started_at = time.perf_counter()
     try:
-        data = request.get_json()
-        console_id = data.get("consoleId")
-        console_details = data.get("consoleDetails", {})
+        data = request.get_json(silent=True) or {}
+        console_id_raw = data.get("consoleId")
+        console_details = data.get("consoleDetails") or {}
+
+        try:
+            console_id = int(console_id_raw)
+        except (TypeError, ValueError):
+            return jsonify({"error": "Invalid consoleId"}), 400
 
         if not console_id or not console_details:
             return jsonify({"error": "Missing required fields"}), 400
 
-        # ✅ Fetch the console from the database
-        console = Console.query.get(console_id)
+        # Scoped fetch with eager-loaded relations to avoid lazy-load round-trips.
+        console = (
+            Console.query
+            .options(
+                joinedload(Console.hardware_specifications),
+                joinedload(Console.maintenance_status),
+            )
+            .filter(Console.id == console_id, Console.vendor_id == vendor_id)
+            .first()
+        )
         if not console:
             return jsonify({"error": "Console not found"}), 404
 
-        # ✅ Update Console Details
-        console.brand = console_details.get("brand", console.brand)
+        brand = console_details.get("brand")
+        if brand is not None:
+            console.brand = brand
 
-        # ✅ Fetch or Create Related Hardware Specification
-        if not console.hardware_specifications:
+        # Fetch or create hardware relation.
+        hardware_spec = console.hardware_specifications
+        if hardware_spec is None:
             hardware_spec = HardwareSpecification(console_id=console.id)
             db.session.add(hardware_spec)
-        else:
-            hardware_spec = console.hardware_specifications
 
-        hardware_spec.processor_type = console_details.get("processor", hardware_spec.processor_type)
-        hardware_spec.graphics_card = console_details.get("gpu", hardware_spec.graphics_card)
-        hardware_spec.ram_size = console_details.get("ram", hardware_spec.ram_size)
-        hardware_spec.storage_capacity = console_details.get("storage", hardware_spec.storage_capacity)
-        hardware_spec.console_model_type = console_details.get("consoleModelType", hardware_spec.console_model_type)
+        processor = console_details.get("processor")
+        gpu = console_details.get("gpu")
+        ram = console_details.get("ram")
+        storage = console_details.get("storage")
+        console_model_type = console_details.get("consoleModelType")
 
-        # ✅ Fetch or Update Maintenance Status
-        if console.maintenance_status:
-             # ✅ Define the dynamic console availability table name
+        if processor is not None:
+            hardware_spec.processor_type = processor
+        if gpu is not None:
+            hardware_spec.graphics_card = gpu
+        if ram is not None:
+            hardware_spec.ram_size = ram
+        if storage is not None:
+            hardware_spec.storage_capacity = storage
+        if console_model_type is not None:
+            hardware_spec.console_model_type = console_model_type
+
+        maintenance = console.maintenance_status
+        status_value = console_details.get("status")
+        if maintenance and status_value is not None:
             console_table_name = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
-            console.maintenance_status.available_status = console_details.get("status", console.maintenance_status.available_status)
-            if console.maintenance_status.available_status != "available":
-                # ✅ Update the status to false (occupied)
-                sql_update_status = text(f"""
-                    UPDATE {console_table_name}
-                    SET is_available = FALSE
-                    WHERE console_id = :console_id
-                """)
-            else:
-                # ✅ Update the status to false (occupied)
-                sql_update_status = text(f"""
-                    UPDATE {console_table_name}
-                    SET is_available = TRUE
-                    WHERE console_id = :console_id
-                """)
+            maintenance.available_status = status_value
+            normalized_status = str(status_value).strip().lower()
+            target_is_available = normalized_status == "available"
 
-            db.session.execute(sql_update_status, {
-                "console_id": console_id
-            })
+            sql_update_status = text(f"""
+                UPDATE {console_table_name}
+                SET is_available = :is_available
+                WHERE vendor_id = :vendor_id AND console_id = :console_id
+            """)
+            db.session.execute(
+                sql_update_status,
+                {
+                    "is_available": target_is_available,
+                    "vendor_id": vendor_id,
+                    "console_id": console_id,
+                },
+            )
 
-        # ✅ Commit Changes
         db.session.commit()
-
-        return jsonify({"message": "Console updated successfully"}), 200
+        _invalidate_vendor_caches(vendor_id)
+        response = jsonify({"message": "Console updated successfully"})
+        response.headers["X-Response-Time-ms"] = f"{(time.perf_counter() - started_at) * 1000:.2f}"
+        return response, 200
 
     except Exception as e:
         db.session.rollback()
@@ -447,6 +649,7 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
 
         db.session.commit()
         current_app.logger.debug("DB commit successful")
+        _invalidate_vendor_caches(int(vendor_id))
 
         # ======= Fetch and emit slot update =======
         if getattr(upd_res, "rowcount", None) is None or upd_res.rowcount != 0:
@@ -584,6 +787,7 @@ def assign_console_to_multiple_bookings():
         })
 
         db.session.commit()
+        _invalidate_vendor_caches(int(vendor_id))
 
         return jsonify({"message": "Console assigned to multiple bookings successfully."}), 200
 
@@ -643,6 +847,7 @@ def release_console(gameid, console_id, vendor_id):
 
         # Commit the changes
         db.session.commit()
+        _invalidate_vendor_caches(int(vendor_id))
         # ADDED: Calculate remaining available consoles after release
         sql_remaining = text(f"""
             SELECT COUNT(*) AS remaining
@@ -671,13 +876,11 @@ def release_console(gameid, console_id, vendor_id):
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
-@dashboard_service.route('/getAllDevice/vendor/<vendor_id>', methods=['GET'])
+@dashboard_service.route('/getAllDevice/vendor/<int:vendor_id>', methods=['GET'])
 def get_all_device_for_vendor(vendor_id):
     try:
-        # ✅ Define the dynamic console availability table name
         console_table_name = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
 
-        # ✅ SQL query to fetch console details
         sql_query = text(f"""
             SELECT ca.console_id, c.model_number, c.brand, ca.is_available, ca.game_id
             FROM {console_table_name} ca
@@ -685,23 +888,28 @@ def get_all_device_for_vendor(vendor_id):
             WHERE ca.vendor_id = :vendor_id
         """)
 
-        # ✅ Execute the query
         result = db.session.execute(sql_query, {"vendor_id": vendor_id}).fetchall()
+        game_ids = {row.game_id for row in result if row.game_id is not None}
+        games = (
+            AvailableGame.query
+            .filter(AvailableGame.id.in_(game_ids))
+            .all()
+            if game_ids else []
+        )
+        game_lookup = {game.id: game for game in games}
 
         devices = []
-
         for row in result:
-            # Fetch the related AvailableGame instance by game_id
-            game = AvailableGame.query.filter_by(id=row.game_id).first()
+            game = game_lookup.get(row.game_id)
 
             devices.append({
                 "consoleId": row.console_id,
                 "consoleModelNumber": row.model_number,
                 "brand": row.brand,
                 "is_available": row.is_available,
-                "consoleTypeName": game.game_name if game else "Unknown",  # If game exists, use game_name
-                "console_type_id": row.game_id,  # Include game_id as consoleTypeId
-                "consolePrice": game.single_slot_price
+                "consoleTypeName": game.game_name if game else "Unknown",
+                "console_type_id": row.game_id,
+                "consolePrice": game.single_slot_price if game else None
             })
 
         return jsonify(devices), 200
@@ -712,20 +920,48 @@ def get_all_device_for_vendor(vendor_id):
 @dashboard_service.route('/getLandingPage/vendor/<int:vendor_id>', methods=['GET'])
 def get_landing_page_vendor(vendor_id):
     """Fetches vendor dashboard data including stats, booking stats, upcoming bookings, and current slots."""
+    started_at = time.perf_counter()
+    cache_key = f"vendor:{vendor_id}"
+    now_ts = time.time()
+
+    with _landing_page_cache_lock:
+        cached_entry = _landing_page_cache.get(cache_key)
+    if cached_entry and cached_entry["expires_at"] > now_ts:
+        response = jsonify(cached_entry["payload"])
+        response.headers["X-Cache"] = "HIT"
+        response.headers["X-Response-Time-ms"] = f"{(time.perf_counter() - started_at) * 1000:.2f}"
+        return response, 200
+
     try:
         table_name = f"VENDOR_{vendor_id}_DASHBOARD"
         today = datetime.utcnow().date()
-        
-        # Fetch transaction stats
-        today_earnings = db.session.query(func.sum(Transaction.amount)).filter(
-            Transaction.vendor_id == vendor_id, Transaction.booked_date == today).scalar() or 0
-        today_bookings = db.session.query(func.count(Transaction.id)).filter(
-            Transaction.vendor_id == vendor_id, Transaction.booked_date == today).scalar() or 0
-        pending_amount = db.session.query(func.sum(Transaction.amount)).filter(
-            Transaction.vendor_id == vendor_id, Transaction.settlement_status == 'pending').scalar() or 0
+
+        # Vendor-scoped transaction summary in one query.
+        transaction_summary = (
+            db.session.query(
+                func.coalesce(
+                    func.sum(case((Transaction.booked_date == today, Transaction.amount), else_=0.0)),
+                    0.0
+                ).label("today_earnings"),
+                func.coalesce(
+                    func.sum(case((Transaction.booked_date == today, 1), else_=0)),
+                    0
+                ).label("today_bookings"),
+                func.coalesce(
+                    func.sum(case((Transaction.settlement_status == 'pending', Transaction.amount), else_=0.0)),
+                    0.0
+                ).label("pending_amount"),
+            )
+            .filter(Transaction.vendor_id == vendor_id)
+            .one()
+        )
+
+        today_earnings = float(transaction_summary.today_earnings or 0)
+        today_bookings = int(transaction_summary.today_bookings or 0)
+        pending_amount = float(transaction_summary.pending_amount or 0)
         cleared_amount = today_earnings - pending_amount
-        
-        # Fetch bookings from vendor-specific dashboard table
+
+        # Fetch bookings from vendor-specific dashboard table (single query).
         sql_fetch_bookings = text(f"""
             SELECT 
                 COALESCE(b.username, u.name) AS username, 
@@ -746,24 +982,21 @@ def get_landing_page_vendor(vendor_id):
             JOIN bookings d ON b.book_id = d.id
             LEFT JOIN users u ON b.user_id = u.id
         """)
-        
         result = db.session.execute(sql_fetch_bookings).fetchall()
-        
+
         upcoming_bookings = []
         current_slots = []
-        
-        # Fetch all booking_ids with extras in one go
+
         booking_ids = [row.book_id for row in result]
         if booking_ids:
-          meals_lookup = set(
-              r[0] for r in db.session.query(BookingExtraService.booking_id)
-              .filter(BookingExtraService.booking_id.in_(booking_ids))
-              .distinct()
-              .all()
+            meals_lookup = set(
+                r[0] for r in db.session.query(BookingExtraService.booking_id)
+                .filter(BookingExtraService.booking_id.in_(booking_ids))
+                .distinct()
+                .all()
             )
         else:
             meals_lookup = set()
-
         
         for row in result:
             has_meals = row.book_id in meals_lookup
@@ -805,32 +1038,53 @@ def get_landing_page_vendor(vendor_id):
                 upcoming_bookings.append(booking_data)
             elif row.book_status == "current":
                 current_slots.append(slot_data)
-        
-        # Compute booking statistics
-        total_bookings = db.session.query(func.count(Booking.id)).filter_by().scalar() or 0
-        completed_bookings = db.session.query(func.count(Booking.id)).filter_by(status='completed').scalar() or 0
-        cancelled_bookings = db.session.query(func.count(Booking.id)).filter_by(status='cancelled').scalar() or 0
-        rescheduled_bookings = db.session.query(func.count(Booking.id)).filter_by(status='rescheduled').scalar() or 0
-        
-        # Calculate average booking duration (assume per-day average over past week)
-        total_slots = db.session.query(func.count(Slot.id)).scalar() or 1  # Avoid division by zero
-        average_booking_duration = f"{round((total_slots * 30) / 60)} min"  # Assuming 30 min per slot
-        
-        # Calculate peak booking hours from past transactions
-        peak_hours = (
+
+        # Vendor-scoped booking stats in one aggregate query.
+        booking_summary = (
             db.session.query(
-                func.to_char(Transaction.booking_time, 'HH24'),  # Use TO_CHAR to extract the hour
-                func.count(Transaction.id)
+                func.count(Booking.id).label("total_bookings"),
+                func.coalesce(func.sum(case((Booking.status == 'completed', 1), else_=0)), 0).label("completed_bookings"),
+                func.coalesce(func.sum(case((Booking.status == 'cancelled', 1), else_=0)), 0).label("cancelled_bookings"),
+                func.coalesce(func.sum(case((Booking.status == 'rescheduled', 1), else_=0)), 0).label("rescheduled_bookings"),
             )
+            .join(AvailableGame, Booking.game_id == AvailableGame.id)
+            .filter(AvailableGame.vendor_id == vendor_id)
+            .one()
+        )
+
+        total_bookings = int(booking_summary.total_bookings or 0)
+        completed_bookings = int(booking_summary.completed_bookings or 0)
+        cancelled_bookings = int(booking_summary.cancelled_bookings or 0)
+        rescheduled_bookings = int(booking_summary.rescheduled_bookings or 0)
+
+        # Average duration from vendor slots (instead of a fixed synthetic value).
+        avg_slot_minutes = (
+            db.session.query(
+                func.avg(
+                    case(
+                        (Slot.end_time > Slot.start_time, func.extract('epoch', Slot.end_time) - func.extract('epoch', Slot.start_time)),
+                        else_=(func.extract('epoch', Slot.end_time) + 86400 - func.extract('epoch', Slot.start_time))
+                    )
+                )
+            )
+            .join(AvailableGame, Slot.gaming_type_id == AvailableGame.id)
+            .filter(AvailableGame.vendor_id == vendor_id)
+            .scalar()
+        )
+        average_booking_duration = f"{round((float(avg_slot_minutes or 1800) / 60.0))} min"
+
+        # Peak booking hours from this vendor only.
+        peak_hours = (
+            db.session.query(func.to_char(Transaction.booking_time, 'HH24'), func.count(Transaction.id))
+            .filter(Transaction.vendor_id == vendor_id)
             .group_by(func.to_char(Transaction.booking_time, 'HH24'))
             .order_by(func.count(Transaction.id).desc())
             .limit(3)
             .all()
         )
-        
         peak_booking_hours = [f"{int(hour)}:00 - {int(hour)+1}:00" for hour, _ in peak_hours]
-        
-        return jsonify({
+
+        payload = {
             "vendorId":vendor_id,
             "stats": {
                 "todayEarnings": today_earnings,
@@ -850,7 +1104,18 @@ def get_landing_page_vendor(vendor_id):
             },
             "upcomingBookings": upcoming_bookings,
             "currentSlots": current_slots
-        })
+        }
+
+        with _landing_page_cache_lock:
+            _landing_page_cache[cache_key] = {
+                "payload": payload,
+                "expires_at": time.time() + LANDING_PAGE_CACHE_TTL_SEC,
+            }
+
+        response = jsonify(payload)
+        response.headers["X-Cache"] = "MISS"
+        response.headers["X-Response-Time-ms"] = f"{(time.perf_counter() - started_at) * 1000:.2f}"
+        return response, 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -1157,110 +1422,166 @@ def get_your_gamers(vendor_id):
 @dashboard_service.route('/vendor/<int:vendor_id>/knowYourGamer/stats', methods=['GET'])
 def get_your_gamers_stats(vendor_id):
     try:
-        # Dynamic Promo Table name based on vendor_id
         promo_table = f"VENDOR_{vendor_id}_PROMO_DETAIL"
-        slot_table = f"VENDOR_{vendor_id}_SLOT"  # Dynamic Slot Table name based on vendor_id
-        
-        # Start a transaction
-        with db.session.begin():
-            # 1. Total Gamers (distinct users who have made bookings)
-            total_gamers = db.session.query(func.count(func.distinct(Transaction.user_id)))\
-                .filter(Transaction.vendor_id == vendor_id).scalar()
+        today = datetime.utcnow().date()
+        current_start = today.replace(day=1)
+        current_end_exclusive = today + timedelta(days=1)
 
-            # 2. Average Revenue (total revenue / total slots)
-            total_revenue = db.session.query(func.sum(Transaction.amount))\
-                .filter(Transaction.vendor_id == vendor_id).scalar() or 0
-            total_slots = db.session.query(func.count(Booking.id))\
-                .join(Slot, Booking.slot_id == Slot.id)\
-                .join(AvailableGame, Slot.gaming_type_id == AvailableGame.id)\
-                .filter(AvailableGame.vendor_id == vendor_id).scalar() or 1
+        previous_start = (current_start - timedelta(days=1)).replace(day=1)
+        days_elapsed = (today - current_start).days + 1
+        previous_end_exclusive = min(previous_start + timedelta(days=days_elapsed), current_start)
 
-            average_revenue = total_revenue / total_slots
+        def _pct_change(current_value, previous_value):
+            if previous_value == 0:
+                return "+0.00%" if current_value == 0 else "+100.00%"
+            pct = ((current_value - previous_value) / previous_value) * 100
+            return f"+{pct:.2f}%" if pct >= 0 else f"{pct:.2f}%"
 
-            # 3. Premium Members (number of distinct users with premium membership)
-            premium_members = db.session.query(func.count(func.distinct(Transaction.user_id)))\
-                .filter(Transaction.vendor_id == vendor_id, Transaction.amount > 1000).scalar()  # Assuming premium users are those who spent > 1000
+        def _avg_session_hours(period_start, period_end_exclusive):
+            rows = (
+                db.session.query(Slot.start_time, Slot.end_time)
+                .join(Booking, Booking.slot_id == Slot.id)
+                .join(AvailableGame, Slot.gaming_type_id == AvailableGame.id)
+                .join(Transaction, Transaction.booking_id == Booking.id)
+                .filter(
+                    AvailableGame.vendor_id == vendor_id,
+                    Transaction.booking_date >= period_start,
+                    Transaction.booking_date < period_end_exclusive,
+                )
+                .all()
+            )
+            if not rows:
+                return 0.0
 
-            # 4. Average Session Time (average time between bookings, in hours)
-            session_times = db.session.query(Booking.slot_id, func.min(Transaction.booking_date).label('min_time'), func.max(Transaction.booking_date).label('max_time'))\
-                .join(Slot, Booking.slot_id == Slot.id)\
-                .join(AvailableGame, Slot.gaming_type_id == AvailableGame.id)\
-                .filter(AvailableGame.vendor_id == vendor_id)\
-                .group_by(Booking.slot_id).all()
+            total_minutes = 0.0
+            for row in rows:
+                start_dt = datetime.combine(date.today(), row.start_time)
+                end_dt = datetime.combine(date.today(), row.end_time)
+                if end_dt <= start_dt:
+                    end_dt += timedelta(days=1)
+                total_minutes += (end_dt - start_dt).total_seconds() / 60.0
 
-            total_session_time = 0
-            total_sessions = 0
-            for session in session_times:
-                start_time = session.min_time
-                end_time = session.max_time
-                session_duration = (end_time - start_time).total_seconds() / 3600  # in hours
-                total_session_time += session_duration
-                total_sessions += 1
+            return (total_minutes / len(rows)) / 60.0
 
-            avg_session_time = total_session_time / total_sessions if total_sessions > 0 else 0
+        total_gamers = (
+            db.session.query(func.count(func.distinct(Transaction.user_id)))
+            .filter(Transaction.vendor_id == vendor_id)
+            .scalar()
+            or 0
+        )
 
-            # 5. Revenue Growth (comparing current month revenue vs previous month)
-            current_month_start = datetime(datetime.now().year, datetime.now().month, 1)
-            previous_month_start = (current_month_start - timedelta(days=1)).replace(day=1)
-            previous_month_end = current_month_start - timedelta(days=1)
+        current_gamers = (
+            db.session.query(func.count(func.distinct(Transaction.user_id)))
+            .filter(
+                Transaction.vendor_id == vendor_id,
+                Transaction.booking_date >= current_start,
+                Transaction.booking_date < current_end_exclusive,
+            )
+            .scalar()
+            or 0
+        )
+        previous_gamers = (
+            db.session.query(func.count(func.distinct(Transaction.user_id)))
+            .filter(
+                Transaction.vendor_id == vendor_id,
+                Transaction.booking_date >= previous_start,
+                Transaction.booking_date < previous_end_exclusive,
+            )
+            .scalar()
+            or 0
+        )
 
-            current_month_revenue = db.session.query(func.sum(Transaction.amount))\
-                .filter(Transaction.vendor_id == vendor_id, Transaction.booking_date >= current_month_start).scalar() or 0
-            previous_month_revenue = db.session.query(func.sum(Transaction.amount))\
-                .filter(Transaction.vendor_id == vendor_id, Transaction.booking_date >= previous_month_start, Transaction.booking_date <= previous_month_end).scalar() or 0
+        average_revenue = (
+            db.session.query(func.avg(Transaction.amount))
+            .filter(
+                Transaction.vendor_id == vendor_id,
+                Transaction.booking_date >= current_start,
+                Transaction.booking_date < current_end_exclusive,
+            )
+            .scalar()
+            or 0
+        )
+        previous_average_revenue = (
+            db.session.query(func.avg(Transaction.amount))
+            .filter(
+                Transaction.vendor_id == vendor_id,
+                Transaction.booking_date >= previous_start,
+                Transaction.booking_date < previous_end_exclusive,
+            )
+            .scalar()
+            or 0
+        )
 
-            revenue_growth = ((current_month_revenue - previous_month_revenue) / previous_month_revenue) * 100 if previous_month_revenue else 0
-            revenue_growth = f"+{revenue_growth:.2f}%" if revenue_growth >= 0 else f"{revenue_growth:.2f}%"
+        lifetime_premium_subq = (
+            db.session.query(Transaction.user_id)
+            .filter(Transaction.vendor_id == vendor_id)
+            .group_by(Transaction.user_id)
+            .having(func.sum(Transaction.amount) >= 1000)
+            .subquery()
+        )
+        premium_members = db.session.query(func.count()).select_from(lifetime_premium_subq).scalar() or 0
 
-            # 6. Members Growth (comparing current month premium members vs previous month)
-            current_month_premium = db.session.query(func.count(func.distinct(Transaction.user_id)))\
-                .filter(Transaction.vendor_id == vendor_id, Transaction.amount > 1000, Transaction.booking_date >= current_month_start).scalar() or 0
-            previous_month_premium = db.session.query(func.count(func.distinct(Transaction.user_id)))\
-                .filter(Transaction.vendor_id == vendor_id, Transaction.amount > 1000, Transaction.booking_date >= previous_month_start, Transaction.booking_date <= previous_month_end).scalar() or 0
+        current_premium_subq = (
+            db.session.query(Transaction.user_id)
+            .filter(
+                Transaction.vendor_id == vendor_id,
+                Transaction.booking_date >= current_start,
+                Transaction.booking_date < current_end_exclusive,
+            )
+            .group_by(Transaction.user_id)
+            .having(func.sum(Transaction.amount) >= 1000)
+            .subquery()
+        )
+        current_premium = db.session.query(func.count()).select_from(current_premium_subq).scalar() or 0
 
-            members_growth = ((current_month_premium - previous_month_premium) / previous_month_premium) * 100 if previous_month_premium else 0
-            members_growth = f"+{members_growth:.2f}%" if members_growth >= 0 else f"{members_growth:.2f}%"
+        previous_premium_subq = (
+            db.session.query(Transaction.user_id)
+            .filter(
+                Transaction.vendor_id == vendor_id,
+                Transaction.booking_date >= previous_start,
+                Transaction.booking_date < previous_end_exclusive,
+            )
+            .group_by(Transaction.user_id)
+            .having(func.sum(Transaction.amount) >= 1000)
+            .subquery()
+        )
+        previous_premium = db.session.query(func.count()).select_from(previous_premium_subq).scalar() or 0
 
-            # 7. Session Growth (comparing current month sessions vs previous month)
-            current_month_sessions = db.session.query(func.count(Booking.id))\
-                .join(Slot, Booking.slot_id == Slot.id)\
-                .join(AvailableGame, Slot.gaming_type_id == AvailableGame.id)\
-                .join(Transaction, Transaction.booking_id == Booking.id)\
-                .filter(AvailableGame.vendor_id == vendor_id, Transaction.booking_date >= current_month_start)\
-                .scalar() or 0
-            previous_month_sessions = db.session.query(func.count(Booking.id))\
-                .join(Slot, Booking.slot_id == Slot.id)\
-                .join(AvailableGame, Slot.gaming_type_id == AvailableGame.id)\
-                .filter(AvailableGame.vendor_id == vendor_id, Transaction.booking_date >= previous_month_start, Transaction.booking_date <= previous_month_end).scalar() or 0
+        avg_session_time = _avg_session_hours(current_start, current_end_exclusive)
+        previous_avg_session_time = _avg_session_hours(previous_start, previous_end_exclusive)
 
-            session_growth = ((current_month_sessions - previous_month_sessions) / previous_month_sessions) * 100 if previous_month_sessions else 0
-            session_growth = f"+{session_growth:.2f}%" if session_growth >= 0 else f"{session_growth:.2f}%"
+        revenue_growth = _pct_change(float(average_revenue), float(previous_average_revenue))
+        total_gamers_growth = _pct_change(float(current_gamers), float(previous_gamers))
+        premium_members_growth = _pct_change(float(current_premium), float(previous_premium))
+        session_growth = _pct_change(float(avg_session_time), float(previous_avg_session_time))
 
-            # 8. Discount Applied from Promo (sum of all discounts applied in vendor-specific promo table)
+        try:
             promo_discount = db.session.execute(
-                text(f"SELECT SUM(discount_applied) FROM {promo_table}")
+                text(f"SELECT COALESCE(SUM(discount_applied), 0) FROM {promo_table}")
             ).scalar() or 0
+        except Exception:
+            promo_discount = 0
 
-            # 9. Slot Availability (Check availability from dynamic slot table)
-            available_slots = db.session.execute(
-                text(f"""
-                SELECT SUM(available_slot) 
-                FROM {slot_table} 
-                WHERE vendor_id = :vendor_id AND is_available = TRUE
-                """), {"vendor_id": vendor_id}
-            ).scalar() or 0
+        available_slots = (
+            db.session.query(func.sum(Slot.available_slot))
+            .join(AvailableGame, Slot.gaming_type_id == AvailableGame.id)
+            .filter(AvailableGame.vendor_id == vendor_id, Slot.is_available.is_(True))
+            .scalar()
+            or 0
+        )
 
-        # Return stats as JSON response
         return jsonify({
             "totalGamers": total_gamers,
-            "averageRevenue": average_revenue,
+            "averageRevenue": round(float(average_revenue), 2),
             "premiumMembers": premium_members,
             "avgSessionTime": f"{avg_session_time:.1f} hrs" if avg_session_time > 0 else "N/A",
             "revenueGrowth": revenue_growth,
-            "membersGrowth": members_growth,
+            "totalGamersGrowth": total_gamers_growth,
+            "premiumMembersGrowth": premium_members_growth,
+            "membersGrowth": premium_members_growth,
             "sessionGrowth": session_growth,
             "promoDiscountApplied": promo_discount,
-            "availableSlots": available_slots  # Slot availability data
+            "availableSlots": int(available_slots),
         })
 
     except Exception as e:
@@ -2739,4 +3060,3 @@ def delete_vendor_pass(vendor_id, pass_id):
         db.session.rollback()
         current_app.logger.error(f"Error deactivating pass {pass_id}: {str(e)}")
         return jsonify({'error': f'Failed to deactivate pass: {str(e)}'}), 500
-

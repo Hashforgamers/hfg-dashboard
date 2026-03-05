@@ -1,10 +1,11 @@
-from flask import Flask, request, make_response
+from flask import Flask, request, make_response, g
 from flask_cors import CORS
 from flask_migrate import Migrate
 from flask_jwt_extended import JWTManager
 from datetime import timedelta
 import os
 import logging
+import time
 
 from app.config import Config
 from app.extension.extensions import db
@@ -29,25 +30,39 @@ def create_app():
     app.config.setdefault("JWT_ACCESS_TOKEN_EXPIRES", timedelta(hours=8))
     jwt.init_app(app)
 
-    # ✅ CORS - Allow all origins for development
+    # ✅ CORS - allow dashboard origins across all response paths
     CORS(app, 
      origins="*",
      methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-     allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
+     allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Cache-Control", "Pragma", "Expires"],
      supports_credentials=False
     )
 
+    def _apply_cors_headers(response):
+        origin = request.headers.get("Origin", "*")
+        response.headers["Access-Control-Allow-Origin"] = origin if origin else "*"
+        response.headers["Vary"] = "Origin"
+        requested_headers = request.headers.get("Access-Control-Request-Headers")
+        response.headers["Access-Control-Allow-Headers"] = requested_headers if requested_headers else "Content-Type, Authorization, X-Requested-With, Cache-Control, Pragma, Expires"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+        response.headers["Access-Control-Max-Age"] = "3600"
+        return response
 
     # ✅ ADD: Global OPTIONS handler BEFORE blueprint registration
     @app.before_request
     def handle_preflight():
+        g._request_started_at = time.perf_counter()
         if request.method == "OPTIONS":
             response = make_response()
-            response.headers.add("Access-Control-Allow-Origin", "*")
-            response.headers.add("Access-Control-Allow-Headers", "Content-Type,Authorization,X-Requested-With")
-            response.headers.add("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
-            response.headers.add("Access-Control-Max-Age", "3600")
+            response = _apply_cors_headers(response)
             return response, 200
+
+    @app.after_request
+    def ensure_cors_on_all_responses(response):
+        started_at = getattr(g, "_request_started_at", None)
+        if started_at is not None:
+            response.headers["X-Response-Time-ms"] = f"{(time.perf_counter() - started_at) * 1000:.2f}"
+        return _apply_cors_headers(response)
 
     @app.before_request
     def handle_rbac_guard():

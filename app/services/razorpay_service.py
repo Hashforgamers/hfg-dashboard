@@ -113,3 +113,15 @@ def get_order_details(order_id):
     order = client.order.fetch(order_id)
     current_app.logger.info(f"Fetched order details: {order_id}")
     return order
+
+
+def get_order_payments(order_id):
+    """
+    Get payments attached to an order from Razorpay.
+    Returns list of payment items.
+    """
+    client = get_razorpay_client()
+    payload = client.order.payments(order_id)
+    items = payload.get("items", []) if isinstance(payload, dict) else []
+    current_app.logger.info("Fetched %s payment(s) for order %s", len(items), order_id)
+    return items
