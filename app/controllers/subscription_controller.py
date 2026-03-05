@@ -55,12 +55,38 @@ def get_subscription(vendor_id):
 def check_subscription_status(vendor_id):
     """Check if vendor subscription is active (for dashboard lock)"""
     is_active, sub = is_subscription_active(vendor_id)
-    
-    return jsonify({
+    now_utc = datetime.utcnow()
+
+    # Latest subscription snapshot helps debug "paid but still inactive".
+    from app.models.subscription import Subscription
+    latest_sub = (
+        Subscription.query
+        .filter(Subscription.vendor_id == vendor_id)
+        .order_by(Subscription.created_at.desc())
+        .first()
+    )
+
+    payload = {
         "is_active": is_active,
         "locked": not is_active,
-        "message": "Subscription expired. Please renew to continue." if not is_active else "Active"
-    }), 200
+        "message": "Subscription expired. Please renew to continue." if not is_active else "Active",
+        "server_time_utc": now_utc.isoformat() + "Z",
+        "active_subscription": {
+            "id": sub.id if sub else None,
+            "status": sub.status.value if sub else None,
+            "period_start": sub.current_period_start.isoformat() if sub and sub.current_period_start else None,
+            "period_end": sub.current_period_end.isoformat() if sub and sub.current_period_end else None,
+            "external_ref": sub.external_ref if sub else None,
+        },
+        "latest_subscription": {
+            "id": latest_sub.id if latest_sub else None,
+            "status": latest_sub.status.value if latest_sub else None,
+            "period_start": latest_sub.current_period_start.isoformat() if latest_sub and latest_sub.current_period_start else None,
+            "period_end": latest_sub.current_period_end.isoformat() if latest_sub and latest_sub.current_period_end else None,
+            "external_ref": latest_sub.external_ref if latest_sub else None,
+        }
+    }
+    return jsonify(payload), 200
 
 
 @bp_subs.post('/provision-default')
