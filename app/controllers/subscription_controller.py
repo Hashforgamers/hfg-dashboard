@@ -12,7 +12,12 @@ from app.services.subscription_service import (
     is_subscription_active,
     get_package_price  # ✅ ADD THIS
 )
-from app.services.razorpay_service import create_order, verify_payment_signature, get_payment_details
+from app.services.razorpay_service import (
+    create_order,
+    verify_payment_signature,
+    get_payment_details,
+    get_order_payments,
+)
 from app.models.package import Package
 from app.extension.extensions import db  # ✅ ADD THIS
 
@@ -176,21 +181,31 @@ def verify_and_activate(vendor_id):
                 "required": ["razorpay_order_id", "razorpay_payment_id", "razorpay_signature", "package_code"]
             }), 400
         
-        # Verify payment signature
+        # Verify payment signature.
+        # Polling fallback uses a sentinel signature and verifies by order linkage + captured status.
         current_app.logger.info(f"Verifying payment for vendor {vendor_id}")
-        is_valid = verify_payment_signature(order_id, payment_id, signature)
-        
-        if not is_valid:
-            current_app.logger.error(f"Invalid payment signature for vendor {vendor_id}")
-            return jsonify({
-                "error": "Payment verification failed",
-                "message": "Invalid payment signature. Please contact support."
-            }), 400
-        
+        if signature == "polled_payment":
+            current_app.logger.info("Using polled payment verification path for vendor %s", vendor_id)
+        else:
+            is_valid = verify_payment_signature(order_id, payment_id, signature)
+            if not is_valid:
+                current_app.logger.error(f"Invalid payment signature for vendor {vendor_id}")
+                return jsonify({
+                    "error": "Payment verification failed",
+                    "message": "Invalid payment signature. Please contact support."
+                }), 400
+
         # Get payment details from Razorpay
         payment_details = get_payment_details(payment_id)
         amount_paid = payment_details['amount'] / 100  # Convert paise to rupees
         payment_status = payment_details.get('status')
+        payment_order_id = payment_details.get('order_id')
+
+        if payment_order_id and payment_order_id != order_id:
+            return jsonify({
+                "error": "Payment does not match order",
+                "message": "Order/payment mismatch detected"
+            }), 400
         
         if payment_status != 'captured':
             return jsonify({
@@ -310,8 +325,15 @@ def check_payment_status(vendor_id, order_id):
         
         # Check if order is paid
         if order.get('status') == 'paid':
-            # Find the payment ID
-            payment_id = order.get('payments', [{}])[0].get('id') if order.get('payments') else None
+            # Get attached payments and pick captured one.
+            payment_id = None
+            payments = get_order_payments(order_id)
+            for p in payments:
+                if p.get("status") == "captured":
+                    payment_id = p.get("id")
+                    break
+            if not payment_id and payments:
+                payment_id = payments[0].get("id")
             
             if payment_id:
                 current_app.logger.info(f"Payment found: {payment_id}")
