@@ -1,9 +1,12 @@
 from flask import Blueprint, request, jsonify, current_app
 from datetime import datetime,timedelta
 import re
+import time
+import threading
 from .models.transaction import Transaction
 from app.extension.extensions import db
 from sqlalchemy import cast, Date, text, func
+from sqlalchemy import case
 from app.services.console_service import ConsoleService
 
 from .models.console import Console
@@ -59,6 +62,9 @@ from app.services.extra_service_service import ExtraServiceService
 WEEKDAY_ORDER = ["mon","tue","wed","thu","fri","sat","sun"]
 GSTIN_REGEX = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$")
 STATE_CODE_REGEX = re.compile(r"^[0-9A-Z]{2}$")
+LANDING_PAGE_CACHE_TTL_SEC = 5
+_landing_page_cache = {}
+_landing_page_cache_lock = threading.Lock()
 
 dashboard_service = Blueprint("dashboard_service", __name__)
 
@@ -851,20 +857,48 @@ def get_all_device_for_vendor(vendor_id):
 @dashboard_service.route('/getLandingPage/vendor/<int:vendor_id>', methods=['GET'])
 def get_landing_page_vendor(vendor_id):
     """Fetches vendor dashboard data including stats, booking stats, upcoming bookings, and current slots."""
+    started_at = time.perf_counter()
+    cache_key = f"vendor:{vendor_id}"
+    now_ts = time.time()
+
+    with _landing_page_cache_lock:
+        cached_entry = _landing_page_cache.get(cache_key)
+    if cached_entry and cached_entry["expires_at"] > now_ts:
+        response = jsonify(cached_entry["payload"])
+        response.headers["X-Cache"] = "HIT"
+        response.headers["X-Response-Time-ms"] = f"{(time.perf_counter() - started_at) * 1000:.2f}"
+        return response, 200
+
     try:
         table_name = f"VENDOR_{vendor_id}_DASHBOARD"
         today = datetime.utcnow().date()
-        
-        # Fetch transaction stats
-        today_earnings = db.session.query(func.sum(Transaction.amount)).filter(
-            Transaction.vendor_id == vendor_id, Transaction.booked_date == today).scalar() or 0
-        today_bookings = db.session.query(func.count(Transaction.id)).filter(
-            Transaction.vendor_id == vendor_id, Transaction.booked_date == today).scalar() or 0
-        pending_amount = db.session.query(func.sum(Transaction.amount)).filter(
-            Transaction.vendor_id == vendor_id, Transaction.settlement_status == 'pending').scalar() or 0
+
+        # Vendor-scoped transaction summary in one query.
+        transaction_summary = (
+            db.session.query(
+                func.coalesce(
+                    func.sum(case((Transaction.booked_date == today, Transaction.amount), else_=0.0)),
+                    0.0
+                ).label("today_earnings"),
+                func.coalesce(
+                    func.sum(case((Transaction.booked_date == today, 1), else_=0)),
+                    0
+                ).label("today_bookings"),
+                func.coalesce(
+                    func.sum(case((Transaction.settlement_status == 'pending', Transaction.amount), else_=0.0)),
+                    0.0
+                ).label("pending_amount"),
+            )
+            .filter(Transaction.vendor_id == vendor_id)
+            .one()
+        )
+
+        today_earnings = float(transaction_summary.today_earnings or 0)
+        today_bookings = int(transaction_summary.today_bookings or 0)
+        pending_amount = float(transaction_summary.pending_amount or 0)
         cleared_amount = today_earnings - pending_amount
-        
-        # Fetch bookings from vendor-specific dashboard table
+
+        # Fetch bookings from vendor-specific dashboard table (single query).
         sql_fetch_bookings = text(f"""
             SELECT 
                 COALESCE(b.username, u.name) AS username, 
@@ -885,24 +919,21 @@ def get_landing_page_vendor(vendor_id):
             JOIN bookings d ON b.book_id = d.id
             LEFT JOIN users u ON b.user_id = u.id
         """)
-        
         result = db.session.execute(sql_fetch_bookings).fetchall()
-        
+
         upcoming_bookings = []
         current_slots = []
-        
-        # Fetch all booking_ids with extras in one go
+
         booking_ids = [row.book_id for row in result]
         if booking_ids:
-          meals_lookup = set(
-              r[0] for r in db.session.query(BookingExtraService.booking_id)
-              .filter(BookingExtraService.booking_id.in_(booking_ids))
-              .distinct()
-              .all()
+            meals_lookup = set(
+                r[0] for r in db.session.query(BookingExtraService.booking_id)
+                .filter(BookingExtraService.booking_id.in_(booking_ids))
+                .distinct()
+                .all()
             )
         else:
             meals_lookup = set()
-
         
         for row in result:
             has_meals = row.book_id in meals_lookup
@@ -944,32 +975,53 @@ def get_landing_page_vendor(vendor_id):
                 upcoming_bookings.append(booking_data)
             elif row.book_status == "current":
                 current_slots.append(slot_data)
-        
-        # Compute booking statistics
-        total_bookings = db.session.query(func.count(Booking.id)).filter_by().scalar() or 0
-        completed_bookings = db.session.query(func.count(Booking.id)).filter_by(status='completed').scalar() or 0
-        cancelled_bookings = db.session.query(func.count(Booking.id)).filter_by(status='cancelled').scalar() or 0
-        rescheduled_bookings = db.session.query(func.count(Booking.id)).filter_by(status='rescheduled').scalar() or 0
-        
-        # Calculate average booking duration (assume per-day average over past week)
-        total_slots = db.session.query(func.count(Slot.id)).scalar() or 1  # Avoid division by zero
-        average_booking_duration = f"{round((total_slots * 30) / 60)} min"  # Assuming 30 min per slot
-        
-        # Calculate peak booking hours from past transactions
-        peak_hours = (
+
+        # Vendor-scoped booking stats in one aggregate query.
+        booking_summary = (
             db.session.query(
-                func.to_char(Transaction.booking_time, 'HH24'),  # Use TO_CHAR to extract the hour
-                func.count(Transaction.id)
+                func.count(Booking.id).label("total_bookings"),
+                func.coalesce(func.sum(case((Booking.status == 'completed', 1), else_=0)), 0).label("completed_bookings"),
+                func.coalesce(func.sum(case((Booking.status == 'cancelled', 1), else_=0)), 0).label("cancelled_bookings"),
+                func.coalesce(func.sum(case((Booking.status == 'rescheduled', 1), else_=0)), 0).label("rescheduled_bookings"),
             )
+            .join(AvailableGame, Booking.game_id == AvailableGame.id)
+            .filter(AvailableGame.vendor_id == vendor_id)
+            .one()
+        )
+
+        total_bookings = int(booking_summary.total_bookings or 0)
+        completed_bookings = int(booking_summary.completed_bookings or 0)
+        cancelled_bookings = int(booking_summary.cancelled_bookings or 0)
+        rescheduled_bookings = int(booking_summary.rescheduled_bookings or 0)
+
+        # Average duration from vendor slots (instead of a fixed synthetic value).
+        avg_slot_minutes = (
+            db.session.query(
+                func.avg(
+                    case(
+                        (Slot.end_time > Slot.start_time, func.extract('epoch', Slot.end_time) - func.extract('epoch', Slot.start_time)),
+                        else_=(func.extract('epoch', Slot.end_time) + 86400 - func.extract('epoch', Slot.start_time))
+                    )
+                )
+            )
+            .join(AvailableGame, Slot.gaming_type_id == AvailableGame.id)
+            .filter(AvailableGame.vendor_id == vendor_id)
+            .scalar()
+        )
+        average_booking_duration = f"{round((float(avg_slot_minutes or 1800) / 60.0))} min"
+
+        # Peak booking hours from this vendor only.
+        peak_hours = (
+            db.session.query(func.to_char(Transaction.booking_time, 'HH24'), func.count(Transaction.id))
+            .filter(Transaction.vendor_id == vendor_id)
             .group_by(func.to_char(Transaction.booking_time, 'HH24'))
             .order_by(func.count(Transaction.id).desc())
             .limit(3)
             .all()
         )
-        
         peak_booking_hours = [f"{int(hour)}:00 - {int(hour)+1}:00" for hour, _ in peak_hours]
-        
-        return jsonify({
+
+        payload = {
             "vendorId":vendor_id,
             "stats": {
                 "todayEarnings": today_earnings,
@@ -989,7 +1041,18 @@ def get_landing_page_vendor(vendor_id):
             },
             "upcomingBookings": upcoming_bookings,
             "currentSlots": current_slots
-        })
+        }
+
+        with _landing_page_cache_lock:
+            _landing_page_cache[cache_key] = {
+                "payload": payload,
+                "expires_at": time.time() + LANDING_PAGE_CACHE_TTL_SEC,
+            }
+
+        response = jsonify(payload)
+        response.headers["X-Cache"] = "MISS"
+        response.headers["X-Response-Time-ms"] = f"{(time.perf_counter() - started_at) * 1000:.2f}"
+        return response, 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
