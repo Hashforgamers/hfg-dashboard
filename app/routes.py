@@ -1034,7 +1034,10 @@ def get_landing_page_vendor(vendor_id):
                 
             }
             
-            if row.book_status == "upcoming":
+            row_date = row.date if isinstance(row.date, date) else None
+            is_future_row = bool(row_date and row_date > today)
+
+            if row.book_status == "upcoming" or is_future_row:
                 upcoming_bookings.append(booking_data)
             elif row.book_status == "current":
                 current_slots.append(slot_data)
