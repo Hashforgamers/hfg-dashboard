@@ -72,9 +72,9 @@ def get_transaction_report(to_date, from_date, vendor_id):
 
         transactions = Transaction.query.filter(
             Transaction.vendor_id == vendor_id,
-            cast(Transaction.booked_date, Date).between(from_date, to_date)
+            cast(Transaction.booking_date, Date).between(from_date, to_date)
         ).order_by(
-            Transaction.booked_date.desc(),
+            Transaction.booking_date.desc(),
             Transaction.booking_time.desc(),
             Transaction.id.desc()
         ).all()
@@ -85,7 +85,9 @@ def get_transaction_report(to_date, from_date, vendor_id):
         # Format response data
         result = [{
             "id": txn.id,
-            "slotDate": txn.booked_date.strftime("%Y-%m-%d"),
+            # Keep key name for frontend compatibility; value is booking creation date.
+            "slotDate": txn.booking_date.strftime("%Y-%m-%d"),
+            "playDate": txn.booked_date.strftime("%Y-%m-%d") if txn.booked_date else None,
             "slotTime": txn.booking_time.strftime("%I:%M %p"),
             "userName": User.query.filter(User.id == txn.user_id).first().name if txn.user_id else None,
             "amount": txn.amount,
@@ -96,7 +98,7 @@ def get_transaction_report(to_date, from_date, vendor_id):
             "bookingType": txn.booking_type,
             "settlementStatus": txn.settlement_status,
             "userId":txn.user_id,
-            "bookedOn":txn.booked_date,
+            "bookedOn":txn.booking_date,
             "sourceChannel": txn.source_channel,
             "staffId": txn.initiated_by_staff_id,
             "staffName": txn.initiated_by_staff_name,
