@@ -21,7 +21,12 @@ def get_ist_now():
 
 
 def _normalize_console_type(value):
-    return str(value or "").strip().lower()
+    text = str(value or "").strip().lower()
+    if "ps" in text:
+        return "ps5"
+    if "xbox" in text:
+        return "xbox"
+    return text
 
 
 def _calculate_controller_total(base_price, tiers, quantity):
@@ -518,7 +523,7 @@ def upsert_controller_pricing(vendor_id):
         for entry in payload_rules:
             console_type = _normalize_console_type(entry.get("console_type"))
             if console_type not in SUPPORTED_CONTROLLER_TYPES:
-                errors.append(f'Unsupported console_type "{console_type}"')
+                # Ignore unsupported keys like pc/vr so mixed payloads don't fail.
                 continue
 
             game = game_map.get(console_type)
@@ -625,10 +630,13 @@ def calculate_controller_pricing(vendor_id):
         if quantity is None or quantity < 0:
             return jsonify({'success': False, 'message': 'quantity must be >= 0'}), 400
 
-        game = AvailableGame.query.filter(
-            AvailableGame.vendor_id == vendor_id,
-            AvailableGame.game_name.ilike(console_type)
-        ).first()
+        game = next(
+            (
+                g for g in AvailableGame.query.filter_by(vendor_id=vendor_id).all()
+                if _normalize_console_type(g.game_name) == console_type
+            ),
+            None
+        )
 
         if not game:
             return jsonify({'success': False, 'message': f'Console type "{console_type}" not configured'}), 404
