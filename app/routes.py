@@ -1233,110 +1233,166 @@ def get_your_gamers(vendor_id):
 @dashboard_service.route('/vendor/<int:vendor_id>/knowYourGamer/stats', methods=['GET'])
 def get_your_gamers_stats(vendor_id):
     try:
-        # Dynamic Promo Table name based on vendor_id
         promo_table = f"VENDOR_{vendor_id}_PROMO_DETAIL"
-        slot_table = f"VENDOR_{vendor_id}_SLOT"  # Dynamic Slot Table name based on vendor_id
-        
-        # Start a transaction
-        with db.session.begin():
-            # 1. Total Gamers (distinct users who have made bookings)
-            total_gamers = db.session.query(func.count(func.distinct(Transaction.user_id)))\
-                .filter(Transaction.vendor_id == vendor_id).scalar()
+        today = datetime.utcnow().date()
+        current_start = today.replace(day=1)
+        current_end_exclusive = today + timedelta(days=1)
 
-            # 2. Average Revenue (total revenue / total slots)
-            total_revenue = db.session.query(func.sum(Transaction.amount))\
-                .filter(Transaction.vendor_id == vendor_id).scalar() or 0
-            total_slots = db.session.query(func.count(Booking.id))\
-                .join(Slot, Booking.slot_id == Slot.id)\
-                .join(AvailableGame, Slot.gaming_type_id == AvailableGame.id)\
-                .filter(AvailableGame.vendor_id == vendor_id).scalar() or 1
+        previous_start = (current_start - timedelta(days=1)).replace(day=1)
+        days_elapsed = (today - current_start).days + 1
+        previous_end_exclusive = min(previous_start + timedelta(days=days_elapsed), current_start)
 
-            average_revenue = total_revenue / total_slots
+        def _pct_change(current_value, previous_value):
+            if previous_value == 0:
+                return "+0.00%" if current_value == 0 else "+100.00%"
+            pct = ((current_value - previous_value) / previous_value) * 100
+            return f"+{pct:.2f}%" if pct >= 0 else f"{pct:.2f}%"
 
-            # 3. Premium Members (number of distinct users with premium membership)
-            premium_members = db.session.query(func.count(func.distinct(Transaction.user_id)))\
-                .filter(Transaction.vendor_id == vendor_id, Transaction.amount > 1000).scalar()  # Assuming premium users are those who spent > 1000
+        def _avg_session_hours(period_start, period_end_exclusive):
+            rows = (
+                db.session.query(Slot.start_time, Slot.end_time)
+                .join(Booking, Booking.slot_id == Slot.id)
+                .join(AvailableGame, Slot.gaming_type_id == AvailableGame.id)
+                .join(Transaction, Transaction.booking_id == Booking.id)
+                .filter(
+                    AvailableGame.vendor_id == vendor_id,
+                    Transaction.booking_date >= period_start,
+                    Transaction.booking_date < period_end_exclusive,
+                )
+                .all()
+            )
+            if not rows:
+                return 0.0
 
-            # 4. Average Session Time (average time between bookings, in hours)
-            session_times = db.session.query(Booking.slot_id, func.min(Transaction.booking_date).label('min_time'), func.max(Transaction.booking_date).label('max_time'))\
-                .join(Slot, Booking.slot_id == Slot.id)\
-                .join(AvailableGame, Slot.gaming_type_id == AvailableGame.id)\
-                .filter(AvailableGame.vendor_id == vendor_id)\
-                .group_by(Booking.slot_id).all()
+            total_minutes = 0.0
+            for row in rows:
+                start_dt = datetime.combine(date.today(), row.start_time)
+                end_dt = datetime.combine(date.today(), row.end_time)
+                if end_dt <= start_dt:
+                    end_dt += timedelta(days=1)
+                total_minutes += (end_dt - start_dt).total_seconds() / 60.0
 
-            total_session_time = 0
-            total_sessions = 0
-            for session in session_times:
-                start_time = session.min_time
-                end_time = session.max_time
-                session_duration = (end_time - start_time).total_seconds() / 3600  # in hours
-                total_session_time += session_duration
-                total_sessions += 1
+            return (total_minutes / len(rows)) / 60.0
 
-            avg_session_time = total_session_time / total_sessions if total_sessions > 0 else 0
+        total_gamers = (
+            db.session.query(func.count(func.distinct(Transaction.user_id)))
+            .filter(Transaction.vendor_id == vendor_id)
+            .scalar()
+            or 0
+        )
 
-            # 5. Revenue Growth (comparing current month revenue vs previous month)
-            current_month_start = datetime(datetime.now().year, datetime.now().month, 1)
-            previous_month_start = (current_month_start - timedelta(days=1)).replace(day=1)
-            previous_month_end = current_month_start - timedelta(days=1)
+        current_gamers = (
+            db.session.query(func.count(func.distinct(Transaction.user_id)))
+            .filter(
+                Transaction.vendor_id == vendor_id,
+                Transaction.booking_date >= current_start,
+                Transaction.booking_date < current_end_exclusive,
+            )
+            .scalar()
+            or 0
+        )
+        previous_gamers = (
+            db.session.query(func.count(func.distinct(Transaction.user_id)))
+            .filter(
+                Transaction.vendor_id == vendor_id,
+                Transaction.booking_date >= previous_start,
+                Transaction.booking_date < previous_end_exclusive,
+            )
+            .scalar()
+            or 0
+        )
 
-            current_month_revenue = db.session.query(func.sum(Transaction.amount))\
-                .filter(Transaction.vendor_id == vendor_id, Transaction.booking_date >= current_month_start).scalar() or 0
-            previous_month_revenue = db.session.query(func.sum(Transaction.amount))\
-                .filter(Transaction.vendor_id == vendor_id, Transaction.booking_date >= previous_month_start, Transaction.booking_date <= previous_month_end).scalar() or 0
+        average_revenue = (
+            db.session.query(func.avg(Transaction.amount))
+            .filter(
+                Transaction.vendor_id == vendor_id,
+                Transaction.booking_date >= current_start,
+                Transaction.booking_date < current_end_exclusive,
+            )
+            .scalar()
+            or 0
+        )
+        previous_average_revenue = (
+            db.session.query(func.avg(Transaction.amount))
+            .filter(
+                Transaction.vendor_id == vendor_id,
+                Transaction.booking_date >= previous_start,
+                Transaction.booking_date < previous_end_exclusive,
+            )
+            .scalar()
+            or 0
+        )
 
-            revenue_growth = ((current_month_revenue - previous_month_revenue) / previous_month_revenue) * 100 if previous_month_revenue else 0
-            revenue_growth = f"+{revenue_growth:.2f}%" if revenue_growth >= 0 else f"{revenue_growth:.2f}%"
+        lifetime_premium_subq = (
+            db.session.query(Transaction.user_id)
+            .filter(Transaction.vendor_id == vendor_id)
+            .group_by(Transaction.user_id)
+            .having(func.sum(Transaction.amount) >= 1000)
+            .subquery()
+        )
+        premium_members = db.session.query(func.count()).select_from(lifetime_premium_subq).scalar() or 0
 
-            # 6. Members Growth (comparing current month premium members vs previous month)
-            current_month_premium = db.session.query(func.count(func.distinct(Transaction.user_id)))\
-                .filter(Transaction.vendor_id == vendor_id, Transaction.amount > 1000, Transaction.booking_date >= current_month_start).scalar() or 0
-            previous_month_premium = db.session.query(func.count(func.distinct(Transaction.user_id)))\
-                .filter(Transaction.vendor_id == vendor_id, Transaction.amount > 1000, Transaction.booking_date >= previous_month_start, Transaction.booking_date <= previous_month_end).scalar() or 0
+        current_premium_subq = (
+            db.session.query(Transaction.user_id)
+            .filter(
+                Transaction.vendor_id == vendor_id,
+                Transaction.booking_date >= current_start,
+                Transaction.booking_date < current_end_exclusive,
+            )
+            .group_by(Transaction.user_id)
+            .having(func.sum(Transaction.amount) >= 1000)
+            .subquery()
+        )
+        current_premium = db.session.query(func.count()).select_from(current_premium_subq).scalar() or 0
 
-            members_growth = ((current_month_premium - previous_month_premium) / previous_month_premium) * 100 if previous_month_premium else 0
-            members_growth = f"+{members_growth:.2f}%" if members_growth >= 0 else f"{members_growth:.2f}%"
+        previous_premium_subq = (
+            db.session.query(Transaction.user_id)
+            .filter(
+                Transaction.vendor_id == vendor_id,
+                Transaction.booking_date >= previous_start,
+                Transaction.booking_date < previous_end_exclusive,
+            )
+            .group_by(Transaction.user_id)
+            .having(func.sum(Transaction.amount) >= 1000)
+            .subquery()
+        )
+        previous_premium = db.session.query(func.count()).select_from(previous_premium_subq).scalar() or 0
 
-            # 7. Session Growth (comparing current month sessions vs previous month)
-            current_month_sessions = db.session.query(func.count(Booking.id))\
-                .join(Slot, Booking.slot_id == Slot.id)\
-                .join(AvailableGame, Slot.gaming_type_id == AvailableGame.id)\
-                .join(Transaction, Transaction.booking_id == Booking.id)\
-                .filter(AvailableGame.vendor_id == vendor_id, Transaction.booking_date >= current_month_start)\
-                .scalar() or 0
-            previous_month_sessions = db.session.query(func.count(Booking.id))\
-                .join(Slot, Booking.slot_id == Slot.id)\
-                .join(AvailableGame, Slot.gaming_type_id == AvailableGame.id)\
-                .filter(AvailableGame.vendor_id == vendor_id, Transaction.booking_date >= previous_month_start, Transaction.booking_date <= previous_month_end).scalar() or 0
+        avg_session_time = _avg_session_hours(current_start, current_end_exclusive)
+        previous_avg_session_time = _avg_session_hours(previous_start, previous_end_exclusive)
 
-            session_growth = ((current_month_sessions - previous_month_sessions) / previous_month_sessions) * 100 if previous_month_sessions else 0
-            session_growth = f"+{session_growth:.2f}%" if session_growth >= 0 else f"{session_growth:.2f}%"
+        revenue_growth = _pct_change(float(average_revenue), float(previous_average_revenue))
+        total_gamers_growth = _pct_change(float(current_gamers), float(previous_gamers))
+        premium_members_growth = _pct_change(float(current_premium), float(previous_premium))
+        session_growth = _pct_change(float(avg_session_time), float(previous_avg_session_time))
 
-            # 8. Discount Applied from Promo (sum of all discounts applied in vendor-specific promo table)
+        try:
             promo_discount = db.session.execute(
-                text(f"SELECT SUM(discount_applied) FROM {promo_table}")
+                text(f"SELECT COALESCE(SUM(discount_applied), 0) FROM {promo_table}")
             ).scalar() or 0
+        except Exception:
+            promo_discount = 0
 
-            # 9. Slot Availability (Check availability from dynamic slot table)
-            available_slots = db.session.execute(
-                text(f"""
-                SELECT SUM(available_slot) 
-                FROM {slot_table} 
-                WHERE vendor_id = :vendor_id AND is_available = TRUE
-                """), {"vendor_id": vendor_id}
-            ).scalar() or 0
+        available_slots = (
+            db.session.query(func.sum(Slot.available_slot))
+            .join(AvailableGame, Slot.gaming_type_id == AvailableGame.id)
+            .filter(AvailableGame.vendor_id == vendor_id, Slot.is_available.is_(True))
+            .scalar()
+            or 0
+        )
 
-        # Return stats as JSON response
         return jsonify({
             "totalGamers": total_gamers,
-            "averageRevenue": average_revenue,
+            "averageRevenue": round(float(average_revenue), 2),
             "premiumMembers": premium_members,
             "avgSessionTime": f"{avg_session_time:.1f} hrs" if avg_session_time > 0 else "N/A",
             "revenueGrowth": revenue_growth,
-            "membersGrowth": members_growth,
+            "totalGamersGrowth": total_gamers_growth,
+            "premiumMembersGrowth": premium_members_growth,
+            "membersGrowth": premium_members_growth,
             "sessionGrowth": session_growth,
             "promoDiscountApplied": promo_discount,
-            "availableSlots": available_slots  # Slot availability data
+            "availableSlots": int(available_slots),
         })
 
     except Exception as e:
