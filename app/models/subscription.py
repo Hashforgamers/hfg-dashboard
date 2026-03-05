@@ -1,5 +1,5 @@
 # models/subscription.py
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Enum, UniqueConstraint, Index, Numeric, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Enum, Index, Numeric, Boolean, text
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.extension.extensions import db
@@ -38,8 +38,13 @@ class Subscription(db.Model):
     package = relationship('Package')
 
     __table_args__ = (
-        # At most one non-expired active/trialing/past_due subscription per vendor
-        UniqueConstraint('vendor_id', 'status', name='uq_vendor_status'),  # app-level guard
-        Index('ix_subscription_active_unique',
-              'vendor_id', 'status', unique=False),
+        # Enforce only one open subscription row per vendor at any time.
+        # Historical rows (expired/canceled) can have multiple entries.
+        Index(
+            'uq_subscription_open_vendor',
+            'vendor_id',
+            unique=True,
+            postgresql_where=text("status IN ('active', 'trialing', 'past_due')")
+        ),
+        Index('ix_subscription_active_unique', 'vendor_id', 'status', unique=False),
     )
