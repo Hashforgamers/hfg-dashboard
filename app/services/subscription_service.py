@@ -113,13 +113,32 @@ def create_subscription(vendor_id, package_code, payment_amount, external_ref=No
     if not package:
         raise ValueError(f"Package {package_code} not found or inactive")
     
-    # Expire any existing active subscriptions
-    existing = get_active_subscription(vendor_id, now)
-    if existing:
-        existing.status = SubscriptionStatus.expired
-        existing.current_period_end = now
-        existing.canceled_at = now
-        current_app.logger.info(f"Vendor {vendor_id}: Expired old subscription {existing.id}")
+    # Idempotency: if this payment was already applied for this vendor, return existing row.
+    if external_ref:
+        existing_by_ref = (Subscription.query
+            .filter(Subscription.vendor_id == vendor_id, Subscription.external_ref == external_ref)
+            .order_by(Subscription.created_at.desc())
+            .first())
+        if existing_by_ref:
+            current_app.logger.info(
+                "Vendor %s: Reusing existing subscription %s for payment ref %s",
+                vendor_id, existing_by_ref.id, external_ref
+            )
+            return existing_by_ref
+
+    # Expire any "open" subscription statuses for this vendor regardless of period.
+    # This keeps DB constraint uq_vendor_status(vendor_id, status) satisfied.
+    open_statuses = [SubscriptionStatus.active, SubscriptionStatus.trialing, SubscriptionStatus.past_due]
+    existing_open = (Subscription.query
+        .filter(Subscription.vendor_id == vendor_id)
+        .filter(Subscription.status.in_(open_statuses))
+        .all())
+    for sub in existing_open:
+        sub.status = SubscriptionStatus.expired
+        if sub.current_period_end is None or sub.current_period_end > now:
+            sub.current_period_end = now
+        sub.canceled_at = now
+        current_app.logger.info(f"Vendor {vendor_id}: Expired old subscription {sub.id}")
     
     # Create new subscription
     new_sub = Subscription(
@@ -160,6 +179,19 @@ def renew_subscription(vendor_id, payment_amount, external_ref=None):
     now = datetime.now(timezone.utc)
     duration = get_subscription_duration()
     
+    # Idempotency: if this payment was already applied for this vendor, return existing row.
+    if external_ref:
+        existing_by_ref = (Subscription.query
+            .filter(Subscription.vendor_id == vendor_id, Subscription.external_ref == external_ref)
+            .order_by(Subscription.created_at.desc())
+            .first())
+        if existing_by_ref:
+            current_app.logger.info(
+                "Vendor %s: Reusing existing renewed subscription %s for payment ref %s",
+                vendor_id, existing_by_ref.id, external_ref
+            )
+            return existing_by_ref
+
     # Get most recent subscription to determine package
     current = (Subscription.query
                .filter_by(vendor_id=vendor_id)
@@ -171,10 +203,17 @@ def renew_subscription(vendor_id, payment_amount, external_ref=None):
     
     package = current.package
     
-    # Expire current if still active
-    if current.status in [SubscriptionStatus.active, SubscriptionStatus.trialing]:
-        current.status = SubscriptionStatus.expired
-        current.current_period_end = now
+    # Expire any "open" statuses before creating renewed record.
+    open_statuses = [SubscriptionStatus.active, SubscriptionStatus.trialing, SubscriptionStatus.past_due]
+    existing_open = (Subscription.query
+        .filter(Subscription.vendor_id == vendor_id)
+        .filter(Subscription.status.in_(open_statuses))
+        .all())
+    for sub in existing_open:
+        sub.status = SubscriptionStatus.expired
+        if sub.current_period_end is None or sub.current_period_end > now:
+            sub.current_period_end = now
+        sub.canceled_at = now
     
     # Create renewed subscription
     renewed = Subscription(
@@ -323,4 +362,3 @@ def get_package_price(package_code):
     
     # Production: return actual price
     return original_price
-

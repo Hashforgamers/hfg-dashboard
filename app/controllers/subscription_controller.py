@@ -20,6 +20,7 @@ from app.services.razorpay_service import (
 )
 from app.models.package import Package
 from app.extension.extensions import db  # ✅ ADD THIS
+from sqlalchemy.exc import IntegrityError
 
 
 bp_subs = Blueprint('subscriptions', __name__)
@@ -277,6 +278,37 @@ def verify_and_activate(vendor_id):
     except ValueError as ve:
         current_app.logger.error(f"ValueError during payment verification: {str(ve)}")
         return jsonify({"error": str(ve)}), 400
+    except IntegrityError as ie:
+        db.session.rollback()
+        # Idempotent fallback for concurrent duplicate verification requests.
+        from app.models.subscription import Subscription
+        existing = (Subscription.query
+                    .filter_by(vendor_id=vendor_id, external_ref=payment_id)
+                    .order_by(Subscription.created_at.desc())
+                    .first())
+        if existing:
+            return jsonify({
+                "success": True,
+                "message": "Subscription already activated for this payment.",
+                "subscription": {
+                    "id": existing.id,
+                    "package_code": existing.package.code,
+                    "package_name": existing.package.name,
+                    "status": existing.status.value,
+                    "pc_limit": existing.package.pc_limit,
+                    "period_start": existing.current_period_start.isoformat(),
+                    "period_end": existing.current_period_end.isoformat(),
+                    "amount_paid": float(existing.unit_amount),
+                    "payment_id": payment_id
+                }
+            }), 200
+
+        current_app.logger.error(f"IntegrityError during payment verification for vendor {vendor_id}: {str(ie)}")
+        return jsonify({
+            "error": "Payment verification failed",
+            "message": "A conflicting subscription record exists. Please retry once.",
+            "details": str(ie)
+        }), 409
     except Exception as e:
         current_app.logger.error(f"Payment verification failed for vendor {vendor_id}: {str(e)}")
         return jsonify({

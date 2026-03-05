@@ -33,7 +33,7 @@ def create_app():
     CORS(app, 
      origins="*",
      methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-     allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
+     allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Cache-Control", "Pragma", "Expires"],
      supports_credentials=False
     )
 
@@ -41,7 +41,8 @@ def create_app():
         origin = request.headers.get("Origin", "*")
         response.headers["Access-Control-Allow-Origin"] = origin if origin else "*"
         response.headers["Vary"] = "Origin"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With"
+        requested_headers = request.headers.get("Access-Control-Request-Headers")
+        response.headers["Access-Control-Allow-Headers"] = requested_headers if requested_headers else "Content-Type, Authorization, X-Requested-With, Cache-Control, Pragma, Expires"
         response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
         response.headers["Access-Control-Max-Age"] = "3600"
         return response
