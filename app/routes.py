@@ -46,6 +46,7 @@ from collections import Counter
 
 from datetime import datetime, timedelta, date
 from app.services.websocket_service import socketio
+from zoneinfo import ZoneInfo
 
 from app.models.vendor import Vendor  # adjust import as per your structure
 from app.models.uploadedImage import Image
@@ -78,6 +79,33 @@ def _invalidate_vendor_caches(vendor_id: int):
         _vendor_consoles_cache.pop(key, None)
 
 dashboard_service = Blueprint("dashboard_service", __name__)
+IST = ZoneInfo("Asia/Kolkata")
+
+
+def _booking_start_eligibility(slot_date, start_time, end_time):
+    """
+    Rules:
+    - Booking date must be today (IST)
+    - Current IST time must be between start_time and end_time (inclusive)
+    """
+    now_ist = datetime.now(IST).replace(tzinfo=None)
+    if not slot_date or not start_time or not end_time:
+        return False, "Booking schedule is incomplete."
+
+    slot_day = slot_date if isinstance(slot_date, date) else None
+    if slot_day != now_ist.date():
+        return False, "Session can only be started on its booking date."
+
+    start_dt = datetime.combine(slot_day, start_time)
+    end_dt = datetime.combine(slot_day, end_time)
+    if end_dt <= start_dt:
+        end_dt = end_dt + timedelta(days=1)
+
+    if now_ist < start_dt:
+        return False, "Session can be started only when slot time begins."
+    if now_ist > end_dt:
+        return False, "Slot end time has passed. Cannot start session."
+    return True, ""
 
 @dashboard_service.route('/transactionReport/<int:vendor_id>/<string:to_date>/<string:from_date>', methods=['GET'])
 def get_transaction_report(to_date, from_date, vendor_id):
@@ -603,6 +631,25 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
         booking_table_name = f"VENDOR_{vendor_id}_DASHBOARD"
         current_app.logger.debug("Resolved table names: %s, %s", console_table_name, booking_table_name)
 
+        # Validate booking start eligibility before occupying console.
+        sql_booking_for_start = text(f"""
+            SELECT date, start_time, end_time, book_status
+            FROM {booking_table_name}
+            WHERE book_id = :booking_id AND game_id = :game_id
+        """)
+        booking_row = db.session.execute(sql_booking_for_start, {
+            "booking_id": booking_id,
+            "game_id": gameid
+        }).fetchone()
+        if not booking_row:
+            return jsonify({"error": "Booking not found"}), 404
+        if booking_row.book_status != "upcoming":
+            return jsonify({"error": "Only upcoming bookings can be started"}), 400
+
+        allowed, reason = _booking_start_eligibility(booking_row.date, booking_row.start_time, booking_row.end_time)
+        if not allowed:
+            return jsonify({"error": reason}), 400
+
         # Check if the console is available
         sql_check_availability = text(f"""
             SELECT is_available FROM {console_table_name}
@@ -646,6 +693,9 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
             "booking_id": booking_id
         })
         current_app.logger.debug("Booking update executed | rowcount=%s", getattr(upd_res, "rowcount", None))
+        if getattr(upd_res, "rowcount", 0) != 1:
+            db.session.rollback()
+            return jsonify({"error": "Booking is no longer eligible to start"}), 400
 
         db.session.commit()
         current_app.logger.debug("DB commit successful")
@@ -744,6 +794,31 @@ def assign_console_to_multiple_bookings():
         console_table_name = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
         booking_table_name = f"VENDOR_{vendor_id}_DASHBOARD"
 
+        # Validate all bookings before occupying console.
+        sql_bookings_for_start = text(f"""
+            SELECT book_id, date, start_time, end_time, book_status
+            FROM {booking_table_name}
+            WHERE book_id = ANY(:booking_ids) AND game_id = :game_id
+        """)
+        booking_rows = db.session.execute(sql_bookings_for_start, {
+            "booking_ids": booking_ids,
+            "game_id": game_id
+        }).fetchall()
+        if len(booking_rows) != len(booking_ids):
+            return jsonify({"error": "One or more bookings were not found"}), 404
+
+        invalid_status = [r.book_id for r in booking_rows if r.book_status != "upcoming"]
+        if invalid_status:
+            return jsonify({"error": f"Bookings not in upcoming state: {invalid_status}"}), 400
+
+        not_eligible = []
+        for r in booking_rows:
+            allowed, reason = _booking_start_eligibility(r.date, r.start_time, r.end_time)
+            if not allowed:
+                not_eligible.append({"booking_id": r.book_id, "reason": reason})
+        if not_eligible:
+            return jsonify({"error": "Some bookings are not eligible to start", "details": not_eligible}), 400
+
         # ✅ Check if the console is currently available
         sql_check_availability = text(f"""
             SELECT is_available FROM {console_table_name}
@@ -780,11 +855,14 @@ def assign_console_to_multiple_bookings():
             WHERE book_id = ANY(:booking_ids) AND game_id = :game_id AND book_status = 'upcoming'
         """)
 
-        db.session.execute(sql_update_bookings, {
+        upd_multi = db.session.execute(sql_update_bookings, {
             "console_id": console_id,
             "game_id": game_id,
             "booking_ids": booking_ids
         })
+        if getattr(upd_multi, "rowcount", 0) != len(booking_ids):
+            db.session.rollback()
+            return jsonify({"error": "One or more bookings are no longer eligible to start"}), 400
 
         db.session.commit()
         _invalidate_vendor_caches(int(vendor_id))
