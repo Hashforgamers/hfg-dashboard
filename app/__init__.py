@@ -29,7 +29,7 @@ def create_app():
     app.config.setdefault("JWT_ACCESS_TOKEN_EXPIRES", timedelta(hours=8))
     jwt.init_app(app)
 
-    # ✅ CORS - Allow all origins for development
+    # ✅ CORS - allow dashboard origins across all response paths
     CORS(app, 
      origins="*",
      methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
@@ -37,17 +37,26 @@ def create_app():
      supports_credentials=False
     )
 
+    def _apply_cors_headers(response):
+        origin = request.headers.get("Origin", "*")
+        response.headers["Access-Control-Allow-Origin"] = origin if origin else "*"
+        response.headers["Vary"] = "Origin"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+        response.headers["Access-Control-Max-Age"] = "3600"
+        return response
 
     # ✅ ADD: Global OPTIONS handler BEFORE blueprint registration
     @app.before_request
     def handle_preflight():
         if request.method == "OPTIONS":
             response = make_response()
-            response.headers.add("Access-Control-Allow-Origin", "*")
-            response.headers.add("Access-Control-Allow-Headers", "Content-Type,Authorization,X-Requested-With")
-            response.headers.add("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
-            response.headers.add("Access-Control-Max-Age", "3600")
+            response = _apply_cors_headers(response)
             return response, 200
+
+    @app.after_request
+    def ensure_cors_on_all_responses(response):
+        return _apply_cors_headers(response)
 
     @app.before_request
     def handle_rbac_guard():
