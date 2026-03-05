@@ -65,6 +65,17 @@ STATE_CODE_REGEX = re.compile(r"^[0-9A-Z]{2}$")
 LANDING_PAGE_CACHE_TTL_SEC = 5
 _landing_page_cache = {}
 _landing_page_cache_lock = threading.Lock()
+CONSOLES_CACHE_TTL_SEC = 10
+_vendor_consoles_cache = {}
+_vendor_consoles_cache_lock = threading.Lock()
+
+
+def _invalidate_vendor_caches(vendor_id: int):
+    key = f"vendor:{int(vendor_id)}"
+    with _landing_page_cache_lock:
+        _landing_page_cache.pop(key, None)
+    with _vendor_consoles_cache_lock:
+        _vendor_consoles_cache.pop(key, None)
 
 dashboard_service = Blueprint("dashboard_service", __name__)
 
@@ -247,6 +258,13 @@ def add_console():
             return jsonify({"error": "Invalid input data"}), 400
 
         response, status = ConsoleService.add_console(data)
+        if status < 400:
+            vendor_id = data.get("vendorId") or data.get("vendor_id") or data.get("vendorID")
+            if vendor_id is not None:
+                try:
+                    _invalidate_vendor_caches(int(vendor_id))
+                except Exception:
+                    pass
         return jsonify(response), status
 
     except Exception as e:
@@ -301,51 +319,68 @@ def update_console_pricing(vendor_id):
 
 @dashboard_service.route('/getConsoles/vendor/<int:vendor_id>', methods=['GET'])
 def get_consoles(vendor_id):
+    started_at = time.perf_counter()
+    cache_key = f"vendor:{vendor_id}"
+    now_ts = time.time()
+
+    with _vendor_consoles_cache_lock:
+        cached_entry = _vendor_consoles_cache.get(cache_key)
+    if cached_entry and cached_entry["expires_at"] > now_ts:
+        response = jsonify(cached_entry["payload"])
+        response.headers["X-Cache"] = "HIT"
+        response.headers["X-Response-Time-ms"] = f"{(time.perf_counter() - started_at) * 1000:.2f}"
+        return response, 200
+
     try:
         availability_table = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
-        available_games = (
-            AvailableGame.query
-            .options(joinedload(AvailableGame.consoles).joinedload(Console.hardware_specifications))
-            .filter_by(vendor_id=vendor_id)
-            .all()
-        )
-
-        console_by_id = {}
-        for game in available_games:
-            for console in game.consoles:
-                console_by_id[console.id] = console
-
-        if not console_by_id:
-            return jsonify([]), 200
-
-        console_ids_csv = ",".join(str(int(console_id)) for console_id in console_by_id.keys())
-        availability_query = text(f"""
-            SELECT console_id, is_available
-            FROM {availability_table}
-            WHERE vendor_id = :vendor_id AND console_id IN ({console_ids_csv})
+        sql_query = text(f"""
+            SELECT DISTINCT ON (c.id)
+                c.id,
+                c.console_type,
+                c.model_number,
+                c.console_number,
+                c.brand,
+                hs.processor_type,
+                hs.graphics_card,
+                hs.ram_size,
+                hs.storage_capacity,
+                hs.console_model_type,
+                ca.is_available
+            FROM available_games ag
+            JOIN available_game_console agc ON agc.available_game_id = ag.id
+            JOIN consoles c ON c.id = agc.console_id
+            LEFT JOIN hardware_specifications hs ON hs.console_id = c.id
+            LEFT JOIN {availability_table} ca ON ca.console_id = c.id AND ca.vendor_id = :vendor_id
+            WHERE ag.vendor_id = :vendor_id
+            ORDER BY c.id
         """)
-        availability_rows = db.session.execute(availability_query, {"vendor_id": vendor_id}).fetchall()
-        availability_map = {row.console_id: row.is_available for row in availability_rows}
 
-        consoles = []
-        for console in console_by_id.values():
-            specs = console.hardware_specifications
-            consoles.append({
-                "id": console.id,
-                "type": console.console_type,
-                "name": console.model_number,
-                "number": console.console_number,
-                "icon": "Monitor" if "PC" in console.console_type else "Tv" if "PS" in console.console_type else "Gamepad",
-                "brand": console.brand,
-                "processor": specs.processor_type if specs else "N/A",
-                "gpu": specs.graphics_card if specs else "N/A",
-                "ram": specs.ram_size if specs else "N/A",
-                "storage": specs.storage_capacity if specs else "N/A",
-                "status": availability_map.get(console.id),
-                "consoleModelType": specs.console_model_type if specs else "N/A",
-            })
+        rows = db.session.execute(sql_query, {"vendor_id": vendor_id}).fetchall()
+        payload = [{
+            "id": row.id,
+            "type": row.console_type,
+            "name": row.model_number,
+            "number": row.console_number,
+            "icon": "Monitor" if "PC" in row.console_type else "Tv" if "PS" in row.console_type else "Gamepad",
+            "brand": row.brand,
+            "processor": row.processor_type if row.processor_type else "N/A",
+            "gpu": row.graphics_card if row.graphics_card else "N/A",
+            "ram": row.ram_size if row.ram_size else "N/A",
+            "storage": row.storage_capacity if row.storage_capacity else "N/A",
+            "status": row.is_available,
+            "consoleModelType": row.console_model_type if row.console_model_type else "N/A",
+        } for row in rows]
 
-        return jsonify(consoles), 200
+        with _vendor_consoles_cache_lock:
+            _vendor_consoles_cache[cache_key] = {
+                "payload": payload,
+                "expires_at": time.time() + CONSOLES_CACHE_TTL_SEC,
+            }
+
+        response = jsonify(payload)
+        response.headers["X-Cache"] = "MISS"
+        response.headers["X-Response-Time-ms"] = f"{(time.perf_counter() - started_at) * 1000:.2f}"
+        return response, 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -422,6 +457,7 @@ def delete_console(vendor_id, console_id):
 
         # Commit all changes
         db.session.commit()
+        _invalidate_vendor_caches(vendor_id)
 
         return jsonify({"message": "Console deleted successfully, availability updated"}), 200
 
@@ -430,65 +466,89 @@ def delete_console(vendor_id, console_id):
         current_app.logger.error(f"Error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-@dashboard_service.route('/console/update/vendor/<vendor_id>', methods=['PUT'])
+@dashboard_service.route('/console/update/vendor/<int:vendor_id>', methods=['PUT'])
 def update_console(vendor_id):
+    started_at = time.perf_counter()
     try:
-        data = request.get_json()
-        console_id = data.get("consoleId")
-        console_details = data.get("consoleDetails", {})
+        data = request.get_json(silent=True) or {}
+        console_id_raw = data.get("consoleId")
+        console_details = data.get("consoleDetails") or {}
+
+        try:
+            console_id = int(console_id_raw)
+        except (TypeError, ValueError):
+            return jsonify({"error": "Invalid consoleId"}), 400
 
         if not console_id or not console_details:
             return jsonify({"error": "Missing required fields"}), 400
 
-        # ✅ Fetch the console from the database
-        console = Console.query.get(console_id)
+        # Scoped fetch with eager-loaded relations to avoid lazy-load round-trips.
+        console = (
+            Console.query
+            .options(
+                joinedload(Console.hardware_specifications),
+                joinedload(Console.maintenance_status),
+            )
+            .filter(Console.id == console_id, Console.vendor_id == vendor_id)
+            .first()
+        )
         if not console:
             return jsonify({"error": "Console not found"}), 404
 
-        # ✅ Update Console Details
-        console.brand = console_details.get("brand", console.brand)
+        brand = console_details.get("brand")
+        if brand is not None:
+            console.brand = brand
 
-        # ✅ Fetch or Create Related Hardware Specification
-        if not console.hardware_specifications:
+        # Fetch or create hardware relation.
+        hardware_spec = console.hardware_specifications
+        if hardware_spec is None:
             hardware_spec = HardwareSpecification(console_id=console.id)
             db.session.add(hardware_spec)
-        else:
-            hardware_spec = console.hardware_specifications
 
-        hardware_spec.processor_type = console_details.get("processor", hardware_spec.processor_type)
-        hardware_spec.graphics_card = console_details.get("gpu", hardware_spec.graphics_card)
-        hardware_spec.ram_size = console_details.get("ram", hardware_spec.ram_size)
-        hardware_spec.storage_capacity = console_details.get("storage", hardware_spec.storage_capacity)
-        hardware_spec.console_model_type = console_details.get("consoleModelType", hardware_spec.console_model_type)
+        processor = console_details.get("processor")
+        gpu = console_details.get("gpu")
+        ram = console_details.get("ram")
+        storage = console_details.get("storage")
+        console_model_type = console_details.get("consoleModelType")
 
-        # ✅ Fetch or Update Maintenance Status
-        if console.maintenance_status:
-             # ✅ Define the dynamic console availability table name
+        if processor is not None:
+            hardware_spec.processor_type = processor
+        if gpu is not None:
+            hardware_spec.graphics_card = gpu
+        if ram is not None:
+            hardware_spec.ram_size = ram
+        if storage is not None:
+            hardware_spec.storage_capacity = storage
+        if console_model_type is not None:
+            hardware_spec.console_model_type = console_model_type
+
+        maintenance = console.maintenance_status
+        status_value = console_details.get("status")
+        if maintenance and status_value is not None:
             console_table_name = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
-            console.maintenance_status.available_status = console_details.get("status", console.maintenance_status.available_status)
-            if console.maintenance_status.available_status != "available":
-                # ✅ Update the status to false (occupied)
-                sql_update_status = text(f"""
-                    UPDATE {console_table_name}
-                    SET is_available = FALSE
-                    WHERE console_id = :console_id
-                """)
-            else:
-                # ✅ Update the status to false (occupied)
-                sql_update_status = text(f"""
-                    UPDATE {console_table_name}
-                    SET is_available = TRUE
-                    WHERE console_id = :console_id
-                """)
+            maintenance.available_status = status_value
+            normalized_status = str(status_value).strip().lower()
+            target_is_available = normalized_status == "available"
 
-            db.session.execute(sql_update_status, {
-                "console_id": console_id
-            })
+            sql_update_status = text(f"""
+                UPDATE {console_table_name}
+                SET is_available = :is_available
+                WHERE vendor_id = :vendor_id AND console_id = :console_id
+            """)
+            db.session.execute(
+                sql_update_status,
+                {
+                    "is_available": target_is_available,
+                    "vendor_id": vendor_id,
+                    "console_id": console_id,
+                },
+            )
 
-        # ✅ Commit Changes
         db.session.commit()
-
-        return jsonify({"message": "Console updated successfully"}), 200
+        _invalidate_vendor_caches(vendor_id)
+        response = jsonify({"message": "Console updated successfully"})
+        response.headers["X-Response-Time-ms"] = f"{(time.perf_counter() - started_at) * 1000:.2f}"
+        return response, 200
 
     except Exception as e:
         db.session.rollback()
@@ -589,6 +649,7 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
 
         db.session.commit()
         current_app.logger.debug("DB commit successful")
+        _invalidate_vendor_caches(int(vendor_id))
 
         # ======= Fetch and emit slot update =======
         if getattr(upd_res, "rowcount", None) is None or upd_res.rowcount != 0:
@@ -726,6 +787,7 @@ def assign_console_to_multiple_bookings():
         })
 
         db.session.commit()
+        _invalidate_vendor_caches(int(vendor_id))
 
         return jsonify({"message": "Console assigned to multiple bookings successfully."}), 200
 
@@ -785,6 +847,7 @@ def release_console(gameid, console_id, vendor_id):
 
         # Commit the changes
         db.session.commit()
+        _invalidate_vendor_caches(int(vendor_id))
         # ADDED: Calculate remaining available consoles after release
         sql_remaining = text(f"""
             SELECT COUNT(*) AS remaining
