@@ -23,6 +23,7 @@ from app.models.bankTransferDetails import BankTransferDetails, PayoutTransactio
 from app.models.paymentMethod import PaymentMethod
 from app.models.paymentVendorMap import PaymentVendorMap
 from app.models.bookingExtraService import BookingExtraService
+from app.models.vendorTaxProfile import VendorTaxProfile
 
 from .models.hardwareSpecification import HardwareSpecification
 from .models.maintenanceStatus import MaintenanceStatus
@@ -70,7 +71,7 @@ def get_transaction_report(to_date, from_date, vendor_id):
             from_date = datetime.strptime(from_date, "%Y%m%d").date()
 
         transactions = Transaction.query.filter(
-            Transaction.vendor_id == vendor_id and
+            Transaction.vendor_id == vendor_id,
             cast(Transaction.booked_date, Date).between(from_date, to_date)
         ).all()
 
@@ -84,16 +85,73 @@ def get_transaction_report(to_date, from_date, vendor_id):
             "slotTime": txn.booking_time.strftime("%I:%M %p"),
             "userName": User.query.filter(User.id == txn.user_id).first().name if txn.user_id else None,
             "amount": txn.amount,
+            "originalAmount": txn.original_amount,
+            "discountedAmount": txn.discounted_amount,
             "modeOfPayment": txn.mode_of_payment,
+            "paymentUseCase": txn.payment_use_case,
             "bookingType": txn.booking_type,
             "settlementStatus": txn.settlement_status,
             "userId":txn.user_id,
-            "bookedOn":txn.booked_date
+            "bookedOn":txn.booked_date,
+            "sourceChannel": txn.source_channel,
+            "staffId": txn.initiated_by_staff_id,
+            "staffName": txn.initiated_by_staff_name,
+            "staffRole": txn.initiated_by_staff_role,
+            "baseAmount": txn.base_amount,
+            "mealsAmount": txn.meals_amount,
+            "controllerAmount": txn.controller_amount,
+            "waiveOffAmount": txn.waive_off_amount,
+            "taxableAmount": txn.taxable_amount,
+            "gstRate": txn.gst_rate,
+            "cgstAmount": txn.cgst_amount,
+            "sgstAmount": txn.sgst_amount,
+            "igstAmount": txn.igst_amount,
+            "totalWithTax": txn.total_with_tax
         } for txn in transactions]
         
         return jsonify(result), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@dashboard_service.route('/vendor/<int:vendor_id>/tax-profile', methods=['GET', 'PUT'])
+def vendor_tax_profile(vendor_id):
+    try:
+        profile = VendorTaxProfile.query.filter_by(vendor_id=vendor_id).first()
+
+        if request.method == 'GET':
+            if not profile:
+                return jsonify({
+                    "success": True,
+                    "profile": {
+                        "vendor_id": vendor_id,
+                        "gst_registered": False,
+                        "gst_enabled": False,
+                        "gst_rate": 18.0,
+                        "tax_inclusive": False
+                    }
+                }), 200
+            return jsonify({"success": True, "profile": profile.to_dict()}), 200
+
+        body = request.get_json(silent=True) or {}
+        if not profile:
+            profile = VendorTaxProfile(vendor_id=vendor_id)
+            db.session.add(profile)
+
+        profile.gst_registered = bool(body.get("gst_registered", profile.gst_registered))
+        profile.gstin = body.get("gstin", profile.gstin)
+        profile.legal_name = body.get("legal_name", profile.legal_name)
+        profile.state_code = body.get("state_code", profile.state_code)
+        profile.place_of_supply_state_code = body.get("place_of_supply_state_code", profile.place_of_supply_state_code)
+        profile.gst_enabled = bool(body.get("gst_enabled", profile.gst_enabled))
+        profile.gst_rate = float(body.get("gst_rate", profile.gst_rate or 18.0))
+        profile.tax_inclusive = bool(body.get("tax_inclusive", profile.tax_inclusive))
+
+        db.session.commit()
+        return jsonify({"success": True, "profile": profile.to_dict()}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @dashboard_service.route('/db-check', methods=['GET'])
 def check_db_connection():
@@ -2739,4 +2797,3 @@ def delete_vendor_pass(vendor_id, pass_id):
         db.session.rollback()
         current_app.logger.error(f"Error deactivating pass {pass_id}: {str(e)}")
         return jsonify({'error': f'Failed to deactivate pass: {str(e)}'}), 500
-
