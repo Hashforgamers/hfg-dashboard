@@ -311,11 +311,13 @@ def verify_and_activate(vendor_id):
         }), 409
     except Exception as e:
         current_app.logger.error(f"Payment verification failed for vendor {vendor_id}: {str(e)}")
-        return jsonify({
+        payload = {
             "error": "Payment verification failed",
             "message": "An error occurred while processing your payment. Please contact support.",
-            "details": str(e)
-        }), 500
+        }
+        if current_app.debug:
+            payload["details"] = str(e)
+        return jsonify(payload), 500
 
 
 @bp_subs.get('/history')
@@ -353,6 +355,9 @@ def get_subscription_history(vendor_id):
 @bp_subs.post('/debug/force-expire')
 def debug_force_expire(vendor_id):
     """Force expire subscription for testing - REMOVE IN PRODUCTION"""
+    if not current_app.config.get("ENABLE_DEBUG_SUBSCRIPTION_ENDPOINTS", False):
+        return jsonify({"error": "Not found"}), 404
+
     from datetime import timezone
     
     sub = get_active_subscription(vendor_id)
@@ -411,7 +416,9 @@ def check_payment_status(vendor_id, order_id):
         
     except Exception as e:
         current_app.logger.error(f"Error checking payment status: {str(e)}")
-        return jsonify({
+        payload = {
             "error": "Failed to check payment status",
-            "details": str(e)
-        }), 500
+        }
+        if current_app.debug:
+            payload["details"] = str(e)
+        return jsonify(payload), 500

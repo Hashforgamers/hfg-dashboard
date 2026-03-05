@@ -8,6 +8,7 @@ from app.models.vendor import Vendor
 from app.extension.extensions import db
 from datetime import datetime, date, time as dt_time
 from sqlalchemy import and_, or_
+from sqlalchemy.orm import joinedload
 import pytz
 
 pricing_blueprint = Blueprint('pricing', __name__)
@@ -76,7 +77,11 @@ def get_pricing_offers(vendor_id):
         if not vendor:
             return jsonify({'success': False, 'message': 'Vendor not found'}), 404
 
-        query = ConsolePricingOffer.query.filter_by(vendor_id=vendor_id)
+        query = (
+            ConsolePricingOffer.query
+            .options(joinedload(ConsolePricingOffer.available_game))
+            .filter_by(vendor_id=vendor_id)
+        )
 
         available_game_id = request.args.get('available_game_id', type=int)
         if available_game_id:
@@ -86,7 +91,7 @@ def get_pricing_offers(vendor_id):
         if active_only:
             query = query.filter_by(is_active=True)
 
-        offers = query.order_by(ConsolePricingOffer.start_date.desc()).all()
+        offers = query.order_by(ConsolePricingOffer.start_date.desc(), ConsolePricingOffer.id.desc()).all()
 
         current_only = request.args.get('current_only', 'false').lower() == 'true'
         if current_only:
@@ -123,21 +128,40 @@ def get_active_pricing(vendor_id):
             }), 404
 
         now_ist = get_ist_now()
-        current_app.logger.info(f"🕐 Current IST time: {now_ist.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+        current_date = now_ist.date()
+        current_time = now_ist.time().replace(tzinfo=None)
 
         result = {}
+        game_ids = [game.id for game in available_games]
+        active_offers = (
+            ConsolePricingOffer.query
+            .filter(
+                ConsolePricingOffer.vendor_id == vendor_id,
+                ConsolePricingOffer.available_game_id.in_(game_ids),
+                ConsolePricingOffer.is_active.is_(True),
+                ConsolePricingOffer.start_date <= current_date,
+                ConsolePricingOffer.end_date >= current_date,
+            )
+            .order_by(ConsolePricingOffer.available_game_id.asc(), ConsolePricingOffer.created_at.desc())
+            .all()
+        )
+
+        offers_by_game = {}
+        for offer in active_offers:
+            if offer.start_date == offer.end_date:
+                is_now_active = offer.start_time <= current_time <= offer.end_time
+            elif current_date == offer.start_date:
+                is_now_active = current_time >= offer.start_time
+            elif current_date == offer.end_date:
+                is_now_active = current_time <= offer.end_time
+            else:
+                is_now_active = True
+
+            if is_now_active and offer.available_game_id not in offers_by_game:
+                offers_by_game[offer.available_game_id] = offer
 
         for game in available_games:
-            active_offers = ConsolePricingOffer.query.filter_by(
-                vendor_id=vendor_id,
-                available_game_id=game.id,
-                is_active=True
-            ).all()
-
-            current_offer = next(
-                (offer for offer in active_offers if offer.is_currently_active()),
-                None
-            )
+            current_offer = offers_by_game.get(game.id)
 
             if current_offer:
                 result[game.game_name.lower()] = {

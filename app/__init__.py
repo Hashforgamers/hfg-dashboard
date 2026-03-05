@@ -1,10 +1,11 @@
-from flask import Flask, request, make_response
+from flask import Flask, request, make_response, g
 from flask_cors import CORS
 from flask_migrate import Migrate
 from flask_jwt_extended import JWTManager
 from datetime import timedelta
 import os
 import logging
+import time
 
 from app.config import Config
 from app.extension.extensions import db
@@ -50,6 +51,7 @@ def create_app():
     # ✅ ADD: Global OPTIONS handler BEFORE blueprint registration
     @app.before_request
     def handle_preflight():
+        g._request_started_at = time.perf_counter()
         if request.method == "OPTIONS":
             response = make_response()
             response = _apply_cors_headers(response)
@@ -57,6 +59,9 @@ def create_app():
 
     @app.after_request
     def ensure_cors_on_all_responses(response):
+        started_at = getattr(g, "_request_started_at", None)
+        if started_at is not None:
+            response.headers["X-Response-Time-ms"] = f"{(time.perf_counter() - started_at) * 1000:.2f}"
         return _apply_cors_headers(response)
 
     @app.before_request

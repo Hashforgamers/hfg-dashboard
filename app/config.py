@@ -1,8 +1,8 @@
 import os
 
 class Config:
-    SECRET_KEY = "DEV"
-    DEBUG = True
+    SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-change-me")
+    DEBUG = os.getenv("FLASK_DEBUG", "false").lower() == "true"
     RBAC_ENFORCEMENT = os.getenv("RBAC_ENFORCEMENT", "false").lower() == "true"
 
     SQLALCHEMY_DATABASE_URI = os.getenv(
@@ -13,11 +13,13 @@ class Config:
 
     # Add safe engine options for Neon
     SQLALCHEMY_ENGINE_OPTIONS = {
-        "pool_pre_ping": True,   # test connection before use
-        "pool_recycle": 1800,    # recycle every 30min
-        "pool_size": 5,          # keep small pool
-        "max_overflow": 10       # allow bursts
+        "pool_pre_ping": True,
+        "pool_recycle": int(os.getenv("DB_POOL_RECYCLE_SEC", "1800")),
+        "pool_size": int(os.getenv("DB_POOL_SIZE", "10")),
+        "max_overflow": int(os.getenv("DB_MAX_OVERFLOW", "20")),
+        "pool_timeout": int(os.getenv("DB_POOL_TIMEOUT_SEC", "30")),
     }
+    SQLALCHEMY_ECHO = os.getenv("SQLALCHEMY_ECHO", "false").lower() == "true"
 
     # Cloudinary
     CLOUDINARY_CLOUD_NAME = os.getenv('CLOUDINARY_CLOUD_NAME')
@@ -32,6 +34,7 @@ class Config:
     RAZORPAY_KEY_SECRET = os.getenv('RAZORPAY_KEY_SECRET')
     
      # 🆕 Development Mode Settings
-    SUBSCRIPTION_DEV_MODE = os.getenv('SUBSCRIPTION_DEV_MODE', 'true').lower() == 'true'
-    SUBSCRIPTION_TEST_PRICE = 1  # ₹1 for testing
-    SUBSCRIPTION_TEST_DURATION_DAYS = 1  # 1 day for testing
+    SUBSCRIPTION_DEV_MODE = os.getenv('SUBSCRIPTION_DEV_MODE', 'false').lower() == 'true'
+    SUBSCRIPTION_TEST_PRICE = float(os.getenv("SUBSCRIPTION_TEST_PRICE", "1"))
+    SUBSCRIPTION_TEST_DURATION_DAYS = int(os.getenv("SUBSCRIPTION_TEST_DURATION_DAYS", "1"))
+    ENABLE_DEBUG_SUBSCRIPTION_ENDPOINTS = os.getenv("ENABLE_DEBUG_SUBSCRIPTION_ENDPOINTS", "false").lower() == "true"

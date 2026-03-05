@@ -62,60 +62,61 @@ dashboard_service = Blueprint("dashboard_service", __name__)
 @dashboard_service.route('/transactionReport/<int:vendor_id>/<string:to_date>/<string:from_date>', methods=['GET'])
 def get_transaction_report(to_date, from_date, vendor_id):
     try:
-        # Convert date parameters to datetime objects
         to_date = datetime.strptime(to_date, "%Y%m%d").date()
-
         if not from_date or from_date.lower() == "null":
             from_date = datetime.utcnow().date()
         else:
             from_date = datetime.strptime(from_date, "%Y%m%d").date()
 
-        transactions = Transaction.query.filter(
-            Transaction.vendor_id == vendor_id,
-            cast(Transaction.booking_date, Date).between(from_date, to_date)
-        ).order_by(
-            Transaction.booking_date.desc(),
-            Transaction.booking_time.desc(),
-            Transaction.id.desc()
-        ).all()
+        rows = (
+            db.session.query(Transaction, User.name.label("user_name"))
+            .outerjoin(User, User.id == Transaction.user_id)
+            .filter(
+                Transaction.vendor_id == vendor_id,
+                Transaction.booking_date.between(from_date, to_date),
+            )
+            .order_by(
+                Transaction.booking_date.desc(),
+                Transaction.booking_time.desc(),
+                Transaction.id.desc(),
+            )
+            .all()
+        )
 
+        result = []
+        for txn, user_name in rows:
+            result.append({
+                "id": txn.id,
+                "bookingId": txn.booking_id,
+                "slotDate": txn.booking_date.strftime("%Y-%m-%d") if txn.booking_date else None,
+                "playDate": txn.booked_date.strftime("%Y-%m-%d") if txn.booked_date else None,
+                "slotTime": txn.booking_time.strftime("%I:%M %p") if txn.booking_time else None,
+                "userName": user_name,
+                "amount": txn.amount,
+                "originalAmount": txn.original_amount,
+                "discountedAmount": txn.discounted_amount,
+                "modeOfPayment": txn.mode_of_payment,
+                "paymentUseCase": txn.payment_use_case,
+                "bookingType": txn.booking_type,
+                "settlementStatus": txn.settlement_status,
+                "userId": txn.user_id,
+                "bookedOn": txn.booking_date,
+                "sourceChannel": txn.source_channel,
+                "staffId": txn.initiated_by_staff_id,
+                "staffName": txn.initiated_by_staff_name,
+                "staffRole": txn.initiated_by_staff_role,
+                "baseAmount": txn.base_amount,
+                "mealsAmount": txn.meals_amount,
+                "controllerAmount": txn.controller_amount,
+                "waiveOffAmount": txn.waive_off_amount,
+                "taxableAmount": txn.taxable_amount,
+                "gstRate": txn.gst_rate,
+                "cgstAmount": txn.cgst_amount,
+                "sgstAmount": txn.sgst_amount,
+                "igstAmount": txn.igst_amount,
+                "totalWithTax": txn.total_with_tax,
+            })
 
-        current_app.logger.info(f"transactions {transactions} {to_date} {from_date}")
-
-        # Format response data
-        result = [{
-            "id": txn.id,
-            "bookingId": txn.booking_id,
-            # Keep key name for frontend compatibility; value is booking creation date.
-            "slotDate": txn.booking_date.strftime("%Y-%m-%d"),
-            "playDate": txn.booked_date.strftime("%Y-%m-%d") if txn.booked_date else None,
-            "slotTime": txn.booking_time.strftime("%I:%M %p"),
-            "userName": User.query.filter(User.id == txn.user_id).first().name if txn.user_id else None,
-            "amount": txn.amount,
-            "originalAmount": txn.original_amount,
-            "discountedAmount": txn.discounted_amount,
-            "modeOfPayment": txn.mode_of_payment,
-            "paymentUseCase": txn.payment_use_case,
-            "bookingType": txn.booking_type,
-            "settlementStatus": txn.settlement_status,
-            "userId":txn.user_id,
-            "bookedOn":txn.booking_date,
-            "sourceChannel": txn.source_channel,
-            "staffId": txn.initiated_by_staff_id,
-            "staffName": txn.initiated_by_staff_name,
-            "staffRole": txn.initiated_by_staff_role,
-            "baseAmount": txn.base_amount,
-            "mealsAmount": txn.meals_amount,
-            "controllerAmount": txn.controller_amount,
-            "waiveOffAmount": txn.waive_off_amount,
-            "taxableAmount": txn.taxable_amount,
-            "gstRate": txn.gst_rate,
-            "cgstAmount": txn.cgst_amount,
-            "sgstAmount": txn.sgst_amount,
-            "igstAmount": txn.igst_amount,
-            "totalWithTax": txn.total_with_tax
-        } for txn in transactions]
-        
         return jsonify(result), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -233,40 +234,47 @@ def update_console_pricing(vendor_id):
 def get_consoles(vendor_id):
     try:
         availability_table = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
-        # Fetch available games associated with the given vendor ID
-        available_games = AvailableGame.query.filter_by(vendor_id=vendor_id).all()
+        available_games = (
+            AvailableGame.query
+            .options(joinedload(AvailableGame.consoles).joinedload(Console.hardware_specifications))
+            .filter_by(vendor_id=vendor_id)
+            .all()
+        )
 
-        # Extract consoles from the available games
-        consoles = []
+        console_by_id = {}
         for game in available_games:
             for console in game.consoles:
-                # Get availability status for each console
-                availability_query = text(f"""
-                SELECT is_available 
-                FROM {availability_table} 
-                WHERE console_id = :console_id
-                """)
-                result = db.session.execute(availability_query, {"console_id": console.id})
-                available_status = result.scalar()  # Get the first value of the result, which is `is_available`
+                console_by_id[console.id] = console
 
-                # Prepare the console data
-                console_data = {
-                    "id": console.id,
-                    "type": console.console_type,
-                    "name": console.model_number,
-                    "number": console.console_number,
-                    "icon": "Monitor" if "PC" in console.console_type else "Tv" if "PS" in console.console_type else "Gamepad",
-                    "brand": console.brand,
-                    "processor": console.hardware_specifications.processor_type if console.hardware_specifications else "N/A",
-                    "gpu": console.hardware_specifications.graphics_card if console.hardware_specifications else "N/A",
-                    "ram": console.hardware_specifications.ram_size if console.hardware_specifications else "N/A",
-                    "storage": console.hardware_specifications.storage_capacity if console.hardware_specifications else "N/A",
-                    "status": available_status,
-                    "consoleModelType": console.hardware_specifications.console_model_type if console.hardware_specifications else "N/A",
-                }
+        if not console_by_id:
+            return jsonify([]), 200
 
-                # Append the console data to the list
-                consoles.append(console_data)
+        console_ids_csv = ",".join(str(int(console_id)) for console_id in console_by_id.keys())
+        availability_query = text(f"""
+            SELECT console_id, is_available
+            FROM {availability_table}
+            WHERE vendor_id = :vendor_id AND console_id IN ({console_ids_csv})
+        """)
+        availability_rows = db.session.execute(availability_query, {"vendor_id": vendor_id}).fetchall()
+        availability_map = {row.console_id: row.is_available for row in availability_rows}
+
+        consoles = []
+        for console in console_by_id.values():
+            specs = console.hardware_specifications
+            consoles.append({
+                "id": console.id,
+                "type": console.console_type,
+                "name": console.model_number,
+                "number": console.console_number,
+                "icon": "Monitor" if "PC" in console.console_type else "Tv" if "PS" in console.console_type else "Gamepad",
+                "brand": console.brand,
+                "processor": specs.processor_type if specs else "N/A",
+                "gpu": specs.graphics_card if specs else "N/A",
+                "ram": specs.ram_size if specs else "N/A",
+                "storage": specs.storage_capacity if specs else "N/A",
+                "status": availability_map.get(console.id),
+                "consoleModelType": specs.console_model_type if specs else "N/A",
+            })
 
         return jsonify(consoles), 200
 
@@ -736,13 +744,11 @@ def release_console(gameid, console_id, vendor_id):
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
-@dashboard_service.route('/getAllDevice/vendor/<vendor_id>', methods=['GET'])
+@dashboard_service.route('/getAllDevice/vendor/<int:vendor_id>', methods=['GET'])
 def get_all_device_for_vendor(vendor_id):
     try:
-        # ✅ Define the dynamic console availability table name
         console_table_name = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
 
-        # ✅ SQL query to fetch console details
         sql_query = text(f"""
             SELECT ca.console_id, c.model_number, c.brand, ca.is_available, ca.game_id
             FROM {console_table_name} ca
@@ -750,23 +756,28 @@ def get_all_device_for_vendor(vendor_id):
             WHERE ca.vendor_id = :vendor_id
         """)
 
-        # ✅ Execute the query
         result = db.session.execute(sql_query, {"vendor_id": vendor_id}).fetchall()
+        game_ids = {row.game_id for row in result if row.game_id is not None}
+        games = (
+            AvailableGame.query
+            .filter(AvailableGame.id.in_(game_ids))
+            .all()
+            if game_ids else []
+        )
+        game_lookup = {game.id: game for game in games}
 
         devices = []
-
         for row in result:
-            # Fetch the related AvailableGame instance by game_id
-            game = AvailableGame.query.filter_by(id=row.game_id).first()
+            game = game_lookup.get(row.game_id)
 
             devices.append({
                 "consoleId": row.console_id,
                 "consoleModelNumber": row.model_number,
                 "brand": row.brand,
                 "is_available": row.is_available,
-                "consoleTypeName": game.game_name if game else "Unknown",  # If game exists, use game_name
-                "console_type_id": row.game_id,  # Include game_id as consoleTypeId
-                "consolePrice": game.single_slot_price
+                "consoleTypeName": game.game_name if game else "Unknown",
+                "console_type_id": row.game_id,
+                "consolePrice": game.single_slot_price if game else None
             })
 
         return jsonify(devices), 200
