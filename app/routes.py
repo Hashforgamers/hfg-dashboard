@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify, current_app
 from datetime import datetime,timedelta
+import re
 from .models.transaction import Transaction
 from app.extension.extensions import db
 from sqlalchemy import cast, Date, text, func
@@ -56,6 +57,8 @@ from app.models.extraServiceMenu import ExtraServiceMenu
 from app.services.extra_service_service import ExtraServiceService
 
 WEEKDAY_ORDER = ["mon","tue","wed","thu","fri","sat","sun"]
+GSTIN_REGEX = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$")
+STATE_CODE_REGEX = re.compile(r"^[0-9A-Z]{2}$")
 
 dashboard_service = Blueprint("dashboard_service", __name__)
 
@@ -85,6 +88,37 @@ def get_transaction_report(to_date, from_date, vendor_id):
 
         result = []
         for txn, user_name in rows:
+            base_amount = float(txn.base_amount or 0)
+            meals_amount = float(txn.meals_amount or 0)
+            controller_amount = float(txn.controller_amount or 0)
+            waive_off_amount = float(txn.waive_off_amount or 0)
+            gst_rate = float(txn.gst_rate or 0)
+
+            taxable_amount = float(txn.taxable_amount or 0)
+            if taxable_amount <= 0:
+                derived_taxable = base_amount + meals_amount + controller_amount - waive_off_amount
+                taxable_amount = round(derived_taxable if derived_taxable > 0 else float(txn.amount or 0), 2)
+
+            cgst_amount = float(txn.cgst_amount or 0)
+            sgst_amount = float(txn.sgst_amount or 0)
+            igst_amount = float(txn.igst_amount or 0)
+            total_tax_amount = cgst_amount + sgst_amount + igst_amount
+
+            if total_tax_amount <= 0 and gst_rate > 0 and taxable_amount > 0:
+                estimated_tax = round((taxable_amount * gst_rate) / 100.0, 2)
+                if igst_amount > 0:
+                    igst_amount = estimated_tax
+                else:
+                    cgst_amount = round(estimated_tax / 2.0, 2)
+                    sgst_amount = round(estimated_tax - cgst_amount, 2)
+                total_tax_amount = cgst_amount + sgst_amount + igst_amount
+
+            total_with_tax = float(txn.total_with_tax or 0)
+            if total_with_tax <= 0:
+                total_with_tax = round(taxable_amount + total_tax_amount, 2)
+                if total_with_tax <= 0:
+                    total_with_tax = float(txn.amount or 0)
+
             result.append({
                 "id": txn.id,
                 "bookingId": txn.booking_id,
@@ -105,16 +139,16 @@ def get_transaction_report(to_date, from_date, vendor_id):
                 "staffId": txn.initiated_by_staff_id,
                 "staffName": txn.initiated_by_staff_name,
                 "staffRole": txn.initiated_by_staff_role,
-                "baseAmount": txn.base_amount,
-                "mealsAmount": txn.meals_amount,
-                "controllerAmount": txn.controller_amount,
-                "waiveOffAmount": txn.waive_off_amount,
-                "taxableAmount": txn.taxable_amount,
-                "gstRate": txn.gst_rate,
-                "cgstAmount": txn.cgst_amount,
-                "sgstAmount": txn.sgst_amount,
-                "igstAmount": txn.igst_amount,
-                "totalWithTax": txn.total_with_tax,
+                "baseAmount": base_amount,
+                "mealsAmount": meals_amount,
+                "controllerAmount": controller_amount,
+                "waiveOffAmount": waive_off_amount,
+                "taxableAmount": taxable_amount,
+                "gstRate": gst_rate,
+                "cgstAmount": cgst_amount,
+                "sgstAmount": sgst_amount,
+                "igstAmount": igst_amount,
+                "totalWithTax": total_with_tax,
             })
 
         return jsonify(result), 200
@@ -146,14 +180,43 @@ def vendor_tax_profile(vendor_id):
             profile = VendorTaxProfile(vendor_id=vendor_id)
             db.session.add(profile)
 
-        profile.gst_registered = bool(body.get("gst_registered", profile.gst_registered))
-        profile.gstin = body.get("gstin", profile.gstin)
+        gst_registered = bool(body.get("gst_registered", profile.gst_registered))
+        gst_enabled = bool(body.get("gst_enabled", profile.gst_enabled))
+        tax_inclusive = bool(body.get("tax_inclusive", profile.tax_inclusive))
+        gst_rate = float(body.get("gst_rate", profile.gst_rate or 18.0))
+
+        gstin_raw = body.get("gstin", profile.gstin)
+        gstin = str(gstin_raw).strip().upper() if gstin_raw else None
+
+        state_code_raw = body.get("state_code", profile.state_code)
+        state_code = str(state_code_raw).strip().upper() if state_code_raw else None
+
+        place_raw = body.get("place_of_supply_state_code", profile.place_of_supply_state_code)
+        place_code = str(place_raw).strip().upper() if place_raw else None
+
+        if gst_rate < 0 or gst_rate > 100:
+            return jsonify({"success": False, "error": "gst_rate must be between 0 and 100"}), 400
+
+        if gst_registered and not gstin:
+            return jsonify({"success": False, "error": "gstin is required when gst_registered is true"}), 400
+
+        if gstin and not GSTIN_REGEX.match(gstin):
+            return jsonify({"success": False, "error": "Invalid GSTIN format"}), 400
+
+        if state_code and not STATE_CODE_REGEX.match(state_code):
+            return jsonify({"success": False, "error": "state_code must be exactly 2 alphanumeric characters"}), 400
+
+        if place_code and not STATE_CODE_REGEX.match(place_code):
+            return jsonify({"success": False, "error": "place_of_supply_state_code must be exactly 2 alphanumeric characters"}), 400
+
+        profile.gst_registered = gst_registered
+        profile.gstin = gstin
         profile.legal_name = body.get("legal_name", profile.legal_name)
-        profile.state_code = body.get("state_code", profile.state_code)
-        profile.place_of_supply_state_code = body.get("place_of_supply_state_code", profile.place_of_supply_state_code)
-        profile.gst_enabled = bool(body.get("gst_enabled", profile.gst_enabled))
-        profile.gst_rate = float(body.get("gst_rate", profile.gst_rate or 18.0))
-        profile.tax_inclusive = bool(body.get("tax_inclusive", profile.tax_inclusive))
+        profile.state_code = state_code
+        profile.place_of_supply_state_code = place_code
+        profile.gst_enabled = gst_enabled
+        profile.gst_rate = gst_rate
+        profile.tax_inclusive = tax_inclusive
 
         db.session.commit()
         return jsonify({"success": True, "profile": profile.to_dict()}), 200
