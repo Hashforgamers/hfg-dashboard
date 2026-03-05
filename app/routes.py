@@ -85,6 +85,7 @@ def get_transaction_report(to_date, from_date, vendor_id):
         # Format response data
         result = [{
             "id": txn.id,
+            "bookingId": txn.booking_id,
             # Keep key name for frontend compatibility; value is booking creation date.
             "slotDate": txn.booking_date.strftime("%Y-%m-%d"),
             "playDate": txn.booked_date.strftime("%Y-%m-%d") if txn.booked_date else None,
