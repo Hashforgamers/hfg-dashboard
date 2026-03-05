@@ -73,6 +73,10 @@ def get_transaction_report(to_date, from_date, vendor_id):
         transactions = Transaction.query.filter(
             Transaction.vendor_id == vendor_id,
             cast(Transaction.booked_date, Date).between(from_date, to_date)
+        ).order_by(
+            Transaction.booked_date.desc(),
+            Transaction.booking_time.desc(),
+            Transaction.id.desc()
         ).all()
 
 
