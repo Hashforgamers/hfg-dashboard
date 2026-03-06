@@ -1,5 +1,6 @@
 # app/services/payload_formatters.py
 from typing import Any, Dict, Optional
+import hashlib
 
 def _to_time_str(val: Any) -> str:
     try:
@@ -18,6 +19,8 @@ def format_current_slot_item(*, row: Dict[str, Any]) -> Dict[str, Any]:
     start_time = row["start_time"]
     end_time = row["end_time"]
     date_val = row.get("date")
+    raw = f"{row.get('book_id')}|{date_val}|{start_time}|{end_time}"
+    session_identifier = f"sess-{row.get('book_id')}-{hashlib.sha1(raw.encode('utf-8')).hexdigest()[:10]}"
 
     return {
         "slotId": row["slot_id"],
@@ -32,6 +35,9 @@ def format_current_slot_item(*, row: Dict[str, Any]) -> Dict[str, Any]:
         "game_id": row.get("game_id"),
         "date": _to_date_str(date_val),  # ensure string
         "slot_price": row.get("single_slot_price"),
+        "lifecycleStatus": "current",
+        "lifecycleStep": 2,
+        "sessionIdentifier": session_identifier,
     }
 
 

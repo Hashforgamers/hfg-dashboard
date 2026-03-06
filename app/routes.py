@@ -3,6 +3,7 @@ from datetime import datetime,timedelta
 import re
 import time
 import threading
+import hashlib
 from .models.transaction import Transaction
 from app.extension.extensions import db
 from sqlalchemy import cast, Date, text, func
@@ -80,6 +81,7 @@ def _invalidate_vendor_caches(vendor_id: int):
 
 dashboard_service = Blueprint("dashboard_service", __name__)
 IST = ZoneInfo("Asia/Kolkata")
+LIFECYCLE_ORDER = {"upcoming": 1, "current": 2, "completed": 3}
 
 
 def _booking_start_eligibility(slot_date, start_time, end_time):
@@ -106,6 +108,29 @@ def _booking_start_eligibility(slot_date, start_time, end_time):
     if now_ist > end_dt:
         return False, "Slot end time has passed. Cannot start session."
     return True, ""
+
+
+def _build_session_identifier(booking_id, slot_date, start_time, end_time):
+    raw = f"{booking_id}|{slot_date}|{start_time}|{end_time}"
+    digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:10]
+    return f"sess-{booking_id}-{digest}"
+
+
+def _normalize_lifecycle(book_status: str, row_date):
+    """
+    Keep lifecycle monotonic for API output:
+    - future date can never be current/completed
+    - past date can never be upcoming/current
+    """
+    status = str(book_status or "upcoming").strip().lower()
+    if status not in LIFECYCLE_ORDER:
+        status = "upcoming"
+    today_ist = datetime.now(IST).date()
+    if isinstance(row_date, date) and row_date > today_ist:
+        return "upcoming"
+    if isinstance(row_date, date) and row_date < today_ist:
+        return "completed"
+    return status
 
 @dashboard_service.route('/transactionReport/<int:vendor_id>/<string:to_date>/<string:from_date>', methods=['GET'])
 def get_transaction_report(to_date, from_date, vendor_id):
@@ -697,6 +722,11 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
             db.session.rollback()
             return jsonify({"error": "Booking is no longer eligible to start"}), 400
 
+        db.session.execute(
+            text("UPDATE bookings SET status = 'checked_in' WHERE id = :booking_id AND status IN ('confirmed','pending_verified','pending_acceptance','checked_in')"),
+            {"booking_id": booking_id}
+        )
+
         db.session.commit()
         current_app.logger.debug("DB commit successful")
         _invalidate_vendor_caches(int(vendor_id))
@@ -864,6 +894,11 @@ def assign_console_to_multiple_bookings():
             db.session.rollback()
             return jsonify({"error": "One or more bookings are no longer eligible to start"}), 400
 
+        db.session.execute(
+            text("UPDATE bookings SET status = 'checked_in' WHERE id = ANY(:booking_ids) AND status IN ('confirmed','pending_verified','pending_acceptance','checked_in')"),
+            {"booking_ids": booking_ids}
+        )
+
         db.session.commit()
         _invalidate_vendor_caches(int(vendor_id))
 
@@ -911,17 +946,33 @@ def release_console(gameid, console_id, vendor_id):
             "game_id": gameid
         })
 
-         # ✅ Update book_status from "upcoming" to "current"
+         # ✅ Move lifecycle one-way: current -> completed only
         sql_update_booking_status = text(f"""
             UPDATE {booking_table_name}
             SET book_status = 'completed'
-            WHERE console_id = :console_id AND book_status = 'current'
+            WHERE console_id = :console_id AND game_id = :game_id AND book_status = 'current'
         """)
 
-        db.session.execute(sql_update_booking_status, {
+        upd_release = db.session.execute(sql_update_booking_status, {
             "console_id": console_id,
             "game_id": gameid
         })
+        if getattr(upd_release, "rowcount", 0) <= 0:
+            db.session.rollback()
+            return jsonify({"error": "No active current session found to release"}), 400
+
+        db.session.execute(
+            text(f"""
+                UPDATE bookings
+                SET status = 'completed'
+                WHERE id IN (
+                    SELECT book_id
+                    FROM {booking_table_name}
+                    WHERE console_id = :console_id AND game_id = :game_id AND book_status = 'completed'
+                )
+            """),
+            {"console_id": console_id, "game_id": gameid}
+        )
 
         # Commit the changes
         db.session.commit()
@@ -1078,6 +1129,9 @@ def get_landing_page_vendor(vendor_id):
         
         for row in result:
             has_meals = row.book_id in meals_lookup
+            lifecycle_status = _normalize_lifecycle(row.book_status, row.date)
+            session_identifier = _build_session_identifier(row.book_id, row.date, row.start_time, row.end_time)
+            lifecycle_step = LIFECYCLE_ORDER.get(lifecycle_status, 1)
 
             booking_data = {
                 "slotId": row.slot_id,
@@ -1091,7 +1145,10 @@ def get_landing_page_vendor(vendor_id):
                 "game_id":row.game_id,
                 "date":row.date,
                 "slot_price": row.single_slot_price,
-                "hasMeals": has_meals
+                "hasMeals": has_meals,
+                "lifecycleStatus": lifecycle_status,
+                "lifecycleStep": lifecycle_step,
+                "sessionIdentifier": session_identifier,
 
             }
             
@@ -1108,16 +1165,16 @@ def get_landing_page_vendor(vendor_id):
                 "game_id":row.game_id,
                 "date":row.date,
                 "slot_price": row.single_slot_price,
-                "hasMeals": has_meals
+                "hasMeals": has_meals,
+                "lifecycleStatus": lifecycle_status,
+                "lifecycleStep": lifecycle_step,
+                "sessionIdentifier": session_identifier,
                 
             }
             
-            row_date = row.date if isinstance(row.date, date) else None
-            is_future_row = bool(row_date and row_date > today)
-
-            if row.book_status == "upcoming" or is_future_row:
+            if lifecycle_status == "upcoming":
                 upcoming_bookings.append(booking_data)
-            elif row.book_status == "current":
+            elif lifecycle_status == "current":
                 current_slots.append(slot_data)
 
         # Vendor-scoped booking stats in one aggregate query.
@@ -1316,6 +1373,12 @@ def get_vendor_dashboard(vendor_id):
 
     # 4) Build operatingHours in a consistent weekday order or using vendor.opening_days
     opening_days_list = [od.day for od in (vendor.opening_days or [])] or WEEKDAY_ORDER
+    opening_day_enabled_map = {}
+    for od in (vendor.opening_days or []):
+        raw = (od.day or "").strip().lower()
+        key = raw if raw in WEEKDAY_ORDER else raw[:3]
+        if key:
+            opening_day_enabled_map[key] = bool(od.is_open)
 
     operating_hours = []
     for day_key in opening_days_list:
@@ -1337,7 +1400,9 @@ def get_vendor_dashboard(vendor_id):
             "day": dkey,
             "open": open_str,
             "close": close_str,
-            "slotDurationMinutes": duration_int  # always int or None
+            "slotDurationMinutes": duration_int,  # always int or None
+            "isEnabled": opening_day_enabled_map.get(dkey, True),
+            "is24Hours": bool(open_str and close_str and open_str == close_str),
         })
 
     # 5) Images
