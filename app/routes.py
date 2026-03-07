@@ -116,7 +116,7 @@ def _build_session_identifier(booking_id, slot_date, start_time, end_time):
     return f"sess-{booking_id}-{digest}"
 
 
-def _normalize_lifecycle(book_status: str, row_date):
+def _normalize_lifecycle(book_status: str, row_date, start_time=None, end_time=None):
     """
     Keep lifecycle monotonic for API output:
     - future date can never be current/completed
@@ -130,6 +130,16 @@ def _normalize_lifecycle(book_status: str, row_date):
         return "upcoming"
     if isinstance(row_date, date) and row_date < today_ist:
         return "completed"
+    if isinstance(row_date, date) and row_date == today_ist and start_time and end_time:
+        now_ist = datetime.now(IST).replace(tzinfo=None)
+        start_dt = datetime.combine(row_date, start_time)
+        end_dt = datetime.combine(row_date, end_time)
+        if end_dt <= start_dt:
+            end_dt = end_dt + timedelta(days=1)
+        if now_ist > end_dt:
+            return "completed"
+        if start_dt <= now_ist <= end_dt:
+            return "current"
     return status
 
 @dashboard_service.route('/transactionReport/<int:vendor_id>/<string:to_date>/<string:from_date>', methods=['GET'])
@@ -1208,7 +1218,12 @@ def get_landing_page_vendor(vendor_id):
         
         for row in result:
             has_meals = row.book_id in meals_lookup
-            lifecycle_status = _normalize_lifecycle(row.book_status, row.date)
+            lifecycle_status = _normalize_lifecycle(
+                row.book_status,
+                row.date,
+                row.start_time,
+                row.end_time,
+            )
             session_identifier = _build_session_identifier(row.book_id, row.date, row.start_time, row.end_time)
             lifecycle_step = LIFECYCLE_ORDER.get(lifecycle_status, 1)
 
