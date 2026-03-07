@@ -22,13 +22,17 @@ def format_current_slot_item(*, row: Dict[str, Any]) -> Dict[str, Any]:
     raw = f"{row.get('book_id')}|{date_val}|{start_time}|{end_time}"
     session_identifier = f"sess-{row.get('book_id')}-{hashlib.sha1(raw.encode('utf-8')).hexdigest()[:10]}"
 
+    console_name = row.get("console_name")
+    if console_name is not None:
+        console_name = str(console_name).strip() or None
+
     return {
         "slotId": row["slot_id"],
         "bookId": row["book_id"],
         "startTime": _to_time_str(start_time),
         "endTime": _to_time_str(end_time),
         "status": "Booked" if row.get("status") != "pending_verified" else "Available",
-        "consoleType": f"HASH{row['console_id']}" if row.get("console_id") is not None else None,
+        "consoleType": console_name or (f"HASH{row['console_id']}" if row.get("console_id") is not None else None),
         "consoleNumber": str(row["console_id"]) if row.get("console_id") is not None else None,
         "username": row.get("username"),
         "userId": row.get("user_id"),

@@ -836,11 +836,13 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
                     b.status,
                     b.book_status,
                     ag.single_slot_price,
-                    d.slot_id
+                    d.slot_id,
+                    c.model_number AS console_name
                 FROM {booking_table_name} b
                 JOIN available_games ag ON b.game_id = ag.id
                 JOIN bookings d ON b.book_id = d.id
                 LEFT JOIN users u ON b.user_id = u.id
+                LEFT JOIN consoles c ON c.id = b.console_id
                 WHERE b.book_id = :booking_id AND b.game_id = :game_id
             """)
             b_row = db.session.execute(sql_fetch_booking, {
@@ -862,6 +864,7 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
                     "game_id": b_row["game_id"],
                     "date": b_row["date"],
                     "single_slot_price": b_row["single_slot_price"],
+                    "console_name": b_row.get("console_name"),
                 })
                 room = f"vendor_{int(vendor_id)}"
                 socketio.emit("current_slot", current_item, room=room)
@@ -1194,11 +1197,13 @@ def get_landing_page_vendor(vendor_id):
                 b.status, 
                 b.book_status,
                 ag.single_slot_price,
-                d.slot_id
+                d.slot_id,
+                c.model_number AS console_name
             FROM {table_name} b
             JOIN available_games ag ON b.game_id = ag.id
             JOIN bookings d ON b.book_id = d.id
             LEFT JOIN users u ON b.user_id = u.id
+            LEFT JOIN consoles c ON c.id = b.console_id
         """)
         result = db.session.execute(sql_fetch_bookings).fetchall()
 
@@ -1233,7 +1238,7 @@ def get_landing_page_vendor(vendor_id):
                 "username": row.username,
                 "userId":row.user_id,
                 "game": row.game_name,
-                "consoleType": f"Console-{row.console_id}",
+                "consoleType": row.console_name or f"Console-{row.console_id}",
                 "time": f"{row.start_time.strftime('%I:%M %p')} - {row.end_time.strftime('%I:%M %p')}",
                 "status": "Confirmed" if row.status != 'pending_verified' else "Pending",
                 "game_id":row.game_id,
@@ -1252,7 +1257,7 @@ def get_landing_page_vendor(vendor_id):
                 "startTime": row.start_time.strftime('%I:%M %p'),
                 "endTime": row.end_time.strftime('%I:%M %p'),
                 "status": "Booked" if row.status != 'pending_verified' else "Available",
-                "consoleType": f"HASH{row.console_id}",
+                "consoleType": row.console_name or (f"HASH{row.console_id}" if row.console_id is not None else "Console"),
                 "consoleNumber": str(row.console_id),
                 "username": row.username,
                 "userId":row.user_id,
