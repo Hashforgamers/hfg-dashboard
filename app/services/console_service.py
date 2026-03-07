@@ -197,8 +197,73 @@ class ConsoleService:
         if not table_exists:
             return False
 
-        source_rows = db.session.execute(
+        has_source = db.session.execute(
             text(f"""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM {slot_table_name} v
+                    JOIN slots s ON s.id = v.slot_id
+                    JOIN available_games ag ON ag.id = s.gaming_type_id
+                    WHERE v.vendor_id = :vendor_id
+                      AND ag.vendor_id = :vendor_id
+                      AND s.gaming_type_id <> :available_game_id
+                      AND v.date BETWEEN CURRENT_DATE AND :window_end_date
+                ) AS has_rows
+            """),
+            {
+                "vendor_id": vendor_id,
+                "available_game_id": available_game_id,
+                "window_end_date": window_end_date,
+            },
+        ).scalar()
+        if not has_source:
+            return False
+
+        # 1) Ensure slot templates exist for target game using the same time blocks
+        # seen in vendor's other game types.
+        insert_templates_sql = text("""
+            INSERT INTO slots (gaming_type_id, start_time, end_time, available_slot, is_available)
+            SELECT
+                :available_game_id,
+                src.start_time,
+                src.end_time,
+                :available_slot,
+                FALSE
+            FROM (
+                SELECT DISTINCT s.start_time, s.end_time
+                FROM slots s
+                JOIN available_games ag ON ag.id = s.gaming_type_id
+                WHERE ag.vendor_id = :vendor_id
+                  AND s.gaming_type_id <> :available_game_id
+            ) src
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM slots t
+                WHERE t.gaming_type_id = :available_game_id
+                  AND t.start_time = src.start_time
+                  AND t.end_time = src.end_time
+            )
+        """)
+        db.session.execute(
+            insert_templates_sql,
+            {
+                "vendor_id": vendor_id,
+                "available_game_id": available_game_id,
+                "available_slot": int(total_slots or 1),
+            },
+        )
+
+        # 2) Upsert dynamic vendor rows by matching source (date + time block)
+        # to target game's slot templates.
+        upsert_dynamic_rows_sql = text(f"""
+            INSERT INTO {slot_table_name} (vendor_id, slot_id, date, available_slot, is_available)
+            SELECT
+                :vendor_id,
+                tgt.id AS slot_id,
+                src.date,
+                :available_slot,
+                TRUE
+            FROM (
                 SELECT DISTINCT v.date, s.start_time, s.end_time
                 FROM {slot_table_name} v
                 JOIN slots s ON s.id = v.slot_id
@@ -207,85 +272,26 @@ class ConsoleService:
                   AND ag.vendor_id = :vendor_id
                   AND s.gaming_type_id <> :available_game_id
                   AND v.date BETWEEN CURRENT_DATE AND :window_end_date
-                ORDER BY v.date, s.start_time, s.end_time
-            """),
-            {
-                "vendor_id": vendor_id,
-                "available_game_id": available_game_id,
-                "window_end_date": window_end_date,
-            },
-        ).fetchall()
-        if not source_rows:
-            return False
-
-        blocks = sorted({
-            (ConsoleService._row_value(r, "start_time"), ConsoleService._row_value(r, "end_time"))
-            for r in source_rows
-            if ConsoleService._row_value(r, "start_time") and ConsoleService._row_value(r, "end_time")
-        })
-        if not blocks:
-            return False
-
-        existing = (
-            Slot.query
-            .filter(
-                Slot.gaming_type_id == available_game_id,
-                tuple_(Slot.start_time, Slot.end_time).in_(blocks),
-            )
-            .all()
-        )
-        slot_id_map = {(s.start_time, s.end_time): int(s.id) for s in existing}
-
-        to_create = []
-        for st, et in blocks:
-            if (st, et) in slot_id_map:
-                continue
-            to_create.append(
-                Slot(
-                    gaming_type_id=available_game_id,
-                    start_time=st,
-                    end_time=et,
-                    available_slot=int(total_slots or 1),
-                    is_available=False,
-                )
-            )
-
-        if to_create:
-            db.session.add_all(to_create)
-            db.session.flush()
-            for s in to_create:
-                slot_id_map[(s.start_time, s.end_time)] = int(s.id)
-
-        upsert_sql = text(f"""
-            INSERT INTO {slot_table_name} (vendor_id, slot_id, date, available_slot, is_available)
-            VALUES (:vendor_id, :slot_id, :date, :available_slot, TRUE)
+            ) src
+            JOIN slots tgt
+              ON tgt.gaming_type_id = :available_game_id
+             AND tgt.start_time = src.start_time
+             AND tgt.end_time = src.end_time
             ON CONFLICT (vendor_id, date, slot_id)
             DO UPDATE SET
                 available_slot = EXCLUDED.available_slot,
                 is_available = TRUE
         """)
-
-        batch = []
-        for row in source_rows:
-            st = ConsoleService._row_value(row, "start_time")
-            et = ConsoleService._row_value(row, "end_time")
-            slot_id = slot_id_map.get((st, et))
-            dt_val = ConsoleService._row_value(row, "date")
-            if not slot_id or not dt_val:
-                continue
-            batch.append(
-                {
-                    "vendor_id": vendor_id,
-                    "slot_id": slot_id,
-                    "date": dt_val,
-                    "available_slot": int(total_slots or 1),
-                }
-            )
-
-        if batch:
-            db.session.execute(upsert_sql, batch)
-            return True
-        return False
+        db.session.execute(
+            upsert_dynamic_rows_sql,
+            {
+                "vendor_id": vendor_id,
+                "available_game_id": available_game_id,
+                "available_slot": int(total_slots or 1),
+                "window_end_date": window_end_date,
+            },
+        )
+        return True
 
     @staticmethod
     def _bootstrap_new_game_slots(vendor_id, available_game_id, total_slots):
