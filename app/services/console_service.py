@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta, date, time as dtime
 from app.extension.extensions import db
 from app.models.console import Console
 from app.models.hardwareSpecification import HardwareSpecification
@@ -9,8 +9,155 @@ from app.models.availableGame import AvailableGame  # ✅ Import association tab
 from app.models.slot import Slot
 from sqlalchemy.sql import text
 from sqlalchemy.exc import ProgrammingError
+from sqlalchemy import tuple_
 
 class ConsoleService:
+    WEEKDAY_MAP = {"mon": 1, "tue": 2, "wed": 3, "thu": 4, "fri": 5, "sat": 6, "sun": 0}  # Postgres DOW
+
+    @staticmethod
+    def _normalize_day_key(day_value):
+        raw = str(day_value or "").strip().lower()
+        if raw in ConsoleService.WEEKDAY_MAP:
+            return raw
+        if len(raw) >= 3 and raw[:3] in ConsoleService.WEEKDAY_MAP:
+            return raw[:3]
+        return None
+
+    @staticmethod
+    def _parse_time_flexible(value):
+        raw = str(value or "").strip()
+        if not raw:
+            return None
+        for fmt in ("%I:%M %p", "%H:%M"):
+            try:
+                return datetime.strptime(raw, fmt).time()
+            except ValueError:
+                continue
+        return None
+
+    @staticmethod
+    def _generate_blocks(anchor_day, start_time, end_time, slot_duration):
+        start_dt = datetime.combine(anchor_day, start_time)
+        end_dt = datetime.combine(anchor_day, end_time)
+        if end_dt <= start_dt:
+            end_dt += timedelta(days=1)
+
+        blocks = []
+        cur_dt = start_dt
+        while cur_dt < end_dt:
+            nxt_dt = cur_dt + timedelta(minutes=int(slot_duration))
+            if nxt_dt > end_dt:
+                break
+            block_start_t = cur_dt.time()
+            block_end_t = (
+                nxt_dt.time() if nxt_dt.date() == cur_dt.date()
+                else (nxt_dt - timedelta(days=1)).time()
+            )
+            blocks.append((block_start_t, block_end_t))
+            cur_dt = nxt_dt
+        return blocks
+
+    @staticmethod
+    def _bootstrap_new_game_slots(vendor_id, available_game_id, total_slots):
+        config_rows = db.session.execute(
+            text("""
+                SELECT day, opening_time, closing_time, slot_duration
+                FROM vendor_day_slot_config
+                WHERE vendor_id = :vendor_id
+            """),
+            {"vendor_id": vendor_id},
+        ).fetchall()
+
+        if not config_rows:
+            return
+
+        slot_table_name = f"VENDOR_{vendor_id}_SLOT"
+        anchor = date.today()
+
+        for cfg in config_rows:
+            day_key = ConsoleService._normalize_day_key(cfg.day)
+            if not day_key:
+                continue
+
+            try:
+                duration = int(cfg.slot_duration or 0)
+            except (TypeError, ValueError):
+                continue
+            if duration < 15 or duration > 240:
+                continue
+
+            open_t = ConsoleService._parse_time_flexible(cfg.opening_time)
+            close_t = ConsoleService._parse_time_flexible(cfg.closing_time)
+            if not open_t or not close_t:
+                continue
+
+            blocks = ConsoleService._generate_blocks(anchor, open_t, close_t, duration)
+            if not blocks:
+                continue
+
+            existing = (
+                Slot.query
+                .filter(
+                    Slot.gaming_type_id == available_game_id,
+                    tuple_(Slot.start_time, Slot.end_time).in_(blocks),
+                )
+                .all()
+            )
+            slot_id_map = {(s.start_time, s.end_time): int(s.id) for s in existing}
+
+            to_create = []
+            for st, et in blocks:
+                if (st, et) in slot_id_map:
+                    continue
+                to_create.append(
+                    Slot(
+                        gaming_type_id=available_game_id,
+                        start_time=st,
+                        end_time=et,
+                        available_slot=int(total_slots or 1),
+                        is_available=False,
+                    )
+                )
+
+            if to_create:
+                db.session.add_all(to_create)
+                db.session.flush()
+                for s in to_create:
+                    slot_id_map[(s.start_time, s.end_time)] = int(s.id)
+
+            slot_ids = [slot_id_map[(st, et)] for st, et in blocks if (st, et) in slot_id_map]
+            if not slot_ids:
+                continue
+
+            insert_vendor_rows_sql = text(f"""
+                INSERT INTO {slot_table_name} (vendor_id, slot_id, date, available_slot, is_available)
+                SELECT
+                    :vendor_id,
+                    s_id.slot_id,
+                    gs.date::date,
+                    :available_slot,
+                    TRUE
+                FROM (SELECT unnest(:slot_ids) AS slot_id) s_id
+                CROSS JOIN generate_series(CURRENT_DATE, CURRENT_DATE + INTERVAL '365 days', '1 day'::INTERVAL) gs
+                WHERE EXTRACT(DOW FROM gs.date) = :target_dow
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM {slot_table_name} v
+                      WHERE v.vendor_id = :vendor_id
+                        AND v.slot_id = s_id.slot_id
+                        AND v.date = gs.date::date
+                  );
+            """)
+            db.session.execute(
+                insert_vendor_rows_sql,
+                {
+                    "vendor_id": vendor_id,
+                    "slot_ids": slot_ids,
+                    "available_slot": int(total_slots or 1),
+                    "target_dow": ConsoleService.WEEKDAY_MAP[day_key],
+                },
+            )
+
     @staticmethod
     def _is_blank(value):
         return value is None or str(value).strip() == ""
@@ -188,6 +335,7 @@ class ConsoleService:
                 vendor_id=vendor_id, game_name=available_game_type
             ).first()
 
+            is_new_game = False
             if available_game:
                 available_game.total_slot += 1  # ✅ Increment total slots
             else:
@@ -199,61 +347,69 @@ class ConsoleService:
                 )
                 db.session.add(available_game)
                 db.session.flush()  # ✅ Get available_game.id before association
+                is_new_game = True
 
             # ✅ Associate Console with AvailableGame (Many-to-Many)
             if console not in available_game.consoles:
                 available_game.consoles.append(console)
 
-            # ✅ Update existing Slot entries (set available_slot = 1 and is_available = True)
-            slots_to_update = Slot.query.filter_by(gaming_type_id=available_game.id).all()
+            if is_new_game:
+                # First console of a game type: bootstrap slot templates + vendor rows from day-wise config.
+                ConsoleService._bootstrap_new_game_slots(
+                    vendor_id=vendor_id,
+                    available_game_id=available_game.id,
+                    total_slots=available_game.total_slot,
+                )
+                slots_to_update = Slot.query.filter_by(gaming_type_id=available_game.id).all()
+                for slot in slots_to_update:
+                    db.session.add(slot)
+                db.session.flush()
+            else:
+                # ✅ Existing game type: increment existing slot capacities by 1 for new console.
+                slots_to_update = Slot.query.filter_by(gaming_type_id=available_game.id).all()
+                for slot in slots_to_update:
+                    slot.available_slot += 1
+                    slot.is_available = True
+                    db.session.add(slot)
+                db.session.flush()
 
-            for slot in slots_to_update:
-                slot.available_slot += 1  # Set the available slot to 1
-                slot.is_available = True  # Set the slot as available
-                db.session.add(slot)
-            
-            # ✅ flush slot updates first
-            db.session.flush()
-
-            # ✅ Ensure dynamic vendor slot rows are present and increment capacity
-            # for ALL date+slot combinations (existing + missing).
-            slot_table_name = f"VENDOR_{vendor_id}_SLOT"
-            update_existing_slots_sql = text(f"""
-                UPDATE {slot_table_name} v
-                SET available_slot = COALESCE(v.available_slot, 0) + 1,
-                    is_available = TRUE
-                WHERE v.vendor_id = :vendor_id
-                  AND v.date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '365 days'
-                  AND v.slot_id IN (SELECT id FROM slots WHERE gaming_type_id = :available_game_id);
-            """)
-            db.session.execute(
-                update_existing_slots_sql,
-                {"vendor_id": vendor_id, "available_game_id": available_game.id},
-            )
-
-            insert_missing_slots_sql = text(f"""
-                INSERT INTO {slot_table_name} (vendor_id, date, slot_id, is_available, available_slot)
-                SELECT
-                    :vendor_id AS vendor_id,
-                    gs.date::date AS date,
-                    s.id AS slot_id,
-                    TRUE AS is_available,
-                    1 AS available_slot
-                FROM generate_series(CURRENT_DATE, CURRENT_DATE + INTERVAL '365 days', '1 day'::INTERVAL) gs
-                CROSS JOIN slots s
-                WHERE s.gaming_type_id = :available_game_id
-                  AND NOT EXISTS (
-                    SELECT 1
-                    FROM {slot_table_name} v
+                slot_table_name = f"VENDOR_{vendor_id}_SLOT"
+                update_existing_slots_sql = text(f"""
+                    UPDATE {slot_table_name} v
+                    SET available_slot = COALESCE(v.available_slot, 0) + 1,
+                        is_available = TRUE
                     WHERE v.vendor_id = :vendor_id
-                      AND v.date = gs.date::date
-                      AND v.slot_id = s.id
-                  );
-            """)
-            db.session.execute(
-                insert_missing_slots_sql,
-                {"vendor_id": vendor_id, "available_game_id": available_game.id},
-            )
+                      AND v.date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '365 days'
+                      AND v.slot_id IN (SELECT id FROM slots WHERE gaming_type_id = :available_game_id);
+                """)
+                db.session.execute(
+                    update_existing_slots_sql,
+                    {"vendor_id": vendor_id, "available_game_id": available_game.id},
+                )
+
+                insert_missing_slots_sql = text(f"""
+                    INSERT INTO {slot_table_name} (vendor_id, date, slot_id, is_available, available_slot)
+                    SELECT
+                        :vendor_id AS vendor_id,
+                        gs.date::date AS date,
+                        s.id AS slot_id,
+                        TRUE AS is_available,
+                        1 AS available_slot
+                    FROM generate_series(CURRENT_DATE, CURRENT_DATE + INTERVAL '365 days', '1 day'::INTERVAL) gs
+                    CROSS JOIN slots s
+                    WHERE s.gaming_type_id = :available_game_id
+                      AND NOT EXISTS (
+                        SELECT 1
+                        FROM {slot_table_name} v
+                        WHERE v.vendor_id = :vendor_id
+                          AND v.date = gs.date::date
+                          AND v.slot_id = s.id
+                      );
+                """)
+                db.session.execute(
+                    insert_missing_slots_sql,
+                    {"vendor_id": vendor_id, "available_game_id": available_game.id},
+                )
 
 
             # ✅ Create Dynamic Console Availability Table
