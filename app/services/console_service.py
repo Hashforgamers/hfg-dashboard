@@ -12,6 +12,49 @@ from sqlalchemy.exc import ProgrammingError
 
 class ConsoleService:
     @staticmethod
+    def _is_blank(value):
+        return value is None or str(value).strip() == ""
+
+    @staticmethod
+    def validate_console_payload(console_data, hardware_data):
+        console_type = str(console_data.get("consoleType", "")).strip().lower()
+        if console_type not in {"pc", "ps5", "xbox", "vr"}:
+            return "Unsupported consoleType. Expected one of: pc, ps5, xbox, vr."
+
+        required_common = {
+            "consoleNumber": console_data.get("consoleNumber"),
+            "modelNumber": console_data.get("modelNumber"),
+            "serialNumber": console_data.get("serialNumber"),
+            "brand": console_data.get("brand"),
+            "releaseDate": console_data.get("releaseDate"),
+        }
+        for field, value in required_common.items():
+            if ConsoleService._is_blank(value):
+                return f"Missing required field: consoleDetails.{field}"
+
+        if console_type == "pc":
+            pc_required = {
+                "processorType": hardware_data.get("processorType"),
+                "graphicsCard": hardware_data.get("graphicsCard"),
+                "ramSize": hardware_data.get("ramSize"),
+                "storageCapacity": hardware_data.get("storageCapacity"),
+                "connectivity": hardware_data.get("connectivity"),
+            }
+            for field, value in pc_required.items():
+                if ConsoleService._is_blank(value):
+                    return f"Missing required field for PC: hardwareSpecifications.{field}"
+        else:
+            non_pc_required = {
+                "consoleModelType": hardware_data.get("consoleModelType"),
+                "storageCapacity": hardware_data.get("storageCapacity"),
+            }
+            for field, value in non_pc_required.items():
+                if ConsoleService._is_blank(value):
+                    return f"Missing required field for {console_type.upper()}: hardwareSpecifications.{field}"
+
+        return None
+
+    @staticmethod
     def normalize_hardware_spec(console_type, hardware_data):
         normalized_type = str(console_type or "").strip().lower()
         source = hardware_data or {}
@@ -65,6 +108,10 @@ class ConsoleService:
             maintenance_data = data.get("maintenanceStatus", {})
             price_data = data.get("priceAndCost", {})
             additional_data = data.get("additionalDetails", {})
+
+            validation_error = ConsoleService.validate_console_payload(console_data, hardware_data)
+            if validation_error:
+                return {"error": validation_error}, 400
 
             # ✅ Create Console Entry
             console = Console(
