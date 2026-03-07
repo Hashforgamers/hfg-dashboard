@@ -289,7 +289,7 @@ class ConsoleService:
                     :available_slot,
                     TRUE
                 FROM (SELECT unnest(:slot_ids) AS slot_id) s_id
-                CROSS JOIN generate_series(CURRENT_DATE, :window_end_date::date, '1 day'::INTERVAL) gs
+                CROSS JOIN generate_series(CURRENT_DATE, CAST(:window_end_date AS date), '1 day'::INTERVAL) gs
                 WHERE EXTRACT(DOW FROM gs.date) = :target_dow
                   AND NOT EXISTS (
                       SELECT 1
@@ -609,7 +609,7 @@ class ConsoleService:
                         s.id AS slot_id,
                         TRUE AS is_available,
                         1 AS available_slot
-                    FROM generate_series(CURRENT_DATE, :window_end_date::date, '1 day'::INTERVAL) gs
+                    FROM generate_series(CURRENT_DATE, CAST(:window_end_date AS date), '1 day'::INTERVAL) gs
                     CROSS JOIN slots s
                     WHERE s.gaming_type_id = :available_game_id
                       AND NOT EXISTS (
