@@ -396,6 +396,7 @@ def get_consoles(vendor_id):
 
     try:
         availability_table = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
+        booking_table = f"VENDOR_{vendor_id}_DASHBOARD"
         sql_query = text(f"""
             SELECT DISTINCT ON (c.id)
                 c.id,
@@ -409,13 +410,41 @@ def get_consoles(vendor_id):
                 hs.storage_capacity,
                 hs.console_model_type,
                 ms.available_status,
-                ca.is_available
+                ca.is_available,
+                ca.game_id,
+                cur.book_id AS current_booking_id,
+                cur.user_id AS current_user_id,
+                cur.username AS current_username,
+                cur.start_time AS current_start_time,
+                cur.end_time AS current_end_time,
+                cur.date AS current_date,
+                due.pending_due
             FROM available_games ag
             JOIN available_game_console agc ON agc.available_game_id = ag.id
             JOIN consoles c ON c.id = agc.console_id
             LEFT JOIN hardware_specifications hs ON hs.console_id = c.id
             LEFT JOIN maintenance_status ms ON ms.console_id = c.id
             LEFT JOIN {availability_table} ca ON ca.console_id = c.id AND ca.vendor_id = :vendor_id
+            LEFT JOIN LATERAL (
+                SELECT b.book_id, b.user_id, b.username, b.start_time, b.end_time, b.date
+                FROM {booking_table} b
+                WHERE b.console_id = c.id
+                  AND b.book_status = 'current'
+                ORDER BY b.date DESC, b.start_time DESC
+                LIMIT 1
+            ) cur ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT COALESCE(SUM(
+                    CASE
+                        WHEN t.total_with_tax IS NOT NULL AND t.total_with_tax > 0 THEN t.total_with_tax
+                        ELSE t.amount
+                    END
+                ), 0.0) AS pending_due
+                FROM transactions t
+                WHERE t.booking_id = cur.book_id
+                  AND t.vendor_id = :vendor_id
+                  AND t.settlement_status = 'pending'
+            ) due ON TRUE
             WHERE ag.vendor_id = :vendor_id
               AND c.vendor_id = :vendor_id
             ORDER BY c.id
@@ -426,6 +455,12 @@ def get_consoles(vendor_id):
         for row in rows:
             normalized_type = str(row.console_type or "pc").strip().lower()
             is_pc = normalized_type == "pc"
+            raw_maintenance = str(row.available_status or "").strip().lower()
+            is_maintenance = raw_maintenance in {"under maintenance", "maintenance"}
+            has_live_booking = bool(row.current_booking_id)
+            occupancy_state = "maintenance" if is_maintenance else ("occupied" if has_live_booking else "free")
+            pending_due = float(row.pending_due or 0.0)
+            pending_due = round(pending_due, 2)
             payload.append({
                 "id": row.id,
                 "type": normalized_type,
@@ -437,8 +472,18 @@ def get_consoles(vendor_id):
                 "gpu": row.graphics_card if is_pc and row.graphics_card else None,
                 "ram": row.ram_size if is_pc and row.ram_size else None,
                 "storage": row.storage_capacity if row.storage_capacity else None,
-                "status": row.is_available,
-                "statusLabel": row.available_status if row.available_status else ("Available" if row.is_available else "In Use"),
+                "status": occupancy_state == "free",
+                "statusLabel": "Under Maintenance" if is_maintenance else ("Occupied" if has_live_booking else "Free"),
+                "occupancyState": occupancy_state,
+                "gameId": row.game_id,
+                "currentBookingId": row.current_booking_id,
+                "currentUserId": row.current_user_id,
+                "currentUsername": row.current_username,
+                "currentStartTime": row.current_start_time.strftime('%I:%M %p') if row.current_start_time else None,
+                "currentEndTime": row.current_end_time.strftime('%I:%M %p') if row.current_end_time else None,
+                "currentDate": row.current_date.isoformat() if row.current_date else None,
+                "collectibleAmount": pending_due,
+                "hasPendingCollection": pending_due > 0,
                 "consoleModelType": row.console_model_type if row.console_model_type else None,
             })
 
