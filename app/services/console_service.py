@@ -5,10 +5,9 @@ from app.models.hardwareSpecification import HardwareSpecification
 from app.models.maintenanceStatus import MaintenanceStatus
 from app.models.priceAndCost import PriceAndCost
 from app.models.additionalDetails import AdditionalDetails
-from app.models.availableGame import AvailableGame  # ✅ Import association table
+from app.models.availableGame import AvailableGame, available_game_console  # ✅ Import association table
 from app.models.slot import Slot
 from sqlalchemy.sql import text
-from sqlalchemy.exc import ProgrammingError
 from sqlalchemy import tuple_
 
 class ConsoleService:
@@ -157,6 +156,39 @@ class ConsoleService:
                     "target_dow": ConsoleService.WEEKDAY_MAP[day_key],
                 },
             )
+
+    @staticmethod
+    def _reset_game_slots(vendor_id, available_game_id):
+        """
+        Clear slot templates and dynamic vendor rows for one game type.
+        Used when a previously removed game type is re-added so old durations
+        do not leak into the new slot layout.
+        """
+        slot_ids = [
+            int(row[0])
+            for row in db.session.query(Slot.id)
+            .filter(Slot.gaming_type_id == available_game_id)
+            .all()
+        ]
+
+        if not slot_ids:
+            return
+
+        slot_table_name = f"VENDOR_{vendor_id}_SLOT"
+        table_exists = db.session.execute(
+            text("SELECT to_regclass(:table_name)"),
+            {"table_name": slot_table_name},
+        ).scalar()
+        if table_exists:
+            db.session.execute(
+                text(f"""
+                    DELETE FROM {slot_table_name}
+                    WHERE slot_id IN (SELECT unnest(:slot_ids))
+                """),
+                {"slot_ids": slot_ids},
+            )
+
+        Slot.query.filter(Slot.gaming_type_id == available_game_id).delete(synchronize_session=False)
 
     @staticmethod
     def _is_blank(value):
@@ -336,8 +368,15 @@ class ConsoleService:
             ).first()
 
             is_new_game = False
+            had_existing_console_mapping = False
             if available_game:
-                available_game.total_slot += 1  # ✅ Increment total slots
+                existing_mapping_count = (
+                    db.session.query(available_game_console)
+                    .filter(available_game_console.c.available_game_id == available_game.id)
+                    .count()
+                )
+                had_existing_console_mapping = existing_mapping_count > 0
+                available_game.total_slot = max(int(available_game.total_slot or 0), 0) + 1
             else:
                 available_game = AvailableGame(
                     vendor_id=vendor_id,
@@ -353,8 +392,11 @@ class ConsoleService:
             if console not in available_game.consoles:
                 available_game.consoles.append(console)
 
-            if is_new_game:
+            if is_new_game or not had_existing_console_mapping:
                 # First console of a game type: bootstrap slot templates + vendor rows from day-wise config.
+                if not is_new_game:
+                    # Re-created game type (all consoles were previously removed): clean stale slot templates first.
+                    ConsoleService._reset_game_slots(vendor_id=vendor_id, available_game_id=available_game.id)
                 ConsoleService._bootstrap_new_game_slots(
                     vendor_id=vendor_id,
                     available_game_id=available_game.id,

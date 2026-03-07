@@ -491,18 +491,49 @@ def delete_console(vendor_id, console_id):
             # Commit slot updates first
             db.session.commit()
 
+            remaining_mapping_count = (
+                db.session.query(available_game_console.c.console_id)
+                .filter(available_game_console.c.available_game_id == available_game_id)
+                .count()
+            )
+
             # Update the standard table VENDOR_{vendor_id}_SLOT
             table_name = f"VENDOR_{vendor_id}_SLOT"
             update_query = text(f"""
                 UPDATE {table_name}
-                SET available_slot = available_slot - 1,
-                    is_available = CASE WHEN available_slot - 1 > 0 THEN TRUE ELSE FALSE END
+                SET available_slot = GREATEST(COALESCE(available_slot, 0) - 1, 0),
+                    is_available = CASE
+                        WHEN GREATEST(COALESCE(available_slot, 0) - 1, 0) > 0 THEN TRUE
+                        ELSE FALSE
+                    END
                 WHERE slot_id IN (
                     SELECT id FROM slots WHERE gaming_type_id = :available_game_id
                 );
             """)
             db.session.execute(update_query, {"available_game_id": available_game_id})
             db.session.commit()
+
+            # If this was the last console for this game type, remove stale slot templates/rows
+            # so re-adding the type starts from current day-wise configuration only.
+            if remaining_mapping_count == 0:
+                stale_slot_ids = [
+                    int(row[0])
+                    for row in db.session.query(Slot.id)
+                    .filter(Slot.gaming_type_id == available_game_id)
+                    .all()
+                ]
+                if stale_slot_ids:
+                    db.session.execute(
+                        text(f"""
+                            DELETE FROM {table_name}
+                            WHERE slot_id IN (SELECT unnest(:slot_ids))
+                        """),
+                        {"slot_ids": stale_slot_ids},
+                    )
+                    Slot.query.filter(
+                        Slot.gaming_type_id == available_game_id
+                    ).delete(synchronize_session=False)
+                    db.session.commit()
 
         # ✅ Remove Console from the dynamic VENDOR_{vendor_id}_CONSOLE_AVAILABILITY table
         availability_table = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
