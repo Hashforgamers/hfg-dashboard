@@ -1225,7 +1225,40 @@ def get_landing_page_vendor(vendor_id):
 
     try:
         table_name = f"VENDOR_{vendor_id}_DASHBOARD"
+        availability_table = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
         today = datetime.utcnow().date()
+
+        # Self-heal stale current rows: only sessions with an occupied console can remain current.
+        # If no occupied availability row exists for the same console, mark as completed.
+        stale_current_rows = db.session.execute(
+            text(f"""
+                UPDATE {table_name} b
+                SET book_status = 'completed'
+                WHERE b.book_status = 'current'
+                  AND b.console_id IS NOT NULL
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM {availability_table} ca
+                      WHERE ca.vendor_id = :vendor_id
+                        AND ca.console_id = b.console_id
+                        AND COALESCE(ca.is_available, TRUE) = FALSE
+                  )
+                RETURNING b.book_id
+            """),
+            {"vendor_id": vendor_id},
+        ).fetchall()
+        if stale_current_rows:
+            healed_ids = [int(r[0]) for r in stale_current_rows if r and r[0] is not None]
+            if healed_ids:
+                db.session.execute(
+                    text("""
+                        UPDATE bookings
+                        SET status = 'completed'
+                        WHERE id = ANY(:booking_ids)
+                    """),
+                    {"booking_ids": healed_ids},
+                )
+                db.session.commit()
 
         # Vendor-scoped transaction summary in one query.
         transaction_summary = (
@@ -1268,11 +1301,16 @@ def get_landing_page_vendor(vendor_id):
                 b.book_status,
                 ag.single_slot_price,
                 d.slot_id,
+                ca.is_available AS console_is_available,
                 c.model_number AS console_name
             FROM {table_name} b
             JOIN available_games ag ON b.game_id = ag.id
             JOIN bookings d ON b.book_id = d.id
             LEFT JOIN users u ON b.user_id = u.id
+            LEFT JOIN {availability_table} ca
+              ON ca.vendor_id = :vendor_id
+             AND ca.console_id = b.console_id
+             AND ca.game_id = b.game_id
             LEFT JOIN consoles c ON c.id = b.console_id
         """)
         result = db.session.execute(sql_fetch_bookings).fetchall()
@@ -1341,9 +1379,11 @@ def get_landing_page_vendor(vendor_id):
                 
             }
             
+            is_console_occupied = bool(row.console_id is not None and row.console_is_available is False)
+
             if lifecycle_status == "upcoming":
                 upcoming_bookings.append(booking_data)
-            elif lifecycle_status == "current":
+            elif lifecycle_status == "current" and is_console_occupied:
                 current_slots.append(slot_data)
 
         # Vendor-scoped booking stats in one aggregate query.
