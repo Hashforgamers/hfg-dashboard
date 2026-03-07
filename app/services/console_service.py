@@ -9,6 +9,7 @@ from app.models.availableGame import AvailableGame, available_game_console  # âœ
 from app.models.slot import Slot
 from sqlalchemy.sql import text
 from sqlalchemy import tuple_
+from sqlalchemy.exc import ProgrammingError
 
 class ConsoleService:
     WEEKDAY_MAP = {"mon": 1, "tue": 2, "wed": 3, "thu": 4, "fri": 5, "sat": 6, "sun": 0}  # Postgres DOW
