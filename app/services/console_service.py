@@ -130,6 +130,27 @@ class ConsoleService:
             if not slot_ids:
                 continue
 
+            # Ensure existing vendor slot rows are re-opened for this schedule window.
+            # This handles resurrected game types where stale rows may exist with 0 capacity.
+            reopen_vendor_rows_sql = text(f"""
+                UPDATE {slot_table_name} v
+                SET available_slot = :available_slot,
+                    is_available = TRUE
+                WHERE v.vendor_id = :vendor_id
+                  AND v.slot_id IN (SELECT unnest(:slot_ids))
+                  AND v.date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '365 days'
+                  AND EXTRACT(DOW FROM v.date) = :target_dow;
+            """)
+            db.session.execute(
+                reopen_vendor_rows_sql,
+                {
+                    "vendor_id": vendor_id,
+                    "slot_ids": slot_ids,
+                    "available_slot": int(total_slots or 1),
+                    "target_dow": ConsoleService.WEEKDAY_MAP[day_key],
+                },
+            )
+
             insert_vendor_rows_sql = text(f"""
                 INSERT INTO {slot_table_name} (vendor_id, slot_id, date, available_slot, is_available)
                 SELECT
