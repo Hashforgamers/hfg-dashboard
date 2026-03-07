@@ -215,53 +215,45 @@ class ConsoleService:
             # ✅ flush slot updates first
             db.session.flush()
 
-            # ✅ Check if the slot exists in the VENDOR_{vendor_id}_SLOT table
+            # ✅ Ensure dynamic vendor slot rows are present and increment capacity
+            # for ALL date+slot combinations (existing + missing).
             slot_table_name = f"VENDOR_{vendor_id}_SLOT"
-
-            # First, check if the slot already exists (based on vendor_id, date, and slot_id)
-            check_existing_slots_sql = text(f"""
-                SELECT 1
-                FROM {slot_table_name} v
+            update_existing_slots_sql = text(f"""
+                UPDATE {slot_table_name} v
+                SET available_slot = COALESCE(v.available_slot, 0) + 1,
+                    is_available = TRUE
                 WHERE v.vendor_id = :vendor_id
-                AND v.date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '365 days'
-                AND v.slot_id IN (SELECT id FROM slots WHERE gaming_type_id = :available_game_id)
-                LIMIT 1;
+                  AND v.date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '365 days'
+                  AND v.slot_id IN (SELECT id FROM slots WHERE gaming_type_id = :available_game_id);
             """)
+            db.session.execute(
+                update_existing_slots_sql,
+                {"vendor_id": vendor_id, "available_game_id": available_game.id},
+            )
 
-            # Execute the query to check for existing slots
-            existing_slots = db.session.execute(check_existing_slots_sql, {"vendor_id": vendor_id, "available_game_id": available_game.id}).fetchone()
-
-            if existing_slots:
-                # ✅ If slots exist, update the existing ones
-                update_slots_sql = text(f"""
-                    UPDATE {slot_table_name} v
-                    SET available_slot = v.available_slot + 1,
-                        is_available = TRUE
+            insert_missing_slots_sql = text(f"""
+                INSERT INTO {slot_table_name} (vendor_id, date, slot_id, is_available, available_slot)
+                SELECT
+                    :vendor_id AS vendor_id,
+                    gs.date::date AS date,
+                    s.id AS slot_id,
+                    TRUE AS is_available,
+                    1 AS available_slot
+                FROM generate_series(CURRENT_DATE, CURRENT_DATE + INTERVAL '365 days', '1 day'::INTERVAL) gs
+                CROSS JOIN slots s
+                WHERE s.gaming_type_id = :available_game_id
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM {slot_table_name} v
                     WHERE v.vendor_id = :vendor_id
-                    AND v.date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '365 days'
-                    AND v.slot_id IN (SELECT id FROM slots WHERE gaming_type_id = :available_game_id);
-                """)
-                db.session.execute(update_slots_sql, {"vendor_id": vendor_id, "available_game_id": available_game.id})
-            else:
-                # ✅ If slots do not exist, insert new ones
-                insert_slots_sql = text(f"""
-                    INSERT INTO {slot_table_name} (vendor_id, date, slot_id, is_available, available_slot)
-                    SELECT
-                        :vendor_id AS vendor_id,
-                        gs.date AS date,
-                        s.id AS slot_id,
-                        TRUE AS is_available,  -- Mark slots as available
-                        1 AS available_slot   -- Set the available slot to 1 initially
-                    FROM
-                        generate_series(CURRENT_DATE, CURRENT_DATE + INTERVAL '365 days', '1 day'::INTERVAL) gs
-                    CROSS JOIN slots s
-                    WHERE
-                        s.gaming_type_id = :available_game_id
-                    AND NOT EXISTS (
-                        SELECT 1 FROM {slot_table_name} v WHERE v.date = gs.date AND v.slot_id = s.id
-                    );
-                """)
-                db.session.execute(insert_slots_sql, {"vendor_id": vendor_id, "available_game_id": available_game.id})
+                      AND v.date = gs.date::date
+                      AND v.slot_id = s.id
+                  );
+            """)
+            db.session.execute(
+                insert_missing_slots_sql,
+                {"vendor_id": vendor_id, "available_game_id": available_game.id},
+            )
 
 
             # ✅ Create Dynamic Console Availability Table
