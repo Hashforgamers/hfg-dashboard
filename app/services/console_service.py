@@ -296,14 +296,6 @@ class ConsoleService:
     @staticmethod
     def _bootstrap_new_game_slots(vendor_id, available_game_id, total_slots):
         window_end_date = ConsoleService._resolve_slot_window_end_date(vendor_id=vendor_id, fallback_days=60)
-        cloned = ConsoleService._bootstrap_new_game_from_existing_horizon(
-            vendor_id=vendor_id,
-            available_game_id=available_game_id,
-            total_slots=total_slots,
-            window_end_date=window_end_date,
-        )
-        if cloned:
-            return
 
         config_rows = db.session.execute(
             text("""
