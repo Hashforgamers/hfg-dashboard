@@ -110,7 +110,7 @@ class ConsoleService:
         return date.today() + timedelta(days=int(fallback_days))
 
     @staticmethod
-    def _load_schedule_from_vendor_hours(vendor_id):
+    def _load_schedule_from_vendor_hours(vendor_id, include_all_days=False):
         timing_row = db.session.execute(
             text("""
                 SELECT t.opening_time, t.closing_time
@@ -145,7 +145,9 @@ class ConsoleService:
             if day_key and bool(getattr(row, "is_open", False)):
                 enabled_days.add(day_key)
 
-        if not enabled_days:
+        if include_all_days:
+            enabled_days = set(ConsoleService.WEEKDAY_ORDER)
+        elif not enabled_days:
             enabled_days = set(ConsoleService.WEEKDAY_ORDER)
 
         return [
@@ -182,7 +184,121 @@ class ConsoleService:
         return blocks
 
     @staticmethod
+    def _bootstrap_new_game_from_existing_horizon(vendor_id, available_game_id, total_slots, window_end_date):
+        """
+        Prefer cloning existing vendor slot date-coverage from other console types.
+        This guarantees the new console type reaches the same max date horizon.
+        """
+        slot_table_name = f"VENDOR_{vendor_id}_SLOT"
+        table_exists = db.session.execute(
+            text("SELECT to_regclass(:table_name)"),
+            {"table_name": slot_table_name},
+        ).scalar()
+        if not table_exists:
+            return False
+
+        source_rows = db.session.execute(
+            text(f"""
+                SELECT DISTINCT v.date, s.start_time, s.end_time
+                FROM {slot_table_name} v
+                JOIN slots s ON s.id = v.slot_id
+                JOIN available_games ag ON ag.id = s.gaming_type_id
+                WHERE v.vendor_id = :vendor_id
+                  AND ag.vendor_id = :vendor_id
+                  AND s.gaming_type_id <> :available_game_id
+                  AND v.date BETWEEN CURRENT_DATE AND :window_end_date
+                ORDER BY v.date, s.start_time, s.end_time
+            """),
+            {
+                "vendor_id": vendor_id,
+                "available_game_id": available_game_id,
+                "window_end_date": window_end_date,
+            },
+        ).fetchall()
+        if not source_rows:
+            return False
+
+        blocks = sorted({
+            (ConsoleService._row_value(r, "start_time"), ConsoleService._row_value(r, "end_time"))
+            for r in source_rows
+            if ConsoleService._row_value(r, "start_time") and ConsoleService._row_value(r, "end_time")
+        })
+        if not blocks:
+            return False
+
+        existing = (
+            Slot.query
+            .filter(
+                Slot.gaming_type_id == available_game_id,
+                tuple_(Slot.start_time, Slot.end_time).in_(blocks),
+            )
+            .all()
+        )
+        slot_id_map = {(s.start_time, s.end_time): int(s.id) for s in existing}
+
+        to_create = []
+        for st, et in blocks:
+            if (st, et) in slot_id_map:
+                continue
+            to_create.append(
+                Slot(
+                    gaming_type_id=available_game_id,
+                    start_time=st,
+                    end_time=et,
+                    available_slot=int(total_slots or 1),
+                    is_available=False,
+                )
+            )
+
+        if to_create:
+            db.session.add_all(to_create)
+            db.session.flush()
+            for s in to_create:
+                slot_id_map[(s.start_time, s.end_time)] = int(s.id)
+
+        upsert_sql = text(f"""
+            INSERT INTO {slot_table_name} (vendor_id, slot_id, date, available_slot, is_available)
+            VALUES (:vendor_id, :slot_id, :date, :available_slot, TRUE)
+            ON CONFLICT (vendor_id, date, slot_id)
+            DO UPDATE SET
+                available_slot = EXCLUDED.available_slot,
+                is_available = TRUE
+        """)
+
+        batch = []
+        for row in source_rows:
+            st = ConsoleService._row_value(row, "start_time")
+            et = ConsoleService._row_value(row, "end_time")
+            slot_id = slot_id_map.get((st, et))
+            dt_val = ConsoleService._row_value(row, "date")
+            if not slot_id or not dt_val:
+                continue
+            batch.append(
+                {
+                    "vendor_id": vendor_id,
+                    "slot_id": slot_id,
+                    "date": dt_val,
+                    "available_slot": int(total_slots or 1),
+                }
+            )
+
+        if batch:
+            db.session.execute(upsert_sql, batch)
+            return True
+        return False
+
+    @staticmethod
     def _bootstrap_new_game_slots(vendor_id, available_game_id, total_slots):
+        window_end_date = ConsoleService._resolve_slot_window_end_date(vendor_id=vendor_id, fallback_days=60)
+        cloned = ConsoleService._bootstrap_new_game_from_existing_horizon(
+            vendor_id=vendor_id,
+            available_game_id=available_game_id,
+            total_slots=total_slots,
+            window_end_date=window_end_date,
+        )
+        if cloned:
+            return
+
         config_rows = db.session.execute(
             text("""
                 SELECT day, opening_time, closing_time, slot_duration
@@ -192,16 +308,37 @@ class ConsoleService:
             {"vendor_id": vendor_id},
         ).fetchall()
 
-        if not config_rows:
-            # Fallback for vendors without day-wise config:
-            # build rows from base cafe timing + enabled opening days.
-            config_rows = ConsoleService._load_schedule_from_vendor_hours(vendor_id)
+        if config_rows:
+            normalized_days = {
+                ConsoleService._normalize_day_key(ConsoleService._row_value(cfg, "day"))
+                for cfg in config_rows
+            }
+            normalized_days.discard(None)
+            if len(normalized_days) == 1:
+                # Avoid sparse "single day only" generation by expanding
+                # the same hours/duration across the full week.
+                base = config_rows[0]
+                base_open = ConsoleService._row_value(base, "opening_time")
+                base_close = ConsoleService._row_value(base, "closing_time")
+                base_duration = ConsoleService._row_value(base, "slot_duration")
+                config_rows = [
+                    {
+                        "day": day,
+                        "opening_time": base_open,
+                        "closing_time": base_close,
+                        "slot_duration": base_duration,
+                    }
+                    for day in ConsoleService.WEEKDAY_ORDER
+                ]
+        else:
+            # No existing slots and no day-wise config:
+            # create a straight daily schedule for next 2 months.
+            config_rows = ConsoleService._load_schedule_from_vendor_hours(vendor_id, include_all_days=True)
             if not config_rows:
                 return
 
         slot_table_name = f"VENDOR_{vendor_id}_SLOT"
         anchor = date.today()
-        window_end_date = ConsoleService._resolve_slot_window_end_date(vendor_id=vendor_id, fallback_days=60)
 
         for cfg in config_rows:
             day_key = ConsoleService._normalize_day_key(ConsoleService._row_value(cfg, "day"))
