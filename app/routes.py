@@ -555,6 +555,14 @@ def update_console(vendor_id):
         brand = console_details.get("brand")
         if brand is not None:
             console.brand = brand
+        console_name = console_details.get("name")
+        if console_name is None:
+            # Backward/alternate key support
+            console_name = console_details.get("modelNumber")
+        if console_name is not None:
+            clean_name = str(console_name).strip()
+            if clean_name:
+                console.model_number = clean_name
 
         # Fetch or create hardware relation.
         hardware_spec = console.hardware_specifications
