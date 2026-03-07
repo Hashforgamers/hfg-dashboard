@@ -430,6 +430,7 @@ def get_consoles(vendor_id):
                 FROM {booking_table} b
                 WHERE b.console_id = c.id
                   AND b.book_status = 'current'
+                  AND COALESCE(ca.is_available, TRUE) = FALSE
                 ORDER BY b.date DESC, b.start_time DESC
                 LIMIT 1
             ) cur ON TRUE
@@ -457,7 +458,7 @@ def get_consoles(vendor_id):
             is_pc = normalized_type == "pc"
             raw_maintenance = str(row.available_status or "").strip().lower()
             is_maintenance = raw_maintenance in {"under maintenance", "maintenance"}
-            has_live_booking = bool(row.current_booking_id)
+            has_live_booking = bool(row.current_booking_id) and (row.is_available is False)
             occupancy_state = "maintenance" if is_maintenance else ("occupied" if has_live_booking else "free")
             pending_due = float(row.pending_due or 0.0)
             pending_due = round(pending_due, 2)
@@ -1069,6 +1070,30 @@ def release_console(gameid, console_id, vendor_id):
         is_available = result.is_available
 
         if is_available:
+            # Self-heal stale dashboard linkage if console is already free but
+            # booking table still has dangling 'current' rows.
+            healed = db.session.execute(
+                text(f"""
+                    UPDATE {booking_table_name}
+                    SET book_status = 'completed'
+                    WHERE console_id = :console_id
+                      AND book_status = 'current'
+                    RETURNING book_id
+                """),
+                {"console_id": console_id}
+            ).fetchall()
+
+            if healed:
+                healed_ids = [int(r[0]) for r in healed if r and r[0] is not None]
+                if healed_ids:
+                    db.session.execute(
+                        text("UPDATE bookings SET status = 'completed' WHERE id = ANY(:booking_ids)"),
+                        {"booking_ids": healed_ids}
+                    )
+                    db.session.commit()
+                    _invalidate_vendor_caches(int(vendor_id))
+                    return jsonify({"message": "Console already free; stale session link cleaned."}), 200
+
             return jsonify({"message": "Console is already available"}), 200
 
         # ✅ Update the status to TRUE (available)
