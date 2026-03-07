@@ -21,15 +21,21 @@ class ConsoleService:
         if console_type not in {"pc", "ps5", "xbox", "vr"}:
             return "Unsupported consoleType. Expected one of: pc, ps5, xbox, vr."
 
+        console_name = console_data.get("modelNumber")
+        if ConsoleService._is_blank(console_name):
+            console_name = console_data.get("name")
+
         required_common = {
             "consoleNumber": console_data.get("consoleNumber"),
-            "modelNumber": console_data.get("modelNumber"),
+            "name": console_name,
             "serialNumber": console_data.get("serialNumber"),
             "brand": console_data.get("brand"),
             "releaseDate": console_data.get("releaseDate"),
         }
         for field, value in required_common.items():
             if ConsoleService._is_blank(value):
+                if field == "name":
+                    return "Missing required field: consoleDetails.name (or consoleDetails.modelNumber)"
                 return f"Missing required field: consoleDetails.{field}"
 
         if console_type == "pc":
@@ -114,10 +120,14 @@ class ConsoleService:
                 return {"error": validation_error}, 400
 
             # ✅ Create Console Entry
+            console_name = console_data.get("modelNumber")
+            if ConsoleService._is_blank(console_name):
+                console_name = console_data.get("name")
+
             console = Console(
                 vendor_id=vendor_id,
                 console_number=console_data["consoleNumber"],
-                model_number=console_data["modelNumber"],
+                model_number=console_name,
                 serial_number=console_data["serialNumber"],
                 brand=console_data["brand"],
                 console_type=console_data["consoleType"],
