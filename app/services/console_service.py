@@ -12,6 +12,30 @@ from sqlalchemy.exc import ProgrammingError
 
 class ConsoleService:
     @staticmethod
+    def normalize_hardware_spec(console_type, hardware_data):
+        normalized_type = str(console_type or "").strip().lower()
+        source = hardware_data or {}
+        if normalized_type == "pc":
+            return {
+                "processorType": source.get("processorType"),
+                "graphicsCard": source.get("graphicsCard"),
+                "ramSize": source.get("ramSize"),
+                "storageCapacity": source.get("storageCapacity"),
+                "connectivity": source.get("connectivity"),
+                "consoleModelType": source.get("consoleModelType") or "Custom Build",
+            }
+
+        # Non-PC consoles should not store PC-only hardware fields.
+        return {
+            "processorType": None,
+            "graphicsCard": None,
+            "ramSize": None,
+            "storageCapacity": source.get("storageCapacity"),
+            "connectivity": None,
+            "consoleModelType": source.get("consoleModelType"),
+        }
+
+    @staticmethod
     def add_console(data):
         try:
             vendor_id = (
@@ -56,15 +80,20 @@ class ConsoleService:
             db.session.add(console)
             db.session.flush()  # ✅ Get console.id before commit
 
+            normalized_hardware = ConsoleService.normalize_hardware_spec(
+                console_data.get("consoleType"),
+                hardware_data,
+            )
+
             # ✅ Create Hardware Specifications
             hardware_spec = HardwareSpecification(
                 console_id=console.id,
-                processor_type=hardware_data["processorType"],
-                graphics_card=hardware_data["graphicsCard"],
-                ram_size=hardware_data["ramSize"],
-                storage_capacity=hardware_data["storageCapacity"],
-                connectivity=hardware_data["connectivity"],
-                console_model_type=hardware_data["consoleModelType"]
+                processor_type=normalized_hardware.get("processorType"),
+                graphics_card=normalized_hardware.get("graphicsCard"),
+                ram_size=normalized_hardware.get("ramSize"),
+                storage_capacity=normalized_hardware.get("storageCapacity"),
+                connectivity=normalized_hardware.get("connectivity"),
+                console_model_type=normalized_hardware.get("consoleModelType"),
             )
             db.session.add(hardware_spec)
 
@@ -229,6 +258,18 @@ class ConsoleService:
                 for game in getattr(console, "available_games", [])
             ]
 
+            normalized_hardware = ConsoleService.normalize_hardware_spec(
+                console.console_type,
+                {
+                    "processorType": hardware.processor_type if hardware else None,
+                    "graphicsCard": hardware.graphics_card if hardware else None,
+                    "ramSize": hardware.ram_size if hardware else None,
+                    "storageCapacity": hardware.storage_capacity if hardware else None,
+                    "connectivity": hardware.connectivity if hardware else None,
+                    "consoleModelType": hardware.console_model_type if hardware else None,
+                },
+            )
+
             result = {
                 "console": {
                     "id": console.id,
@@ -241,12 +282,12 @@ class ConsoleService:
                     "description": console.description,
                 },
                 "hardwareSpecification": {
-                    "processorType": hardware.processor_type if hardware else None,
-                    "graphicsCard": hardware.graphics_card if hardware else None,
-                    "ramSize": hardware.ram_size if hardware else None,
-                    "storageCapacity": hardware.storage_capacity if hardware else None,
-                    "connectivity": hardware.connectivity if hardware else None,
-                    "consoleModelType": hardware.console_model_type if hardware else None,
+                    "processorType": normalized_hardware.get("processorType"),
+                    "graphicsCard": normalized_hardware.get("graphicsCard"),
+                    "ramSize": normalized_hardware.get("ramSize"),
+                    "storageCapacity": normalized_hardware.get("storageCapacity"),
+                    "connectivity": normalized_hardware.get("connectivity"),
+                    "consoleModelType": normalized_hardware.get("consoleModelType"),
                 },
                 "maintenanceStatus": {
                     "availableStatus": maintenance.available_status if maintenance else None,

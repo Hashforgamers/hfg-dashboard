@@ -412,21 +412,25 @@ def get_consoles(vendor_id):
         """)
 
         rows = db.session.execute(sql_query, {"vendor_id": vendor_id}).fetchall()
-        payload = [{
-            "id": row.id,
-            "type": str(row.console_type or "pc").strip().lower(),
-            "name": row.model_number,
-            "number": row.console_number,
-            "icon": "Monitor" if str(row.console_type or "").strip().lower() == "pc" else "Tv" if str(row.console_type or "").strip().lower() == "ps5" else "Gamepad",
-            "brand": row.brand,
-            "processor": row.processor_type if row.processor_type else "N/A",
-            "gpu": row.graphics_card if row.graphics_card else "N/A",
-            "ram": row.ram_size if row.ram_size else "N/A",
-            "storage": row.storage_capacity if row.storage_capacity else "N/A",
-            "status": row.is_available,
-            "statusLabel": row.available_status if row.available_status else ("Available" if row.is_available else "In Use"),
-            "consoleModelType": row.console_model_type if row.console_model_type else "N/A",
-        } for row in rows]
+        payload = []
+        for row in rows:
+            normalized_type = str(row.console_type or "pc").strip().lower()
+            is_pc = normalized_type == "pc"
+            payload.append({
+                "id": row.id,
+                "type": normalized_type,
+                "name": row.model_number,
+                "number": row.console_number,
+                "icon": "Monitor" if normalized_type == "pc" else "Tv" if normalized_type == "ps5" else "Gamepad",
+                "brand": row.brand,
+                "processor": row.processor_type if is_pc and row.processor_type else None,
+                "gpu": row.graphics_card if is_pc and row.graphics_card else None,
+                "ram": row.ram_size if is_pc and row.ram_size else None,
+                "storage": row.storage_capacity if row.storage_capacity else None,
+                "status": row.is_available,
+                "statusLabel": row.available_status if row.available_status else ("Available" if row.is_available else "In Use"),
+                "consoleModelType": row.console_model_type if row.console_model_type else None,
+            })
 
         with _vendor_consoles_cache_lock:
             _vendor_consoles_cache[cache_key] = {
@@ -570,22 +574,23 @@ def update_console(vendor_id):
             hardware_spec = HardwareSpecification(console_id=console.id)
             db.session.add(hardware_spec)
 
-        processor = console_details.get("processor")
-        gpu = console_details.get("gpu")
-        ram = console_details.get("ram")
-        storage = console_details.get("storage")
-        console_model_type = console_details.get("consoleModelType")
-
-        if processor is not None:
-            hardware_spec.processor_type = processor
-        if gpu is not None:
-            hardware_spec.graphics_card = gpu
-        if ram is not None:
-            hardware_spec.ram_size = ram
-        if storage is not None:
-            hardware_spec.storage_capacity = storage
-        if console_model_type is not None:
-            hardware_spec.console_model_type = console_model_type
+        normalized_hw = ConsoleService.normalize_hardware_spec(
+            console.console_type,
+            {
+                "processorType": console_details.get("processor"),
+                "graphicsCard": console_details.get("gpu"),
+                "ramSize": console_details.get("ram"),
+                "storageCapacity": console_details.get("storage"),
+                "connectivity": console_details.get("connectivity"),
+                "consoleModelType": console_details.get("consoleModelType"),
+            },
+        )
+        hardware_spec.processor_type = normalized_hw.get("processorType")
+        hardware_spec.graphics_card = normalized_hw.get("graphicsCard")
+        hardware_spec.ram_size = normalized_hw.get("ramSize")
+        hardware_spec.storage_capacity = normalized_hw.get("storageCapacity")
+        hardware_spec.connectivity = normalized_hw.get("connectivity")
+        hardware_spec.console_model_type = normalized_hw.get("consoleModelType")
 
         maintenance = console.maintenance_status
         status_value = console_details.get("status")
