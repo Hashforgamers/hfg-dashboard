@@ -398,29 +398,33 @@ def get_consoles(vendor_id):
                 hs.ram_size,
                 hs.storage_capacity,
                 hs.console_model_type,
+                ms.available_status,
                 ca.is_available
             FROM available_games ag
             JOIN available_game_console agc ON agc.available_game_id = ag.id
             JOIN consoles c ON c.id = agc.console_id
             LEFT JOIN hardware_specifications hs ON hs.console_id = c.id
+            LEFT JOIN maintenance_status ms ON ms.console_id = c.id
             LEFT JOIN {availability_table} ca ON ca.console_id = c.id AND ca.vendor_id = :vendor_id
             WHERE ag.vendor_id = :vendor_id
+              AND c.vendor_id = :vendor_id
             ORDER BY c.id
         """)
 
         rows = db.session.execute(sql_query, {"vendor_id": vendor_id}).fetchall()
         payload = [{
             "id": row.id,
-            "type": row.console_type,
+            "type": str(row.console_type or "pc").strip().lower(),
             "name": row.model_number,
             "number": row.console_number,
-            "icon": "Monitor" if "PC" in row.console_type else "Tv" if "PS" in row.console_type else "Gamepad",
+            "icon": "Monitor" if str(row.console_type or "").strip().lower() == "pc" else "Tv" if str(row.console_type or "").strip().lower() == "ps5" else "Gamepad",
             "brand": row.brand,
             "processor": row.processor_type if row.processor_type else "N/A",
             "gpu": row.graphics_card if row.graphics_card else "N/A",
             "ram": row.ram_size if row.ram_size else "N/A",
             "storage": row.storage_capacity if row.storage_capacity else "N/A",
             "status": row.is_available,
+            "statusLabel": row.available_status if row.available_status else ("Available" if row.is_available else "In Use"),
             "consoleModelType": row.console_model_type if row.console_model_type else "N/A",
         } for row in rows]
 
@@ -577,11 +581,23 @@ def update_console(vendor_id):
 
         maintenance = console.maintenance_status
         status_value = console_details.get("status")
-        if maintenance and status_value is not None:
+        if status_value is not None:
             console_table_name = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
-            maintenance.available_status = status_value
             normalized_status = str(status_value).strip().lower()
-            target_is_available = normalized_status == "available"
+            if isinstance(status_value, bool):
+                target_is_available = bool(status_value)
+                normalized_status = "available" if target_is_available else "in use"
+            else:
+                target_is_available = normalized_status in {"available", "true", "1", "yes"}
+
+            if maintenance:
+                if normalized_status in {"under maintenance", "maintenance"}:
+                    maintenance.available_status = "Under Maintenance"
+                    target_is_available = False
+                elif target_is_available:
+                    maintenance.available_status = "Available"
+                else:
+                    maintenance.available_status = "In Use"
 
             sql_update_status = text(f"""
                 UPDATE {console_table_name}
