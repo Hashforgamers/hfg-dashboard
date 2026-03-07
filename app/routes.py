@@ -536,19 +536,23 @@ def delete_console(vendor_id, console_id):
                 else:
                     deletable_slot_ids = []
 
-                if deletable_slot_ids:
+                # Always clear vendor date-slot rows for this game type when count reaches zero.
+                # (Safe: dynamic table has no FK to bookings.)
+                if stale_slot_ids:
                     db.session.execute(
                         text(f"""
                             DELETE FROM {table_name}
                             WHERE slot_id IN (SELECT unnest(:slot_ids))
                         """),
-                        {"slot_ids": deletable_slot_ids},
+                        {"slot_ids": stale_slot_ids},
                     )
+
+                if deletable_slot_ids:
                     Slot.query.filter(
                         Slot.gaming_type_id == available_game_id,
                         Slot.id.in_(deletable_slot_ids),
                     ).delete(synchronize_session=False)
-                    db.session.commit()
+                db.session.commit()
 
         # ✅ Remove Console from the dynamic VENDOR_{vendor_id}_CONSOLE_AVAILABILITY table
         availability_table = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
