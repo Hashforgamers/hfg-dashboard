@@ -523,15 +523,30 @@ def delete_console(vendor_id, console_id):
                     .all()
                 ]
                 if stale_slot_ids:
+                    referenced_slot_ids = {
+                        int(row[0])
+                        for row in db.session.query(Booking.slot_id)
+                        .filter(Booking.slot_id.in_(stale_slot_ids))
+                        .distinct()
+                        .all()
+                    }
+                    deletable_slot_ids = [
+                        sid for sid in stale_slot_ids if sid not in referenced_slot_ids
+                    ]
+                else:
+                    deletable_slot_ids = []
+
+                if deletable_slot_ids:
                     db.session.execute(
                         text(f"""
                             DELETE FROM {table_name}
                             WHERE slot_id IN (SELECT unnest(:slot_ids))
                         """),
-                        {"slot_ids": stale_slot_ids},
+                        {"slot_ids": deletable_slot_ids},
                     )
                     Slot.query.filter(
-                        Slot.gaming_type_id == available_game_id
+                        Slot.gaming_type_id == available_game_id,
+                        Slot.id.in_(deletable_slot_ids),
                     ).delete(synchronize_session=False)
                     db.session.commit()
 

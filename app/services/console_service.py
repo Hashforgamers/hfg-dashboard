@@ -7,6 +7,7 @@ from app.models.priceAndCost import PriceAndCost
 from app.models.additionalDetails import AdditionalDetails
 from app.models.availableGame import AvailableGame, available_game_console  # ✅ Import association table
 from app.models.slot import Slot
+from app.models.booking import Booking
 from sqlalchemy.sql import text
 from sqlalchemy import tuple_
 from sqlalchemy.exc import ProgrammingError
@@ -175,6 +176,17 @@ class ConsoleService:
         if not slot_ids:
             return
 
+        referenced_slot_ids = {
+            int(row[0])
+            for row in db.session.query(Booking.slot_id)
+            .filter(Booking.slot_id.in_(slot_ids))
+            .distinct()
+            .all()
+        }
+        deletable_slot_ids = [sid for sid in slot_ids if sid not in referenced_slot_ids]
+        if not deletable_slot_ids:
+            return
+
         slot_table_name = f"VENDOR_{vendor_id}_SLOT"
         table_exists = db.session.execute(
             text("SELECT to_regclass(:table_name)"),
@@ -186,10 +198,13 @@ class ConsoleService:
                     DELETE FROM {slot_table_name}
                     WHERE slot_id IN (SELECT unnest(:slot_ids))
                 """),
-                {"slot_ids": slot_ids},
+                {"slot_ids": deletable_slot_ids},
             )
 
-        Slot.query.filter(Slot.gaming_type_id == available_game_id).delete(synchronize_session=False)
+        Slot.query.filter(
+            Slot.gaming_type_id == available_game_id,
+            Slot.id.in_(deletable_slot_ids),
+        ).delete(synchronize_session=False)
 
     @staticmethod
     def _is_blank(value):
