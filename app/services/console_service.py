@@ -82,6 +82,34 @@ class ConsoleService:
         return int(Counter(durations).most_common(1)[0][0])
 
     @staticmethod
+    def _resolve_slot_window_end_date(vendor_id, fallback_days=60):
+        """
+        Align new slot generation to the vendor's existing slot horizon.
+        - If vendor already has slots in VENDOR_<id>_SLOT, use its MAX(date).
+        - If no rows exist yet, seed next `fallback_days` days (default 2 months).
+        """
+        slot_table_name = f"VENDOR_{vendor_id}_SLOT"
+        table_exists = db.session.execute(
+            text("SELECT to_regclass(:table_name)"),
+            {"table_name": slot_table_name},
+        ).scalar()
+        if not table_exists:
+            return date.today() + timedelta(days=int(fallback_days))
+
+        max_row = db.session.execute(
+            text(f"""
+                SELECT MAX(date) AS max_date
+                FROM {slot_table_name}
+                WHERE vendor_id = :vendor_id
+            """),
+            {"vendor_id": vendor_id},
+        ).fetchone()
+        max_date = ConsoleService._row_value(max_row, "max_date") if max_row else None
+        if max_date and max_date >= date.today():
+            return max_date
+        return date.today() + timedelta(days=int(fallback_days))
+
+    @staticmethod
     def _load_schedule_from_vendor_hours(vendor_id):
         timing_row = db.session.execute(
             text("""
@@ -173,6 +201,7 @@ class ConsoleService:
 
         slot_table_name = f"VENDOR_{vendor_id}_SLOT"
         anchor = date.today()
+        window_end_date = ConsoleService._resolve_slot_window_end_date(vendor_id=vendor_id, fallback_days=60)
 
         for cfg in config_rows:
             day_key = ConsoleService._normalize_day_key(ConsoleService._row_value(cfg, "day"))
@@ -237,7 +266,7 @@ class ConsoleService:
                     is_available = TRUE
                 WHERE v.vendor_id = :vendor_id
                   AND v.slot_id IN (SELECT unnest(:slot_ids))
-                  AND v.date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '365 days'
+                  AND v.date BETWEEN CURRENT_DATE AND :window_end_date
                   AND EXTRACT(DOW FROM v.date) = :target_dow;
             """)
             db.session.execute(
@@ -247,6 +276,7 @@ class ConsoleService:
                     "slot_ids": slot_ids,
                     "available_slot": int(total_slots or 1),
                     "target_dow": ConsoleService.WEEKDAY_MAP[day_key],
+                    "window_end_date": window_end_date,
                 },
             )
 
@@ -259,7 +289,7 @@ class ConsoleService:
                     :available_slot,
                     TRUE
                 FROM (SELECT unnest(:slot_ids) AS slot_id) s_id
-                CROSS JOIN generate_series(CURRENT_DATE, CURRENT_DATE + INTERVAL '365 days', '1 day'::INTERVAL) gs
+                CROSS JOIN generate_series(CURRENT_DATE, :window_end_date::date, '1 day'::INTERVAL) gs
                 WHERE EXTRACT(DOW FROM gs.date) = :target_dow
                   AND NOT EXISTS (
                       SELECT 1
@@ -276,6 +306,7 @@ class ConsoleService:
                     "slot_ids": slot_ids,
                     "available_slot": int(total_slots or 1),
                     "target_dow": ConsoleService.WEEKDAY_MAP[day_key],
+                    "window_end_date": window_end_date,
                 },
             )
 
@@ -552,17 +583,22 @@ class ConsoleService:
                 db.session.flush()
 
                 slot_table_name = f"VENDOR_{vendor_id}_SLOT"
+                window_end_date = ConsoleService._resolve_slot_window_end_date(vendor_id=vendor_id, fallback_days=60)
                 update_existing_slots_sql = text(f"""
                     UPDATE {slot_table_name} v
                     SET available_slot = COALESCE(v.available_slot, 0) + 1,
                         is_available = TRUE
                     WHERE v.vendor_id = :vendor_id
-                      AND v.date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '365 days'
+                      AND v.date BETWEEN CURRENT_DATE AND :window_end_date
                       AND v.slot_id IN (SELECT id FROM slots WHERE gaming_type_id = :available_game_id);
                 """)
                 db.session.execute(
                     update_existing_slots_sql,
-                    {"vendor_id": vendor_id, "available_game_id": available_game.id},
+                    {
+                        "vendor_id": vendor_id,
+                        "available_game_id": available_game.id,
+                        "window_end_date": window_end_date,
+                    },
                 )
 
                 insert_missing_slots_sql = text(f"""
@@ -573,7 +609,7 @@ class ConsoleService:
                         s.id AS slot_id,
                         TRUE AS is_available,
                         1 AS available_slot
-                    FROM generate_series(CURRENT_DATE, CURRENT_DATE + INTERVAL '365 days', '1 day'::INTERVAL) gs
+                    FROM generate_series(CURRENT_DATE, :window_end_date::date, '1 day'::INTERVAL) gs
                     CROSS JOIN slots s
                     WHERE s.gaming_type_id = :available_game_id
                       AND NOT EXISTS (
@@ -586,7 +622,11 @@ class ConsoleService:
                 """)
                 db.session.execute(
                     insert_missing_slots_sql,
-                    {"vendor_id": vendor_id, "available_game_id": available_game.id},
+                    {
+                        "vendor_id": vendor_id,
+                        "available_game_id": available_game.id,
+                        "window_end_date": window_end_date,
+                    },
                 )
 
 
