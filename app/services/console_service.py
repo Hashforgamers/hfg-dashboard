@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, date, time as dtime
+from collections import Counter
 from app.extension.extensions import db
 from app.models.console import Console
 from app.models.hardwareSpecification import HardwareSpecification
@@ -14,6 +15,7 @@ from sqlalchemy.exc import ProgrammingError
 
 class ConsoleService:
     WEEKDAY_MAP = {"mon": 1, "tue": 2, "wed": 3, "thu": 4, "fri": 5, "sat": 6, "sun": 0}  # Postgres DOW
+    WEEKDAY_ORDER = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 
     @staticmethod
     def _normalize_day_key(day_value):
@@ -22,6 +24,17 @@ class ConsoleService:
             return raw
         if len(raw) >= 3 and raw[:3] in ConsoleService.WEEKDAY_MAP:
             return raw[:3]
+        return None
+
+    @staticmethod
+    def _row_value(row, key):
+        if hasattr(row, key):
+            return getattr(row, key)
+        if isinstance(row, dict):
+            return row.get(key)
+        mapping = getattr(row, "_mapping", None)
+        if mapping is not None:
+            return mapping.get(key)
         return None
 
     @staticmethod
@@ -35,6 +48,88 @@ class ConsoleService:
             except ValueError:
                 continue
         return None
+
+    @staticmethod
+    def _infer_slot_duration_minutes(vendor_id, default_duration=30):
+        rows = db.session.execute(
+            text("""
+                SELECT s.start_time, s.end_time
+                FROM slots s
+                JOIN available_games ag ON ag.id = s.gaming_type_id
+                WHERE ag.vendor_id = :vendor_id
+            """),
+            {"vendor_id": vendor_id},
+        ).fetchall()
+
+        durations = []
+        today = date.today()
+        for row in rows:
+            st = getattr(row, "start_time", None)
+            et = getattr(row, "end_time", None)
+            if not st or not et:
+                continue
+            start_dt = datetime.combine(today, st)
+            end_dt = datetime.combine(today, et)
+            if end_dt <= start_dt:
+                end_dt += timedelta(days=1)
+            minutes = int((end_dt - start_dt).total_seconds() // 60)
+            if 15 <= minutes <= 240:
+                durations.append(minutes)
+
+        if not durations:
+            return int(default_duration)
+
+        return int(Counter(durations).most_common(1)[0][0])
+
+    @staticmethod
+    def _load_schedule_from_vendor_hours(vendor_id):
+        timing_row = db.session.execute(
+            text("""
+                SELECT t.opening_time, t.closing_time
+                FROM vendors v
+                JOIN timing t ON t.id = v.timing_id
+                WHERE v.id = :vendor_id
+                LIMIT 1
+            """),
+            {"vendor_id": vendor_id},
+        ).fetchone()
+        if not timing_row:
+            return []
+
+        opening_time = getattr(timing_row, "opening_time", None)
+        closing_time = getattr(timing_row, "closing_time", None)
+        if not opening_time or not closing_time:
+            return []
+
+        duration = ConsoleService._infer_slot_duration_minutes(vendor_id, default_duration=30)
+        opening_days = db.session.execute(
+            text("""
+                SELECT day, is_open
+                FROM opening_days
+                WHERE vendor_id = :vendor_id
+            """),
+            {"vendor_id": vendor_id},
+        ).fetchall()
+
+        enabled_days = set()
+        for row in opening_days:
+            day_key = ConsoleService._normalize_day_key(getattr(row, "day", None))
+            if day_key and bool(getattr(row, "is_open", False)):
+                enabled_days.add(day_key)
+
+        if not enabled_days:
+            enabled_days = set(ConsoleService.WEEKDAY_ORDER)
+
+        return [
+            {
+                "day": day,
+                "opening_time": opening_time,
+                "closing_time": closing_time,
+                "slot_duration": duration,
+            }
+            for day in ConsoleService.WEEKDAY_ORDER
+            if day in enabled_days
+        ]
 
     @staticmethod
     def _generate_blocks(anchor_day, start_time, end_time, slot_duration):
@@ -70,25 +165,29 @@ class ConsoleService:
         ).fetchall()
 
         if not config_rows:
-            return
+            # Fallback for vendors without day-wise config:
+            # build rows from base cafe timing + enabled opening days.
+            config_rows = ConsoleService._load_schedule_from_vendor_hours(vendor_id)
+            if not config_rows:
+                return
 
         slot_table_name = f"VENDOR_{vendor_id}_SLOT"
         anchor = date.today()
 
         for cfg in config_rows:
-            day_key = ConsoleService._normalize_day_key(cfg.day)
+            day_key = ConsoleService._normalize_day_key(ConsoleService._row_value(cfg, "day"))
             if not day_key:
                 continue
 
             try:
-                duration = int(cfg.slot_duration or 0)
+                duration = int(ConsoleService._row_value(cfg, "slot_duration") or 0)
             except (TypeError, ValueError):
                 continue
             if duration < 15 or duration > 240:
                 continue
 
-            open_t = ConsoleService._parse_time_flexible(cfg.opening_time)
-            close_t = ConsoleService._parse_time_flexible(cfg.closing_time)
+            open_t = ConsoleService._parse_time_flexible(ConsoleService._row_value(cfg, "opening_time"))
+            close_t = ConsoleService._parse_time_flexible(ConsoleService._row_value(cfg, "closing_time"))
             if not open_t or not close_t:
                 continue
 
