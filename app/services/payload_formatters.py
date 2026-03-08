@@ -1,5 +1,6 @@
 # app/services/payload_formatters.py
 from typing import Any, Dict, Optional
+import hashlib
 
 def _to_time_str(val: Any) -> str:
     try:
@@ -18,6 +19,12 @@ def format_current_slot_item(*, row: Dict[str, Any]) -> Dict[str, Any]:
     start_time = row["start_time"]
     end_time = row["end_time"]
     date_val = row.get("date")
+    raw = f"{row.get('book_id')}|{date_val}|{start_time}|{end_time}"
+    session_identifier = f"sess-{row.get('book_id')}-{hashlib.sha1(raw.encode('utf-8')).hexdigest()[:10]}"
+
+    console_name = row.get("console_name")
+    if console_name is not None:
+        console_name = str(console_name).strip() or None
 
     return {
         "slotId": row["slot_id"],
@@ -25,13 +32,16 @@ def format_current_slot_item(*, row: Dict[str, Any]) -> Dict[str, Any]:
         "startTime": _to_time_str(start_time),
         "endTime": _to_time_str(end_time),
         "status": "Booked" if row.get("status") != "pending_verified" else "Available",
-        "consoleType": f"HASH{row['console_id']}" if row.get("console_id") is not None else None,
+        "consoleType": console_name or (f"HASH{row['console_id']}" if row.get("console_id") is not None else None),
         "consoleNumber": str(row["console_id"]) if row.get("console_id") is not None else None,
         "username": row.get("username"),
         "userId": row.get("user_id"),
         "game_id": row.get("game_id"),
         "date": _to_date_str(date_val),  # ensure string
         "slot_price": row.get("single_slot_price"),
+        "lifecycleStatus": "current",
+        "lifecycleStep": 2,
+        "sessionIdentifier": session_identifier,
     }
 
 

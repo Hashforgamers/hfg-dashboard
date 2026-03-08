@@ -3,6 +3,7 @@ from datetime import datetime,timedelta
 import re
 import time
 import threading
+import hashlib
 from .models.transaction import Transaction
 from app.extension.extensions import db
 from sqlalchemy import cast, Date, text, func
@@ -46,6 +47,7 @@ from collections import Counter
 
 from datetime import datetime, timedelta, date
 from app.services.websocket_service import socketio
+from zoneinfo import ZoneInfo
 
 from app.models.vendor import Vendor  # adjust import as per your structure
 from app.models.uploadedImage import Image
@@ -65,6 +67,7 @@ STATE_CODE_REGEX = re.compile(r"^[0-9A-Z]{2}$")
 LANDING_PAGE_CACHE_TTL_SEC = 5
 _landing_page_cache = {}
 _landing_page_cache_lock = threading.Lock()
+LANDING_HISTORY_DAYS = 1
 CONSOLES_CACHE_TTL_SEC = 10
 _vendor_consoles_cache = {}
 _vendor_consoles_cache_lock = threading.Lock()
@@ -78,6 +81,80 @@ def _invalidate_vendor_caches(vendor_id: int):
         _vendor_consoles_cache.pop(key, None)
 
 dashboard_service = Blueprint("dashboard_service", __name__)
+IST = ZoneInfo("Asia/Kolkata")
+LIFECYCLE_ORDER = {
+    "upcoming": 1,
+    "current": 2,
+    "completed": 3,
+    "discarded": 3,
+    "cancelled": 3,
+    "canceled": 3,
+    "rejected": 3,
+}
+
+
+def _booking_start_eligibility(slot_date, start_time, end_time):
+    """
+    Rules:
+    - Booking date must be today (IST)
+    - Current IST time must be between start_time and end_time (inclusive)
+    """
+    now_ist = datetime.now(IST).replace(tzinfo=None)
+    if not slot_date or not start_time or not end_time:
+        return False, "Booking schedule is incomplete."
+
+    slot_day = slot_date if isinstance(slot_date, date) else None
+    if slot_day != now_ist.date():
+        return False, "Session can only be started on its booking date."
+
+    start_dt = datetime.combine(slot_day, start_time)
+    end_dt = datetime.combine(slot_day, end_time)
+    if end_dt <= start_dt:
+        end_dt = end_dt + timedelta(days=1)
+
+    if now_ist < start_dt:
+        return False, "Session can be started only when slot time begins."
+    if now_ist > end_dt:
+        return False, "Slot end time has passed. Cannot start session."
+    return True, ""
+
+
+def _build_session_identifier(booking_id, slot_date, start_time, end_time):
+    raw = f"{booking_id}|{slot_date}|{start_time}|{end_time}"
+    digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:10]
+    return f"sess-{booking_id}-{digest}"
+
+
+def _normalize_lifecycle(book_status: str, row_date, start_time=None, end_time=None):
+    """
+    Keep lifecycle monotonic for API output:
+    - future date can never be current/completed
+    - past date can never be upcoming/current
+    """
+    status = str(book_status or "upcoming").strip().lower()
+    if status not in LIFECYCLE_ORDER:
+        status = "upcoming"
+    today_ist = datetime.now(IST).date()
+    if isinstance(row_date, date) and row_date > today_ist:
+        return "upcoming"
+    if isinstance(row_date, date) and row_date < today_ist:
+        return "completed"
+    # For today's rows, trust persisted status unless slot end has already passed.
+    # This prevents stale "upcoming" rows from showing after their end time.
+    if (
+        isinstance(row_date, date)
+        and row_date == today_ist
+        and start_time
+        and end_time
+    ):
+        now_ist = datetime.now(IST).replace(tzinfo=None)
+        start_dt = datetime.combine(row_date, start_time)
+        end_dt = datetime.combine(row_date, end_time)
+        if end_dt <= start_dt:
+            end_dt = end_dt + timedelta(days=1)
+        if now_ist > end_dt:
+            return "completed"
+    return status
 
 @dashboard_service.route('/transactionReport/<int:vendor_id>/<string:to_date>/<string:from_date>', methods=['GET'])
 def get_transaction_report(to_date, from_date, vendor_id):
@@ -333,6 +410,7 @@ def get_consoles(vendor_id):
 
     try:
         availability_table = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
+        booking_table = f"VENDOR_{vendor_id}_DASHBOARD"
         sql_query = text(f"""
             SELECT DISTINCT ON (c.id)
                 c.id,
@@ -345,31 +423,84 @@ def get_consoles(vendor_id):
                 hs.ram_size,
                 hs.storage_capacity,
                 hs.console_model_type,
-                ca.is_available
+                ms.available_status,
+                ca.is_available,
+                ca.game_id,
+                cur.book_id AS current_booking_id,
+                cur.user_id AS current_user_id,
+                cur.username AS current_username,
+                cur.start_time AS current_start_time,
+                cur.end_time AS current_end_time,
+                cur.date AS current_date,
+                due.pending_due
             FROM available_games ag
             JOIN available_game_console agc ON agc.available_game_id = ag.id
             JOIN consoles c ON c.id = agc.console_id
             LEFT JOIN hardware_specifications hs ON hs.console_id = c.id
+            LEFT JOIN maintenance_status ms ON ms.console_id = c.id
             LEFT JOIN {availability_table} ca ON ca.console_id = c.id AND ca.vendor_id = :vendor_id
+            LEFT JOIN LATERAL (
+                SELECT b.book_id, b.user_id, b.username, b.start_time, b.end_time, b.date
+                FROM {booking_table} b
+                WHERE b.console_id = c.id
+                  AND b.book_status = 'current'
+                  AND COALESCE(ca.is_available, TRUE) = FALSE
+                ORDER BY b.date DESC, b.start_time DESC
+                LIMIT 1
+            ) cur ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT COALESCE(SUM(
+                    CASE
+                        WHEN t.total_with_tax IS NOT NULL AND t.total_with_tax > 0 THEN t.total_with_tax
+                        ELSE t.amount
+                    END
+                ), 0.0) AS pending_due
+                FROM transactions t
+                WHERE t.booking_id = cur.book_id
+                  AND t.vendor_id = :vendor_id
+                  AND t.settlement_status = 'pending'
+            ) due ON TRUE
             WHERE ag.vendor_id = :vendor_id
+              AND c.vendor_id = :vendor_id
             ORDER BY c.id
         """)
 
         rows = db.session.execute(sql_query, {"vendor_id": vendor_id}).fetchall()
-        payload = [{
-            "id": row.id,
-            "type": row.console_type,
-            "name": row.model_number,
-            "number": row.console_number,
-            "icon": "Monitor" if "PC" in row.console_type else "Tv" if "PS" in row.console_type else "Gamepad",
-            "brand": row.brand,
-            "processor": row.processor_type if row.processor_type else "N/A",
-            "gpu": row.graphics_card if row.graphics_card else "N/A",
-            "ram": row.ram_size if row.ram_size else "N/A",
-            "storage": row.storage_capacity if row.storage_capacity else "N/A",
-            "status": row.is_available,
-            "consoleModelType": row.console_model_type if row.console_model_type else "N/A",
-        } for row in rows]
+        payload = []
+        for row in rows:
+            normalized_type = str(row.console_type or "pc").strip().lower()
+            is_pc = normalized_type == "pc"
+            raw_maintenance = str(row.available_status or "").strip().lower()
+            is_maintenance = raw_maintenance in {"under maintenance", "maintenance"}
+            has_live_booking = bool(row.current_booking_id) and (row.is_available is False)
+            occupancy_state = "maintenance" if is_maintenance else ("occupied" if has_live_booking else "free")
+            pending_due = float(row.pending_due or 0.0)
+            pending_due = round(pending_due, 2)
+            payload.append({
+                "id": row.id,
+                "type": normalized_type,
+                "name": row.model_number,
+                "number": row.console_number,
+                "icon": "Monitor" if normalized_type == "pc" else "Tv" if normalized_type == "ps5" else "Gamepad",
+                "brand": row.brand,
+                "processor": row.processor_type if is_pc and row.processor_type else None,
+                "gpu": row.graphics_card if is_pc and row.graphics_card else None,
+                "ram": row.ram_size if is_pc and row.ram_size else None,
+                "storage": row.storage_capacity if row.storage_capacity else None,
+                "status": occupancy_state == "free",
+                "statusLabel": "Under Maintenance" if is_maintenance else ("Occupied" if has_live_booking else "Free"),
+                "occupancyState": occupancy_state,
+                "gameId": row.game_id,
+                "currentBookingId": row.current_booking_id,
+                "currentUserId": row.current_user_id,
+                "currentUsername": row.current_username,
+                "currentStartTime": row.current_start_time.strftime('%I:%M %p') if row.current_start_time else None,
+                "currentEndTime": row.current_end_time.strftime('%I:%M %p') if row.current_end_time else None,
+                "currentDate": row.current_date.isoformat() if row.current_date else None,
+                "collectibleAmount": pending_due,
+                "hasPendingCollection": pending_due > 0,
+                "consoleModelType": row.console_model_type if row.console_model_type else None,
+            })
 
         with _vendor_consoles_cache_lock:
             _vendor_consoles_cache[cache_key] = {
@@ -430,18 +561,68 @@ def delete_console(vendor_id, console_id):
             # Commit slot updates first
             db.session.commit()
 
+            remaining_mapping_count = (
+                db.session.query(available_game_console.c.console_id)
+                .filter(available_game_console.c.available_game_id == available_game_id)
+                .count()
+            )
+
             # Update the standard table VENDOR_{vendor_id}_SLOT
             table_name = f"VENDOR_{vendor_id}_SLOT"
             update_query = text(f"""
                 UPDATE {table_name}
-                SET available_slot = available_slot - 1,
-                    is_available = CASE WHEN available_slot - 1 > 0 THEN TRUE ELSE FALSE END
+                SET available_slot = GREATEST(COALESCE(available_slot, 0) - 1, 0),
+                    is_available = CASE
+                        WHEN GREATEST(COALESCE(available_slot, 0) - 1, 0) > 0 THEN TRUE
+                        ELSE FALSE
+                    END
                 WHERE slot_id IN (
                     SELECT id FROM slots WHERE gaming_type_id = :available_game_id
                 );
             """)
             db.session.execute(update_query, {"available_game_id": available_game_id})
             db.session.commit()
+
+            # If this was the last console for this game type, remove stale slot templates/rows
+            # so re-adding the type starts from current day-wise configuration only.
+            if remaining_mapping_count == 0:
+                stale_slot_ids = [
+                    int(row[0])
+                    for row in db.session.query(Slot.id)
+                    .filter(Slot.gaming_type_id == available_game_id)
+                    .all()
+                ]
+                if stale_slot_ids:
+                    referenced_slot_ids = {
+                        int(row[0])
+                        for row in db.session.query(Booking.slot_id)
+                        .filter(Booking.slot_id.in_(stale_slot_ids))
+                        .distinct()
+                        .all()
+                    }
+                    deletable_slot_ids = [
+                        sid for sid in stale_slot_ids if sid not in referenced_slot_ids
+                    ]
+                else:
+                    deletable_slot_ids = []
+
+                # Always clear vendor date-slot rows for this game type when count reaches zero.
+                # (Safe: dynamic table has no FK to bookings.)
+                if stale_slot_ids:
+                    db.session.execute(
+                        text(f"""
+                            DELETE FROM {table_name}
+                            WHERE slot_id IN (SELECT unnest(:slot_ids))
+                        """),
+                        {"slot_ids": stale_slot_ids},
+                    )
+
+                if deletable_slot_ids:
+                    Slot.query.filter(
+                        Slot.gaming_type_id == available_game_id,
+                        Slot.id.in_(deletable_slot_ids),
+                    ).delete(synchronize_session=False)
+                db.session.commit()
 
         # ✅ Remove Console from the dynamic VENDOR_{vendor_id}_CONSOLE_AVAILABILITY table
         availability_table = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
@@ -498,6 +679,14 @@ def update_console(vendor_id):
         brand = console_details.get("brand")
         if brand is not None:
             console.brand = brand
+        console_name = console_details.get("name")
+        if console_name is None:
+            # Backward/alternate key support
+            console_name = console_details.get("modelNumber")
+        if console_name is not None:
+            clean_name = str(console_name).strip()
+            if clean_name:
+                console.model_number = clean_name
 
         # Fetch or create hardware relation.
         hardware_spec = console.hardware_specifications
@@ -505,30 +694,43 @@ def update_console(vendor_id):
             hardware_spec = HardwareSpecification(console_id=console.id)
             db.session.add(hardware_spec)
 
-        processor = console_details.get("processor")
-        gpu = console_details.get("gpu")
-        ram = console_details.get("ram")
-        storage = console_details.get("storage")
-        console_model_type = console_details.get("consoleModelType")
-
-        if processor is not None:
-            hardware_spec.processor_type = processor
-        if gpu is not None:
-            hardware_spec.graphics_card = gpu
-        if ram is not None:
-            hardware_spec.ram_size = ram
-        if storage is not None:
-            hardware_spec.storage_capacity = storage
-        if console_model_type is not None:
-            hardware_spec.console_model_type = console_model_type
+        normalized_hw = ConsoleService.normalize_hardware_spec(
+            console.console_type,
+            {
+                "processorType": console_details.get("processor"),
+                "graphicsCard": console_details.get("gpu"),
+                "ramSize": console_details.get("ram"),
+                "storageCapacity": console_details.get("storage"),
+                "connectivity": console_details.get("connectivity"),
+                "consoleModelType": console_details.get("consoleModelType"),
+            },
+        )
+        hardware_spec.processor_type = normalized_hw.get("processorType")
+        hardware_spec.graphics_card = normalized_hw.get("graphicsCard")
+        hardware_spec.ram_size = normalized_hw.get("ramSize")
+        hardware_spec.storage_capacity = normalized_hw.get("storageCapacity")
+        hardware_spec.connectivity = normalized_hw.get("connectivity")
+        hardware_spec.console_model_type = normalized_hw.get("consoleModelType")
 
         maintenance = console.maintenance_status
         status_value = console_details.get("status")
-        if maintenance and status_value is not None:
+        if status_value is not None:
             console_table_name = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
-            maintenance.available_status = status_value
             normalized_status = str(status_value).strip().lower()
-            target_is_available = normalized_status == "available"
+            if isinstance(status_value, bool):
+                target_is_available = bool(status_value)
+                normalized_status = "available" if target_is_available else "in use"
+            else:
+                target_is_available = normalized_status in {"available", "true", "1", "yes"}
+
+            if maintenance:
+                if normalized_status in {"under maintenance", "maintenance"}:
+                    maintenance.available_status = "Under Maintenance"
+                    target_is_available = False
+                elif target_is_available:
+                    maintenance.available_status = "Available"
+                else:
+                    maintenance.available_status = "In Use"
 
             sql_update_status = text(f"""
                 UPDATE {console_table_name}
@@ -603,6 +805,25 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
         booking_table_name = f"VENDOR_{vendor_id}_DASHBOARD"
         current_app.logger.debug("Resolved table names: %s, %s", console_table_name, booking_table_name)
 
+        # Validate booking start eligibility before occupying console.
+        sql_booking_for_start = text(f"""
+            SELECT date, start_time, end_time, book_status
+            FROM {booking_table_name}
+            WHERE book_id = :booking_id AND game_id = :game_id
+        """)
+        booking_row = db.session.execute(sql_booking_for_start, {
+            "booking_id": booking_id,
+            "game_id": gameid
+        }).fetchone()
+        if not booking_row:
+            return jsonify({"error": "Booking not found"}), 404
+        if booking_row.book_status != "upcoming":
+            return jsonify({"error": "Only upcoming bookings can be started"}), 400
+
+        allowed, reason = _booking_start_eligibility(booking_row.date, booking_row.start_time, booking_row.end_time)
+        if not allowed:
+            return jsonify({"error": reason}), 400
+
         # Check if the console is available
         sql_check_availability = text(f"""
             SELECT is_available FROM {console_table_name}
@@ -646,6 +867,14 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
             "booking_id": booking_id
         })
         current_app.logger.debug("Booking update executed | rowcount=%s", getattr(upd_res, "rowcount", None))
+        if getattr(upd_res, "rowcount", 0) != 1:
+            db.session.rollback()
+            return jsonify({"error": "Booking is no longer eligible to start"}), 400
+
+        db.session.execute(
+            text("UPDATE bookings SET status = 'checked_in' WHERE id = :booking_id AND status IN ('confirmed','pending_verified','pending_acceptance','checked_in')"),
+            {"booking_id": booking_id}
+        )
 
         db.session.commit()
         current_app.logger.debug("DB commit successful")
@@ -667,11 +896,13 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
                     b.status,
                     b.book_status,
                     ag.single_slot_price,
-                    d.slot_id
+                    d.slot_id,
+                    c.model_number AS console_name
                 FROM {booking_table_name} b
                 JOIN available_games ag ON b.game_id = ag.id
                 JOIN bookings d ON b.book_id = d.id
                 LEFT JOIN users u ON b.user_id = u.id
+                LEFT JOIN consoles c ON c.id = b.console_id
                 WHERE b.book_id = :booking_id AND b.game_id = :game_id
             """)
             b_row = db.session.execute(sql_fetch_booking, {
@@ -693,6 +924,7 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
                     "game_id": b_row["game_id"],
                     "date": b_row["date"],
                     "single_slot_price": b_row["single_slot_price"],
+                    "console_name": b_row.get("console_name"),
                 })
                 room = f"vendor_{int(vendor_id)}"
                 socketio.emit("current_slot", current_item, room=room)
@@ -744,6 +976,31 @@ def assign_console_to_multiple_bookings():
         console_table_name = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
         booking_table_name = f"VENDOR_{vendor_id}_DASHBOARD"
 
+        # Validate all bookings before occupying console.
+        sql_bookings_for_start = text(f"""
+            SELECT book_id, date, start_time, end_time, book_status
+            FROM {booking_table_name}
+            WHERE book_id = ANY(:booking_ids) AND game_id = :game_id
+        """)
+        booking_rows = db.session.execute(sql_bookings_for_start, {
+            "booking_ids": booking_ids,
+            "game_id": game_id
+        }).fetchall()
+        if len(booking_rows) != len(booking_ids):
+            return jsonify({"error": "One or more bookings were not found"}), 404
+
+        invalid_status = [r.book_id for r in booking_rows if r.book_status != "upcoming"]
+        if invalid_status:
+            return jsonify({"error": f"Bookings not in upcoming state: {invalid_status}"}), 400
+
+        not_eligible = []
+        for r in booking_rows:
+            allowed, reason = _booking_start_eligibility(r.date, r.start_time, r.end_time)
+            if not allowed:
+                not_eligible.append({"booking_id": r.book_id, "reason": reason})
+        if not_eligible:
+            return jsonify({"error": "Some bookings are not eligible to start", "details": not_eligible}), 400
+
         # ✅ Check if the console is currently available
         sql_check_availability = text(f"""
             SELECT is_available FROM {console_table_name}
@@ -780,11 +1037,19 @@ def assign_console_to_multiple_bookings():
             WHERE book_id = ANY(:booking_ids) AND game_id = :game_id AND book_status = 'upcoming'
         """)
 
-        db.session.execute(sql_update_bookings, {
+        upd_multi = db.session.execute(sql_update_bookings, {
             "console_id": console_id,
             "game_id": game_id,
             "booking_ids": booking_ids
         })
+        if getattr(upd_multi, "rowcount", 0) != len(booking_ids):
+            db.session.rollback()
+            return jsonify({"error": "One or more bookings are no longer eligible to start"}), 400
+
+        db.session.execute(
+            text("UPDATE bookings SET status = 'checked_in' WHERE id = ANY(:booking_ids) AND status IN ('confirmed','pending_verified','pending_acceptance','checked_in')"),
+            {"booking_ids": booking_ids}
+        )
 
         db.session.commit()
         _invalidate_vendor_caches(int(vendor_id))
@@ -819,6 +1084,30 @@ def release_console(gameid, console_id, vendor_id):
         is_available = result.is_available
 
         if is_available:
+            # Self-heal stale dashboard linkage if console is already free but
+            # booking table still has dangling 'current' rows.
+            healed = db.session.execute(
+                text(f"""
+                    UPDATE {booking_table_name}
+                    SET book_status = 'completed'
+                    WHERE console_id = :console_id
+                      AND book_status = 'current'
+                    RETURNING book_id
+                """),
+                {"console_id": console_id}
+            ).fetchall()
+
+            if healed:
+                healed_ids = [int(r[0]) for r in healed if r and r[0] is not None]
+                if healed_ids:
+                    db.session.execute(
+                        text("UPDATE bookings SET status = 'completed' WHERE id = ANY(:booking_ids)"),
+                        {"booking_ids": healed_ids}
+                    )
+                    db.session.commit()
+                    _invalidate_vendor_caches(int(vendor_id))
+                    return jsonify({"message": "Console already free; stale session link cleaned."}), 200
+
             return jsonify({"message": "Console is already available"}), 200
 
         # ✅ Update the status to TRUE (available)
@@ -833,17 +1122,33 @@ def release_console(gameid, console_id, vendor_id):
             "game_id": gameid
         })
 
-         # ✅ Update book_status from "upcoming" to "current"
+         # ✅ Move lifecycle one-way: current -> completed only
         sql_update_booking_status = text(f"""
             UPDATE {booking_table_name}
             SET book_status = 'completed'
-            WHERE console_id = :console_id AND book_status = 'current'
+            WHERE console_id = :console_id AND game_id = :game_id AND book_status = 'current'
         """)
 
-        db.session.execute(sql_update_booking_status, {
+        upd_release = db.session.execute(sql_update_booking_status, {
             "console_id": console_id,
             "game_id": gameid
         })
+        if getattr(upd_release, "rowcount", 0) <= 0:
+            db.session.rollback()
+            return jsonify({"error": "No active current session found to release"}), 400
+
+        db.session.execute(
+            text(f"""
+                UPDATE bookings
+                SET status = 'completed'
+                WHERE id IN (
+                    SELECT book_id
+                    FROM {booking_table_name}
+                    WHERE console_id = :console_id AND game_id = :game_id AND book_status = 'completed'
+                )
+            """),
+            {"console_id": console_id, "game_id": gameid}
+        )
 
         # Commit the changes
         db.session.commit()
@@ -934,7 +1239,166 @@ def get_landing_page_vendor(vendor_id):
 
     try:
         table_name = f"VENDOR_{vendor_id}_DASHBOARD"
+        availability_table = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
         today = datetime.utcnow().date()
+        now_ist_dt = datetime.now(IST).replace(tzinfo=None)
+        today_ist = now_ist_dt.date()
+        now_ist_time = now_ist_dt.time()
+        # Optional history controls:
+        # - history_date=YYYY-MM-DD (exact date)
+        # - history_days=N (rolling window, capped)
+        history_days = LANDING_HISTORY_DAYS
+        history_days_raw = request.args.get("history_days")
+        if history_days_raw:
+            try:
+                history_days = max(0, min(60, int(history_days_raw)))
+            except (TypeError, ValueError):
+                history_days = LANDING_HISTORY_DAYS
+
+        history_date_raw = (request.args.get("history_date") or "").strip()
+        exact_history_date = None
+        if history_date_raw:
+            try:
+                exact_history_date = datetime.strptime(history_date_raw, "%Y-%m-%d").date()
+            except ValueError:
+                exact_history_date = None
+
+        if exact_history_date is not None:
+            history_from_date = exact_history_date
+            history_to_date = exact_history_date
+        else:
+            history_from_date = today_ist - timedelta(days=history_days)
+            history_to_date = today_ist
+
+        terminal_booking_statuses = (
+            "completed",
+            "cancelled",
+            "canceled",
+            "rejected",
+            "discarded",
+            "verification_failed",
+        )
+
+        # Self-heal stale current rows: only sessions with an occupied console can remain current.
+        # If no occupied availability row exists for the same console, mark as completed.
+        stale_current_rows = db.session.execute(
+            text(f"""
+                UPDATE {table_name} b
+                SET book_status = 'completed'
+                WHERE b.book_status = 'current'
+                  AND b.console_id IS NOT NULL
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM {availability_table} ca
+                      WHERE ca.vendor_id = :vendor_id
+                        AND ca.console_id = b.console_id
+                        AND COALESCE(ca.is_available, TRUE) = FALSE
+                  )
+                RETURNING b.book_id
+            """),
+            {"vendor_id": vendor_id},
+        ).fetchall()
+        if stale_current_rows:
+            healed_ids = [int(r[0]) for r in stale_current_rows if r and r[0] is not None]
+            if healed_ids:
+                db.session.execute(
+                    text("""
+                        UPDATE bookings
+                        SET status = 'completed'
+                        WHERE id = ANY(:booking_ids)
+                    """),
+                    {"booking_ids": healed_ids},
+                )
+                db.session.commit()
+
+        # Keep dashboard lifecycle aligned with canonical bookings.status for terminal states.
+        db.session.execute(
+            text(f"""
+                UPDATE {table_name} b
+                SET book_status = 'completed'
+                FROM bookings d
+                WHERE d.id = b.book_id
+                  AND LOWER(COALESCE(d.status, '')) IN (
+                      'completed', 'cancelled', 'canceled', 'rejected', 'discarded', 'verification_failed'
+                  )
+                  AND b.book_status <> 'completed'
+            """),
+            {},
+        )
+        db.session.commit()
+
+        # Self-heal overdue upcoming rows as "discarded" (no-show), not completed.
+        overdue_upcoming_rows = db.session.execute(
+            text(f"""
+                UPDATE {table_name} b
+                SET book_status = 'discarded'
+                WHERE b.book_status = 'upcoming'
+                  AND (
+                      b.date < :today_ist
+                      OR (
+                          b.date = :today_ist
+                          AND b.end_time > b.start_time
+                          AND b.end_time < :now_ist_time
+                      )
+                  )
+                RETURNING b.book_id
+            """),
+            {"today_ist": today_ist, "now_ist_time": now_ist_time},
+        ).fetchall()
+        if overdue_upcoming_rows:
+            discarded_ids = [int(r[0]) for r in overdue_upcoming_rows if r and r[0] is not None]
+            if discarded_ids:
+                db.session.execute(
+                    text("""
+                        UPDATE bookings
+                        SET status = 'discarded'
+                        WHERE id = ANY(:booking_ids)
+                          AND LOWER(COALESCE(status, '')) NOT IN
+                              ('completed', 'cancelled', 'canceled', 'rejected', 'discarded', 'verification_failed')
+                    """),
+                    {"booking_ids": discarded_ids},
+                )
+                db.session.commit()
+
+        # Self-heal overdue current rows to completed only if console is no longer occupied.
+        overdue_current_rows = db.session.execute(
+            text(f"""
+                UPDATE {table_name} b
+                SET book_status = 'completed'
+                WHERE b.book_status = 'current'
+                  AND (
+                      b.date < :today_ist
+                      OR (
+                          b.date = :today_ist
+                          AND b.end_time > b.start_time
+                          AND b.end_time < :now_ist_time
+                      )
+                  )
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM {availability_table} ca
+                      WHERE ca.vendor_id = :vendor_id
+                        AND ca.console_id = b.console_id
+                        AND COALESCE(ca.is_available, TRUE) = FALSE
+                  )
+                RETURNING b.book_id
+            """),
+            {"today_ist": today_ist, "now_ist_time": now_ist_time, "vendor_id": vendor_id},
+        ).fetchall()
+        if overdue_current_rows:
+            completed_ids = [int(r[0]) for r in overdue_current_rows if r and r[0] is not None]
+            if completed_ids:
+                db.session.execute(
+                    text("""
+                        UPDATE bookings
+                        SET status = 'completed'
+                        WHERE id = ANY(:booking_ids)
+                          AND LOWER(COALESCE(status, '')) NOT IN
+                              ('completed', 'cancelled', 'canceled', 'rejected', 'discarded', 'verification_failed')
+                    """),
+                    {"booking_ids": completed_ids},
+                )
+                db.session.commit()
 
         # Vendor-scoped transaction summary in one query.
         transaction_summary = (
@@ -976,16 +1440,36 @@ def get_landing_page_vendor(vendor_id):
                 b.status, 
                 b.book_status,
                 ag.single_slot_price,
-                d.slot_id
+                d.slot_id,
+                ca.is_available AS console_is_available,
+                c.model_number AS console_name,
+                c.brand AS console_brand,
+                c.console_number AS console_number,
+                c.console_type AS console_type
             FROM {table_name} b
             JOIN available_games ag ON b.game_id = ag.id
             JOIN bookings d ON b.book_id = d.id
             LEFT JOIN users u ON b.user_id = u.id
+            LEFT JOIN {availability_table} ca
+              ON ca.vendor_id = :vendor_id
+             AND ca.console_id = b.console_id
+             AND ca.game_id = b.game_id
+            LEFT JOIN consoles c ON c.id = b.console_id
+            WHERE b.date BETWEEN :history_from_date AND :history_to_date
+            ORDER BY b.date ASC, b.start_time ASC, b.book_id ASC
         """)
-        result = db.session.execute(sql_fetch_bookings).fetchall()
+        result = db.session.execute(
+            sql_fetch_bookings,
+            {
+                "vendor_id": vendor_id,
+                "history_from_date": history_from_date,
+                "history_to_date": history_to_date,
+            },
+        ).fetchall()
 
         upcoming_bookings = []
         current_slots = []
+        history_bookings = []
 
         booking_ids = [row.book_id for row in result]
         if booking_ids:
@@ -1000,6 +1484,19 @@ def get_landing_page_vendor(vendor_id):
         
         for row in result:
             has_meals = row.book_id in meals_lookup
+            is_console_occupied = bool(row.console_id is not None and row.console_is_available is False)
+
+            lifecycle_status = _normalize_lifecycle(
+                row.book_status,
+                row.date,
+                row.start_time,
+                row.end_time,
+            )
+            # Occupied current sessions must remain live even if scheduled end passed (extra-time play).
+            if str(row.book_status or "").strip().lower() == "current" and is_console_occupied:
+                lifecycle_status = "current"
+            session_identifier = _build_session_identifier(row.book_id, row.date, row.start_time, row.end_time)
+            lifecycle_step = LIFECYCLE_ORDER.get(lifecycle_status, 1)
 
             booking_data = {
                 "slotId": row.slot_id,
@@ -1007,13 +1504,22 @@ def get_landing_page_vendor(vendor_id):
                 "username": row.username,
                 "userId":row.user_id,
                 "game": row.game_name,
-                "consoleType": f"Console-{row.console_id}",
+                "consoleType": row.console_name or f"Console-{row.console_id}",
+                "consoleId": row.console_id,
+                "consoleName": row.console_name,
+                "consoleBrand": row.console_brand,
+                "consoleNumber": row.console_number,
+                "consoleCategory": row.console_type,
                 "time": f"{row.start_time.strftime('%I:%M %p')} - {row.end_time.strftime('%I:%M %p')}",
                 "status": "Confirmed" if row.status != 'pending_verified' else "Pending",
                 "game_id":row.game_id,
                 "date":row.date,
                 "slot_price": row.single_slot_price,
-                "hasMeals": has_meals
+                "hasMeals": has_meals,
+                "lifecycleStatus": lifecycle_status,
+                "lifecycleStep": lifecycle_step,
+                "sessionIdentifier": session_identifier,
+                "bookingRecordStatus": str(getattr(row, "status", "") or "").strip().lower(),
 
             }
             
@@ -1023,21 +1529,42 @@ def get_landing_page_vendor(vendor_id):
                 "startTime": row.start_time.strftime('%I:%M %p'),
                 "endTime": row.end_time.strftime('%I:%M %p'),
                 "status": "Booked" if row.status != 'pending_verified' else "Available",
-                "consoleType": f"HASH{row.console_id}",
+                "consoleType": row.console_name or (f"HASH{row.console_id}" if row.console_id is not None else "Console"),
+                "consoleId": row.console_id,
+                "consoleName": row.console_name,
+                "consoleBrand": row.console_brand,
                 "consoleNumber": str(row.console_id),
+                "consoleCode": row.console_number,
+                "consoleCategory": row.console_type,
                 "username": row.username,
                 "userId":row.user_id,
                 "game_id":row.game_id,
                 "date":row.date,
                 "slot_price": row.single_slot_price,
-                "hasMeals": has_meals
+                "hasMeals": has_meals,
+                "lifecycleStatus": lifecycle_status,
+                "lifecycleStep": lifecycle_step,
+                "sessionIdentifier": session_identifier,
+                "bookingRecordStatus": str(getattr(row, "status", "") or "").strip().lower(),
                 
             }
-            
-            if row.book_status == "upcoming":
+
+            booking_record_status = str(getattr(row, "status", "") or "").strip().lower()
+            is_terminal = booking_record_status in terminal_booking_statuses
+
+            if is_terminal:
+                history_bookings.append(booking_data)
+            elif lifecycle_status == "upcoming":
                 upcoming_bookings.append(booking_data)
-            elif row.book_status == "current":
+            elif lifecycle_status == "current" and is_console_occupied:
                 current_slots.append(slot_data)
+            elif lifecycle_status == "current":
+                # If slot time says "current" but console is not occupied yet,
+                # keep it visible in upcoming queue instead of dropping it.
+                # This avoids disappearing bookings when occupancy sync is late.
+                upcoming_bookings.append(booking_data)
+            else:
+                history_bookings.append(booking_data)
 
         # Vendor-scoped booking stats in one aggregate query.
         booking_summary = (
@@ -1103,7 +1630,8 @@ def get_landing_page_vendor(vendor_id):
                 "peakBookingHours": peak_booking_hours
             },
             "upcomingBookings": upcoming_bookings,
-            "currentSlots": current_slots
+            "currentSlots": current_slots,
+            "historyBookings": history_bookings,
         }
 
         with _landing_page_cache_lock:
@@ -1235,6 +1763,12 @@ def get_vendor_dashboard(vendor_id):
 
     # 4) Build operatingHours in a consistent weekday order or using vendor.opening_days
     opening_days_list = [od.day for od in (vendor.opening_days or [])] or WEEKDAY_ORDER
+    opening_day_enabled_map = {}
+    for od in (vendor.opening_days or []):
+        raw = (od.day or "").strip().lower()
+        key = raw if raw in WEEKDAY_ORDER else raw[:3]
+        if key:
+            opening_day_enabled_map[key] = bool(od.is_open)
 
     operating_hours = []
     for day_key in opening_days_list:
@@ -1256,7 +1790,9 @@ def get_vendor_dashboard(vendor_id):
             "day": dkey,
             "open": open_str,
             "close": close_str,
-            "slotDurationMinutes": duration_int  # always int or None
+            "slotDurationMinutes": duration_int,  # always int or None
+            "isEnabled": opening_day_enabled_map.get(dkey, True),
+            "is24Hours": bool(open_str and close_str and open_str == close_str),
         })
 
     # 5) Images

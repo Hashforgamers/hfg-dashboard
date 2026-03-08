@@ -186,6 +186,29 @@ def _handle_upstream_booking(data: Dict[str, Any]):
     except Exception:
         _log_err("Error handling upstream booking payload")
 
+
+def _handle_upstream_current_slot(data: Dict[str, Any]):
+    try:
+        _mark_pong()
+        vendor_id = data.get("vendorId") or data.get("vendor_id")
+        _emit_downstream_to_vendor(vendor_id, "current_slot", data)
+        _log_info("Relayed current_slot vendor=%s bookingId=%s", vendor_id, data.get("bookingId") or data.get("book_id"))
+    except Exception:
+        _log_err("Error handling upstream current_slot payload")
+
+
+def _handle_upstream_console_availability(data: Dict[str, Any]):
+    try:
+        _mark_pong()
+        vendor_id = data.get("vendorId") or data.get("vendor_id")
+        _emit_downstream_to_vendor(vendor_id, "console_availability", data)
+        _log_info(
+            "Relayed console_availability vendor=%s console_id=%s is_available=%s",
+            vendor_id, data.get("console_id"), data.get("is_available")
+        )
+    except Exception:
+        _log_err("Error handling upstream console_availability payload")
+
 def _connect_upstream():
     headers = {}
     if BOOKING_AUTH_TOKEN:
@@ -231,6 +254,14 @@ def _register_upstream_handlers():
         def _on_booking_admin_ns(data):
             _handle_upstream_booking(data)
 
+        @_upstream_sio.on("current_slot", namespace=ns)
+        def _on_current_slot_ns(data):
+            _handle_upstream_current_slot(data)
+
+        @_upstream_sio.on("console_availability", namespace=ns)
+        def _on_console_availability_ns(data):
+            _handle_upstream_console_availability(data)
+
         # Upstream health echo listener: server replies with "pong_health"
         @_upstream_sio.on("pong_health", namespace=ns)
         def _on_pong_health_ns(_data=None):
@@ -244,6 +275,14 @@ def _register_upstream_handlers():
         @_upstream_sio.on("booking_admin")
         def _on_booking_admin(data):
             _handle_upstream_booking(data)
+
+        @_upstream_sio.on("current_slot")
+        def _on_current_slot(data):
+            _handle_upstream_current_slot(data)
+
+        @_upstream_sio.on("console_availability")
+        def _on_console_availability(data):
+            _handle_upstream_console_availability(data)
 
         @_upstream_sio.on("pong_health")
         def _on_pong_health(_data=None):

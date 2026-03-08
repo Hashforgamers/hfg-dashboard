@@ -1,16 +1,570 @@
-from datetime import datetime
+from datetime import datetime, timedelta, date, time as dtime
+from collections import Counter
 from app.extension.extensions import db
 from app.models.console import Console
 from app.models.hardwareSpecification import HardwareSpecification
 from app.models.maintenanceStatus import MaintenanceStatus
 from app.models.priceAndCost import PriceAndCost
 from app.models.additionalDetails import AdditionalDetails
-from app.models.availableGame import AvailableGame  # ✅ Import association table
+from app.models.availableGame import AvailableGame, available_game_console  # ✅ Import association table
 from app.models.slot import Slot
+from app.models.booking import Booking
 from sqlalchemy.sql import text
+from sqlalchemy import tuple_
 from sqlalchemy.exc import ProgrammingError
 
 class ConsoleService:
+    WEEKDAY_MAP = {"mon": 1, "tue": 2, "wed": 3, "thu": 4, "fri": 5, "sat": 6, "sun": 0}  # Postgres DOW
+    WEEKDAY_ORDER = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+
+    @staticmethod
+    def _normalize_day_key(day_value):
+        raw = str(day_value or "").strip().lower()
+        if raw in ConsoleService.WEEKDAY_MAP:
+            return raw
+        if len(raw) >= 3 and raw[:3] in ConsoleService.WEEKDAY_MAP:
+            return raw[:3]
+        return None
+
+    @staticmethod
+    def _row_value(row, key):
+        if hasattr(row, key):
+            return getattr(row, key)
+        if isinstance(row, dict):
+            return row.get(key)
+        mapping = getattr(row, "_mapping", None)
+        if mapping is not None:
+            return mapping.get(key)
+        return None
+
+    @staticmethod
+    def _parse_time_flexible(value):
+        raw = str(value or "").strip()
+        if not raw:
+            return None
+        for fmt in ("%I:%M %p", "%H:%M"):
+            try:
+                return datetime.strptime(raw, fmt).time()
+            except ValueError:
+                continue
+        return None
+
+    @staticmethod
+    def _infer_slot_duration_minutes(vendor_id, default_duration=30):
+        rows = db.session.execute(
+            text("""
+                SELECT s.start_time, s.end_time
+                FROM slots s
+                JOIN available_games ag ON ag.id = s.gaming_type_id
+                WHERE ag.vendor_id = :vendor_id
+            """),
+            {"vendor_id": vendor_id},
+        ).fetchall()
+
+        durations = []
+        today = date.today()
+        for row in rows:
+            st = getattr(row, "start_time", None)
+            et = getattr(row, "end_time", None)
+            if not st or not et:
+                continue
+            start_dt = datetime.combine(today, st)
+            end_dt = datetime.combine(today, et)
+            if end_dt <= start_dt:
+                end_dt += timedelta(days=1)
+            minutes = int((end_dt - start_dt).total_seconds() // 60)
+            if 15 <= minutes <= 240:
+                durations.append(minutes)
+
+        if not durations:
+            return int(default_duration)
+
+        return int(Counter(durations).most_common(1)[0][0])
+
+    @staticmethod
+    def _resolve_slot_window_end_date(vendor_id, fallback_days=60):
+        """
+        Align new slot generation to the vendor's existing slot horizon.
+        - If vendor already has slots in VENDOR_<id>_SLOT, use its MAX(date).
+        - If no rows exist yet, seed next `fallback_days` days (default 2 months).
+        """
+        slot_table_name = f"VENDOR_{vendor_id}_SLOT"
+        table_exists = db.session.execute(
+            text("SELECT to_regclass(:table_name)"),
+            {"table_name": slot_table_name},
+        ).scalar()
+        if not table_exists:
+            return date.today() + timedelta(days=int(fallback_days))
+
+        max_row = db.session.execute(
+            text(f"""
+                SELECT MAX(date) AS max_date
+                FROM {slot_table_name}
+                WHERE vendor_id = :vendor_id
+            """),
+            {"vendor_id": vendor_id},
+        ).fetchone()
+        max_date = ConsoleService._row_value(max_row, "max_date") if max_row else None
+        if max_date and max_date >= date.today():
+            return max_date
+        return date.today() + timedelta(days=int(fallback_days))
+
+    @staticmethod
+    def _load_schedule_from_vendor_hours(vendor_id, include_all_days=False):
+        timing_row = db.session.execute(
+            text("""
+                SELECT t.opening_time, t.closing_time
+                FROM vendors v
+                JOIN timing t ON t.id = v.timing_id
+                WHERE v.id = :vendor_id
+                LIMIT 1
+            """),
+            {"vendor_id": vendor_id},
+        ).fetchone()
+        if not timing_row:
+            return []
+
+        opening_time = getattr(timing_row, "opening_time", None)
+        closing_time = getattr(timing_row, "closing_time", None)
+        if not opening_time or not closing_time:
+            return []
+
+        duration = ConsoleService._infer_slot_duration_minutes(vendor_id, default_duration=30)
+        opening_days = db.session.execute(
+            text("""
+                SELECT day, is_open
+                FROM opening_days
+                WHERE vendor_id = :vendor_id
+            """),
+            {"vendor_id": vendor_id},
+        ).fetchall()
+
+        enabled_days = set()
+        for row in opening_days:
+            day_key = ConsoleService._normalize_day_key(getattr(row, "day", None))
+            if day_key and bool(getattr(row, "is_open", False)):
+                enabled_days.add(day_key)
+
+        if include_all_days:
+            enabled_days = set(ConsoleService.WEEKDAY_ORDER)
+        elif not enabled_days:
+            enabled_days = set(ConsoleService.WEEKDAY_ORDER)
+
+        return [
+            {
+                "day": day,
+                "opening_time": opening_time,
+                "closing_time": closing_time,
+                "slot_duration": duration,
+            }
+            for day in ConsoleService.WEEKDAY_ORDER
+            if day in enabled_days
+        ]
+
+    @staticmethod
+    def _generate_blocks(anchor_day, start_time, end_time, slot_duration):
+        start_dt = datetime.combine(anchor_day, start_time)
+        end_dt = datetime.combine(anchor_day, end_time)
+        if end_dt <= start_dt:
+            end_dt += timedelta(days=1)
+
+        blocks = []
+        cur_dt = start_dt
+        while cur_dt < end_dt:
+            nxt_dt = cur_dt + timedelta(minutes=int(slot_duration))
+            if nxt_dt > end_dt:
+                break
+            block_start_t = cur_dt.time()
+            block_end_t = (
+                nxt_dt.time() if nxt_dt.date() == cur_dt.date()
+                else (nxt_dt - timedelta(days=1)).time()
+            )
+            blocks.append((block_start_t, block_end_t))
+            cur_dt = nxt_dt
+        return blocks
+
+    @staticmethod
+    def _bootstrap_new_game_from_existing_horizon(vendor_id, available_game_id, total_slots, window_end_date):
+        """
+        Prefer cloning existing vendor slot date-coverage from other console types.
+        This guarantees the new console type reaches the same max date horizon.
+        """
+        slot_table_name = f"VENDOR_{vendor_id}_SLOT"
+        table_exists = db.session.execute(
+            text("SELECT to_regclass(:table_name)"),
+            {"table_name": slot_table_name},
+        ).scalar()
+        if not table_exists:
+            return False
+
+        has_source = db.session.execute(
+            text(f"""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM {slot_table_name} v
+                    JOIN slots s ON s.id = v.slot_id
+                    JOIN available_games ag ON ag.id = s.gaming_type_id
+                    WHERE v.vendor_id = :vendor_id
+                      AND ag.vendor_id = :vendor_id
+                      AND s.gaming_type_id <> :available_game_id
+                      AND v.date BETWEEN CURRENT_DATE AND :window_end_date
+                ) AS has_rows
+            """),
+            {
+                "vendor_id": vendor_id,
+                "available_game_id": available_game_id,
+                "window_end_date": window_end_date,
+            },
+        ).scalar()
+        if not has_source:
+            return False
+
+        # 1) Ensure slot templates exist for target game using the same time blocks
+        # seen in vendor's other game types.
+        insert_templates_sql = text("""
+            INSERT INTO slots (gaming_type_id, start_time, end_time, available_slot, is_available)
+            SELECT
+                :available_game_id,
+                src.start_time,
+                src.end_time,
+                :available_slot,
+                FALSE
+            FROM (
+                SELECT DISTINCT s.start_time, s.end_time
+                FROM slots s
+                JOIN available_games ag ON ag.id = s.gaming_type_id
+                WHERE ag.vendor_id = :vendor_id
+                  AND s.gaming_type_id <> :available_game_id
+            ) src
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM slots t
+                WHERE t.gaming_type_id = :available_game_id
+                  AND t.start_time = src.start_time
+                  AND t.end_time = src.end_time
+            )
+        """)
+        db.session.execute(
+            insert_templates_sql,
+            {
+                "vendor_id": vendor_id,
+                "available_game_id": available_game_id,
+                "available_slot": int(total_slots or 1),
+            },
+        )
+
+        # 2) Upsert dynamic vendor rows by matching source (date + time block)
+        # to target game's slot templates.
+        upsert_dynamic_rows_sql = text(f"""
+            INSERT INTO {slot_table_name} (vendor_id, slot_id, date, available_slot, is_available)
+            SELECT
+                :vendor_id,
+                tgt.id AS slot_id,
+                src.date,
+                :available_slot,
+                TRUE
+            FROM (
+                SELECT DISTINCT v.date, s.start_time, s.end_time
+                FROM {slot_table_name} v
+                JOIN slots s ON s.id = v.slot_id
+                JOIN available_games ag ON ag.id = s.gaming_type_id
+                WHERE v.vendor_id = :vendor_id
+                  AND ag.vendor_id = :vendor_id
+                  AND s.gaming_type_id <> :available_game_id
+                  AND v.date BETWEEN CURRENT_DATE AND :window_end_date
+            ) src
+            JOIN slots tgt
+              ON tgt.gaming_type_id = :available_game_id
+             AND tgt.start_time = src.start_time
+             AND tgt.end_time = src.end_time
+            ON CONFLICT (vendor_id, date, slot_id)
+            DO UPDATE SET
+                available_slot = EXCLUDED.available_slot,
+                is_available = TRUE
+        """)
+        db.session.execute(
+            upsert_dynamic_rows_sql,
+            {
+                "vendor_id": vendor_id,
+                "available_game_id": available_game_id,
+                "available_slot": int(total_slots or 1),
+                "window_end_date": window_end_date,
+            },
+        )
+        return True
+
+    @staticmethod
+    def _bootstrap_new_game_slots(vendor_id, available_game_id, total_slots):
+        window_end_date = ConsoleService._resolve_slot_window_end_date(vendor_id=vendor_id, fallback_days=60)
+
+        config_rows = db.session.execute(
+            text("""
+                SELECT day, opening_time, closing_time, slot_duration
+                FROM vendor_day_slot_config
+                WHERE vendor_id = :vendor_id
+            """),
+            {"vendor_id": vendor_id},
+        ).fetchall()
+
+        if config_rows:
+            normalized_days = {
+                ConsoleService._normalize_day_key(ConsoleService._row_value(cfg, "day"))
+                for cfg in config_rows
+            }
+            normalized_days.discard(None)
+            if len(normalized_days) == 1:
+                # Avoid sparse "single day only" generation by expanding
+                # the same hours/duration across the full week.
+                base = config_rows[0]
+                base_open = ConsoleService._row_value(base, "opening_time")
+                base_close = ConsoleService._row_value(base, "closing_time")
+                base_duration = ConsoleService._row_value(base, "slot_duration")
+                config_rows = [
+                    {
+                        "day": day,
+                        "opening_time": base_open,
+                        "closing_time": base_close,
+                        "slot_duration": base_duration,
+                    }
+                    for day in ConsoleService.WEEKDAY_ORDER
+                ]
+        else:
+            # No existing slots and no day-wise config:
+            # create a straight daily schedule for next 2 months.
+            config_rows = ConsoleService._load_schedule_from_vendor_hours(vendor_id, include_all_days=True)
+            if not config_rows:
+                return
+
+        slot_table_name = f"VENDOR_{vendor_id}_SLOT"
+        anchor = date.today()
+
+        for cfg in config_rows:
+            day_key = ConsoleService._normalize_day_key(ConsoleService._row_value(cfg, "day"))
+            if not day_key:
+                continue
+
+            try:
+                duration = int(ConsoleService._row_value(cfg, "slot_duration") or 0)
+            except (TypeError, ValueError):
+                continue
+            if duration < 15 or duration > 240:
+                continue
+
+            open_t = ConsoleService._parse_time_flexible(ConsoleService._row_value(cfg, "opening_time"))
+            close_t = ConsoleService._parse_time_flexible(ConsoleService._row_value(cfg, "closing_time"))
+            if not open_t or not close_t:
+                continue
+
+            blocks = ConsoleService._generate_blocks(anchor, open_t, close_t, duration)
+            if not blocks:
+                continue
+
+            existing = (
+                Slot.query
+                .filter(
+                    Slot.gaming_type_id == available_game_id,
+                    tuple_(Slot.start_time, Slot.end_time).in_(blocks),
+                )
+                .all()
+            )
+            slot_id_map = {(s.start_time, s.end_time): int(s.id) for s in existing}
+
+            to_create = []
+            for st, et in blocks:
+                if (st, et) in slot_id_map:
+                    continue
+                to_create.append(
+                    Slot(
+                        gaming_type_id=available_game_id,
+                        start_time=st,
+                        end_time=et,
+                        available_slot=int(total_slots or 1),
+                        is_available=False,
+                    )
+                )
+
+            if to_create:
+                db.session.add_all(to_create)
+                db.session.flush()
+                for s in to_create:
+                    slot_id_map[(s.start_time, s.end_time)] = int(s.id)
+
+            slot_ids = [slot_id_map[(st, et)] for st, et in blocks if (st, et) in slot_id_map]
+            if not slot_ids:
+                continue
+
+            # Ensure existing vendor slot rows are re-opened for this schedule window.
+            # This handles resurrected game types where stale rows may exist with 0 capacity.
+            reopen_vendor_rows_sql = text(f"""
+                UPDATE {slot_table_name} v
+                SET available_slot = :available_slot,
+                    is_available = TRUE
+                WHERE v.vendor_id = :vendor_id
+                  AND v.slot_id IN (SELECT unnest(:slot_ids))
+                  AND v.date BETWEEN CURRENT_DATE AND :window_end_date
+                  AND EXTRACT(DOW FROM v.date) = :target_dow;
+            """)
+            db.session.execute(
+                reopen_vendor_rows_sql,
+                {
+                    "vendor_id": vendor_id,
+                    "slot_ids": slot_ids,
+                    "available_slot": int(total_slots or 1),
+                    "target_dow": ConsoleService.WEEKDAY_MAP[day_key],
+                    "window_end_date": window_end_date,
+                },
+            )
+
+            insert_vendor_rows_sql = text(f"""
+                INSERT INTO {slot_table_name} (vendor_id, slot_id, date, available_slot, is_available)
+                SELECT
+                    :vendor_id,
+                    s_id.slot_id,
+                    gs.date::date,
+                    :available_slot,
+                    TRUE
+                FROM (SELECT unnest(:slot_ids) AS slot_id) s_id
+                CROSS JOIN generate_series(CURRENT_DATE, CAST(:window_end_date AS date), '1 day'::INTERVAL) gs
+                WHERE EXTRACT(DOW FROM gs.date) = :target_dow
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM {slot_table_name} v
+                      WHERE v.vendor_id = :vendor_id
+                        AND v.slot_id = s_id.slot_id
+                        AND v.date = gs.date::date
+                  );
+            """)
+            db.session.execute(
+                insert_vendor_rows_sql,
+                {
+                    "vendor_id": vendor_id,
+                    "slot_ids": slot_ids,
+                    "available_slot": int(total_slots or 1),
+                    "target_dow": ConsoleService.WEEKDAY_MAP[day_key],
+                    "window_end_date": window_end_date,
+                },
+            )
+
+    @staticmethod
+    def _reset_game_slots(vendor_id, available_game_id):
+        """
+        Clear slot templates and dynamic vendor rows for one game type.
+        Used when a previously removed game type is re-added so old durations
+        do not leak into the new slot layout.
+        """
+        slot_ids = [
+            int(row[0])
+            for row in db.session.query(Slot.id)
+            .filter(Slot.gaming_type_id == available_game_id)
+            .all()
+        ]
+
+        if not slot_ids:
+            return
+
+        referenced_slot_ids = {
+            int(row[0])
+            for row in db.session.query(Booking.slot_id)
+            .filter(Booking.slot_id.in_(slot_ids))
+            .distinct()
+            .all()
+        }
+        deletable_slot_ids = [sid for sid in slot_ids if sid not in referenced_slot_ids]
+        if not deletable_slot_ids:
+            return
+
+        slot_table_name = f"VENDOR_{vendor_id}_SLOT"
+        table_exists = db.session.execute(
+            text("SELECT to_regclass(:table_name)"),
+            {"table_name": slot_table_name},
+        ).scalar()
+        if table_exists:
+            db.session.execute(
+                text(f"""
+                    DELETE FROM {slot_table_name}
+                    WHERE slot_id IN (SELECT unnest(:slot_ids))
+                """),
+                {"slot_ids": deletable_slot_ids},
+            )
+
+        Slot.query.filter(
+            Slot.gaming_type_id == available_game_id,
+            Slot.id.in_(deletable_slot_ids),
+        ).delete(synchronize_session=False)
+
+    @staticmethod
+    def _is_blank(value):
+        return value is None or str(value).strip() == ""
+
+    @staticmethod
+    def validate_console_payload(console_data, hardware_data):
+        console_type = str(console_data.get("consoleType", "")).strip().lower()
+        if console_type not in {"pc", "ps5", "xbox", "vr"}:
+            return "Unsupported consoleType. Expected one of: pc, ps5, xbox, vr."
+
+        console_name = console_data.get("modelNumber")
+        if ConsoleService._is_blank(console_name):
+            console_name = console_data.get("name")
+
+        required_common = {
+            "consoleNumber": console_data.get("consoleNumber"),
+            "name": console_name,
+            "serialNumber": console_data.get("serialNumber"),
+            "brand": console_data.get("brand"),
+            "releaseDate": console_data.get("releaseDate"),
+        }
+        for field, value in required_common.items():
+            if ConsoleService._is_blank(value):
+                if field == "name":
+                    return "Missing required field: consoleDetails.name (or consoleDetails.modelNumber)"
+                return f"Missing required field: consoleDetails.{field}"
+
+        if console_type == "pc":
+            pc_required = {
+                "processorType": hardware_data.get("processorType"),
+                "graphicsCard": hardware_data.get("graphicsCard"),
+                "ramSize": hardware_data.get("ramSize"),
+                "storageCapacity": hardware_data.get("storageCapacity"),
+                "connectivity": hardware_data.get("connectivity"),
+            }
+            for field, value in pc_required.items():
+                if ConsoleService._is_blank(value):
+                    return f"Missing required field for PC: hardwareSpecifications.{field}"
+        else:
+            non_pc_required = {
+                "consoleModelType": hardware_data.get("consoleModelType"),
+                "storageCapacity": hardware_data.get("storageCapacity"),
+            }
+            for field, value in non_pc_required.items():
+                if ConsoleService._is_blank(value):
+                    return f"Missing required field for {console_type.upper()}: hardwareSpecifications.{field}"
+
+        return None
+
+    @staticmethod
+    def normalize_hardware_spec(console_type, hardware_data):
+        normalized_type = str(console_type or "").strip().lower()
+        source = hardware_data or {}
+        if normalized_type == "pc":
+            return {
+                "processorType": source.get("processorType"),
+                "graphicsCard": source.get("graphicsCard"),
+                "ramSize": source.get("ramSize"),
+                "storageCapacity": source.get("storageCapacity"),
+                "connectivity": source.get("connectivity"),
+                "consoleModelType": source.get("consoleModelType") or "Custom Build",
+            }
+
+        # Non-PC consoles should not store PC-only hardware fields.
+        return {
+            "processorType": None,
+            "graphicsCard": None,
+            "ramSize": None,
+            "storageCapacity": source.get("storageCapacity"),
+            "connectivity": None,
+            "consoleModelType": source.get("consoleModelType"),
+        }
+
     @staticmethod
     def add_console(data):
         try:
@@ -42,11 +596,19 @@ class ConsoleService:
             price_data = data.get("priceAndCost", {})
             additional_data = data.get("additionalDetails", {})
 
+            validation_error = ConsoleService.validate_console_payload(console_data, hardware_data)
+            if validation_error:
+                return {"error": validation_error}, 400
+
             # ✅ Create Console Entry
+            console_name = console_data.get("modelNumber")
+            if ConsoleService._is_blank(console_name):
+                console_name = console_data.get("name")
+
             console = Console(
                 vendor_id=vendor_id,
                 console_number=console_data["consoleNumber"],
-                model_number=console_data["modelNumber"],
+                model_number=console_name,
                 serial_number=console_data["serialNumber"],
                 brand=console_data["brand"],
                 console_type=console_data["consoleType"],
@@ -56,15 +618,20 @@ class ConsoleService:
             db.session.add(console)
             db.session.flush()  # ✅ Get console.id before commit
 
+            normalized_hardware = ConsoleService.normalize_hardware_spec(
+                console_data.get("consoleType"),
+                hardware_data,
+            )
+
             # ✅ Create Hardware Specifications
             hardware_spec = HardwareSpecification(
                 console_id=console.id,
-                processor_type=hardware_data["processorType"],
-                graphics_card=hardware_data["graphicsCard"],
-                ram_size=hardware_data["ramSize"],
-                storage_capacity=hardware_data["storageCapacity"],
-                connectivity=hardware_data["connectivity"],
-                console_model_type=hardware_data["consoleModelType"]
+                processor_type=normalized_hardware.get("processorType"),
+                graphics_card=normalized_hardware.get("graphicsCard"),
+                ram_size=normalized_hardware.get("ramSize"),
+                storage_capacity=normalized_hardware.get("storageCapacity"),
+                connectivity=normalized_hardware.get("connectivity"),
+                console_model_type=normalized_hardware.get("consoleModelType"),
             )
             db.session.add(hardware_spec)
 
@@ -102,8 +669,16 @@ class ConsoleService:
                 vendor_id=vendor_id, game_name=available_game_type
             ).first()
 
+            is_new_game = False
+            had_existing_console_mapping = False
             if available_game:
-                available_game.total_slot += 1  # ✅ Increment total slots
+                existing_mapping_count = (
+                    db.session.query(available_game_console)
+                    .filter(available_game_console.c.available_game_id == available_game.id)
+                    .count()
+                )
+                had_existing_console_mapping = existing_mapping_count > 0
+                available_game.total_slot = max(int(available_game.total_slot or 0), 0) + 1
             else:
                 available_game = AvailableGame(
                     vendor_id=vendor_id,
@@ -113,69 +688,81 @@ class ConsoleService:
                 )
                 db.session.add(available_game)
                 db.session.flush()  # ✅ Get available_game.id before association
+                is_new_game = True
 
             # ✅ Associate Console with AvailableGame (Many-to-Many)
             if console not in available_game.consoles:
                 available_game.consoles.append(console)
 
-            # ✅ Update existing Slot entries (set available_slot = 1 and is_available = True)
-            slots_to_update = Slot.query.filter_by(gaming_type_id=available_game.id).all()
+            if is_new_game or not had_existing_console_mapping:
+                # First console of a game type: bootstrap slot templates + vendor rows from day-wise config.
+                if not is_new_game:
+                    # Re-created game type (all consoles were previously removed): clean stale slot templates first.
+                    ConsoleService._reset_game_slots(vendor_id=vendor_id, available_game_id=available_game.id)
+                ConsoleService._bootstrap_new_game_slots(
+                    vendor_id=vendor_id,
+                    available_game_id=available_game.id,
+                    total_slots=available_game.total_slot,
+                )
+                slots_to_update = Slot.query.filter_by(gaming_type_id=available_game.id).all()
+                for slot in slots_to_update:
+                    db.session.add(slot)
+                db.session.flush()
+            else:
+                # ✅ Existing game type: increment existing slot capacities by 1 for new console.
+                slots_to_update = Slot.query.filter_by(gaming_type_id=available_game.id).all()
+                for slot in slots_to_update:
+                    slot.available_slot += 1
+                    slot.is_available = True
+                    db.session.add(slot)
+                db.session.flush()
 
-            for slot in slots_to_update:
-                slot.available_slot += 1  # Set the available slot to 1
-                slot.is_available = True  # Set the slot as available
-                db.session.add(slot)
-            
-            # ✅ flush slot updates first
-            db.session.flush()
-
-            # ✅ Check if the slot exists in the VENDOR_{vendor_id}_SLOT table
-            slot_table_name = f"VENDOR_{vendor_id}_SLOT"
-
-            # First, check if the slot already exists (based on vendor_id, date, and slot_id)
-            check_existing_slots_sql = text(f"""
-                SELECT 1
-                FROM {slot_table_name} v
-                WHERE v.vendor_id = :vendor_id
-                AND v.date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '365 days'
-                AND v.slot_id IN (SELECT id FROM slots WHERE gaming_type_id = :available_game_id)
-                LIMIT 1;
-            """)
-
-            # Execute the query to check for existing slots
-            existing_slots = db.session.execute(check_existing_slots_sql, {"vendor_id": vendor_id, "available_game_id": available_game.id}).fetchone()
-
-            if existing_slots:
-                # ✅ If slots exist, update the existing ones
-                update_slots_sql = text(f"""
+                slot_table_name = f"VENDOR_{vendor_id}_SLOT"
+                window_end_date = ConsoleService._resolve_slot_window_end_date(vendor_id=vendor_id, fallback_days=60)
+                update_existing_slots_sql = text(f"""
                     UPDATE {slot_table_name} v
-                    SET available_slot = v.available_slot + 1,
+                    SET available_slot = COALESCE(v.available_slot, 0) + 1,
                         is_available = TRUE
                     WHERE v.vendor_id = :vendor_id
-                    AND v.date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '365 days'
-                    AND v.slot_id IN (SELECT id FROM slots WHERE gaming_type_id = :available_game_id);
+                      AND v.date BETWEEN CURRENT_DATE AND :window_end_date
+                      AND v.slot_id IN (SELECT id FROM slots WHERE gaming_type_id = :available_game_id);
                 """)
-                db.session.execute(update_slots_sql, {"vendor_id": vendor_id, "available_game_id": available_game.id})
-            else:
-                # ✅ If slots do not exist, insert new ones
-                insert_slots_sql = text(f"""
+                db.session.execute(
+                    update_existing_slots_sql,
+                    {
+                        "vendor_id": vendor_id,
+                        "available_game_id": available_game.id,
+                        "window_end_date": window_end_date,
+                    },
+                )
+
+                insert_missing_slots_sql = text(f"""
                     INSERT INTO {slot_table_name} (vendor_id, date, slot_id, is_available, available_slot)
                     SELECT
                         :vendor_id AS vendor_id,
-                        gs.date AS date,
+                        gs.date::date AS date,
                         s.id AS slot_id,
-                        TRUE AS is_available,  -- Mark slots as available
-                        1 AS available_slot   -- Set the available slot to 1 initially
-                    FROM
-                        generate_series(CURRENT_DATE, CURRENT_DATE + INTERVAL '365 days', '1 day'::INTERVAL) gs
+                        TRUE AS is_available,
+                        1 AS available_slot
+                    FROM generate_series(CURRENT_DATE, CAST(:window_end_date AS date), '1 day'::INTERVAL) gs
                     CROSS JOIN slots s
-                    WHERE
-                        s.gaming_type_id = :available_game_id
-                    AND NOT EXISTS (
-                        SELECT 1 FROM {slot_table_name} v WHERE v.date = gs.date AND v.slot_id = s.id
-                    );
+                    WHERE s.gaming_type_id = :available_game_id
+                      AND NOT EXISTS (
+                        SELECT 1
+                        FROM {slot_table_name} v
+                        WHERE v.vendor_id = :vendor_id
+                          AND v.date = gs.date::date
+                          AND v.slot_id = s.id
+                      );
                 """)
-                db.session.execute(insert_slots_sql, {"vendor_id": vendor_id, "available_game_id": available_game.id})
+                db.session.execute(
+                    insert_missing_slots_sql,
+                    {
+                        "vendor_id": vendor_id,
+                        "available_game_id": available_game.id,
+                        "window_end_date": window_end_date,
+                    },
+                )
 
 
             # ✅ Create Dynamic Console Availability Table
@@ -229,6 +816,18 @@ class ConsoleService:
                 for game in getattr(console, "available_games", [])
             ]
 
+            normalized_hardware = ConsoleService.normalize_hardware_spec(
+                console.console_type,
+                {
+                    "processorType": hardware.processor_type if hardware else None,
+                    "graphicsCard": hardware.graphics_card if hardware else None,
+                    "ramSize": hardware.ram_size if hardware else None,
+                    "storageCapacity": hardware.storage_capacity if hardware else None,
+                    "connectivity": hardware.connectivity if hardware else None,
+                    "consoleModelType": hardware.console_model_type if hardware else None,
+                },
+            )
+
             result = {
                 "console": {
                     "id": console.id,
@@ -241,12 +840,12 @@ class ConsoleService:
                     "description": console.description,
                 },
                 "hardwareSpecification": {
-                    "processorType": hardware.processor_type if hardware else None,
-                    "graphicsCard": hardware.graphics_card if hardware else None,
-                    "ramSize": hardware.ram_size if hardware else None,
-                    "storageCapacity": hardware.storage_capacity if hardware else None,
-                    "connectivity": hardware.connectivity if hardware else None,
-                    "consoleModelType": hardware.console_model_type if hardware else None,
+                    "processorType": normalized_hardware.get("processorType"),
+                    "graphicsCard": normalized_hardware.get("graphicsCard"),
+                    "ramSize": normalized_hardware.get("ramSize"),
+                    "storageCapacity": normalized_hardware.get("storageCapacity"),
+                    "connectivity": normalized_hardware.get("connectivity"),
+                    "consoleModelType": normalized_hardware.get("consoleModelType"),
                 },
                 "maintenanceStatus": {
                     "availableStatus": maintenance.available_status if maintenance else None,
