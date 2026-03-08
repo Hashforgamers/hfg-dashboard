@@ -1385,6 +1385,11 @@ def get_landing_page_vendor(vendor_id):
                 upcoming_bookings.append(booking_data)
             elif lifecycle_status == "current" and is_console_occupied:
                 current_slots.append(slot_data)
+            elif lifecycle_status == "current":
+                # If slot time says "current" but console is not occupied yet,
+                # keep it visible in upcoming queue instead of dropping it.
+                # This avoids disappearing bookings when occupancy sync is late.
+                upcoming_bookings.append(booking_data)
 
         # Vendor-scoped booking stats in one aggregate query.
         booking_summary = (
