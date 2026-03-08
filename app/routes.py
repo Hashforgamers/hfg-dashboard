@@ -130,7 +130,15 @@ def _normalize_lifecycle(book_status: str, row_date, start_time=None, end_time=N
         return "upcoming"
     if isinstance(row_date, date) and row_date < today_ist:
         return "completed"
-    if isinstance(row_date, date) and row_date == today_ist and start_time and end_time:
+    # For today's rows, trust persisted dashboard status.
+    # Only auto-close clearly stale "current" rows whose end time has passed.
+    if (
+        isinstance(row_date, date)
+        and row_date == today_ist
+        and status == "current"
+        and start_time
+        and end_time
+    ):
         now_ist = datetime.now(IST).replace(tzinfo=None)
         start_dt = datetime.combine(row_date, start_time)
         end_dt = datetime.combine(row_date, end_time)
@@ -138,8 +146,6 @@ def _normalize_lifecycle(book_status: str, row_date, start_time=None, end_time=N
             end_dt = end_dt + timedelta(days=1)
         if now_ist > end_dt:
             return "completed"
-        if start_dt <= now_ist <= end_dt:
-            return "current"
     return status
 
 @dashboard_service.route('/transactionReport/<int:vendor_id>/<string:to_date>/<string:from_date>', methods=['GET'])
