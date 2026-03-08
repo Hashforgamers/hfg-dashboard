@@ -1234,6 +1234,15 @@ def get_landing_page_vendor(vendor_id):
         availability_table = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
         today = datetime.utcnow().date()
 
+        terminal_booking_statuses = (
+            "completed",
+            "cancelled",
+            "canceled",
+            "rejected",
+            "discarded",
+            "verification_failed",
+        )
+
         # Self-heal stale current rows: only sessions with an occupied console can remain current.
         # If no occupied availability row exists for the same console, mark as completed.
         stale_current_rows = db.session.execute(
@@ -1265,6 +1274,22 @@ def get_landing_page_vendor(vendor_id):
                     {"booking_ids": healed_ids},
                 )
                 db.session.commit()
+
+        # Keep dashboard lifecycle aligned with canonical bookings.status for terminal states.
+        db.session.execute(
+            text(f"""
+                UPDATE {table_name} b
+                SET book_status = 'completed'
+                FROM bookings d
+                WHERE d.id = b.book_id
+                  AND LOWER(COALESCE(d.status, '')) IN (
+                      'completed', 'cancelled', 'canceled', 'rejected', 'discarded', 'verification_failed'
+                  )
+                  AND b.book_status <> 'completed'
+            """),
+            {},
+        )
+        db.session.commit()
 
         # Vendor-scoped transaction summary in one query.
         transaction_summary = (
@@ -1308,7 +1333,10 @@ def get_landing_page_vendor(vendor_id):
                 ag.single_slot_price,
                 d.slot_id,
                 ca.is_available AS console_is_available,
-                c.model_number AS console_name
+                c.model_number AS console_name,
+                c.brand AS console_brand,
+                c.console_number AS console_number,
+                c.console_type AS console_type
             FROM {table_name} b
             JOIN available_games ag ON b.game_id = ag.id
             JOIN bookings d ON b.book_id = d.id
@@ -1323,6 +1351,7 @@ def get_landing_page_vendor(vendor_id):
 
         upcoming_bookings = []
         current_slots = []
+        history_bookings = []
 
         booking_ids = [row.book_id for row in result]
         if booking_ids:
@@ -1353,6 +1382,11 @@ def get_landing_page_vendor(vendor_id):
                 "userId":row.user_id,
                 "game": row.game_name,
                 "consoleType": row.console_name or f"Console-{row.console_id}",
+                "consoleId": row.console_id,
+                "consoleName": row.console_name,
+                "consoleBrand": row.console_brand,
+                "consoleNumber": row.console_number,
+                "consoleCategory": row.console_type,
                 "time": f"{row.start_time.strftime('%I:%M %p')} - {row.end_time.strftime('%I:%M %p')}",
                 "status": "Confirmed" if row.status != 'pending_verified' else "Pending",
                 "game_id":row.game_id,
@@ -1362,6 +1396,7 @@ def get_landing_page_vendor(vendor_id):
                 "lifecycleStatus": lifecycle_status,
                 "lifecycleStep": lifecycle_step,
                 "sessionIdentifier": session_identifier,
+                "bookingRecordStatus": str(getattr(row, "status", "") or "").strip().lower(),
 
             }
             
@@ -1372,7 +1407,12 @@ def get_landing_page_vendor(vendor_id):
                 "endTime": row.end_time.strftime('%I:%M %p'),
                 "status": "Booked" if row.status != 'pending_verified' else "Available",
                 "consoleType": row.console_name or (f"HASH{row.console_id}" if row.console_id is not None else "Console"),
+                "consoleId": row.console_id,
+                "consoleName": row.console_name,
+                "consoleBrand": row.console_brand,
                 "consoleNumber": str(row.console_id),
+                "consoleCode": row.console_number,
+                "consoleCategory": row.console_type,
                 "username": row.username,
                 "userId":row.user_id,
                 "game_id":row.game_id,
@@ -1382,12 +1422,17 @@ def get_landing_page_vendor(vendor_id):
                 "lifecycleStatus": lifecycle_status,
                 "lifecycleStep": lifecycle_step,
                 "sessionIdentifier": session_identifier,
+                "bookingRecordStatus": str(getattr(row, "status", "") or "").strip().lower(),
                 
             }
-            
+
+            booking_record_status = str(getattr(row, "status", "") or "").strip().lower()
+            is_terminal = booking_record_status in terminal_booking_statuses
             is_console_occupied = bool(row.console_id is not None and row.console_is_available is False)
 
-            if lifecycle_status == "upcoming":
+            if is_terminal:
+                history_bookings.append(booking_data)
+            elif lifecycle_status == "upcoming":
                 upcoming_bookings.append(booking_data)
             elif lifecycle_status == "current" and is_console_occupied:
                 current_slots.append(slot_data)
@@ -1396,6 +1441,8 @@ def get_landing_page_vendor(vendor_id):
                 # keep it visible in upcoming queue instead of dropping it.
                 # This avoids disappearing bookings when occupancy sync is late.
                 upcoming_bookings.append(booking_data)
+            else:
+                history_bookings.append(booking_data)
 
         # Vendor-scoped booking stats in one aggregate query.
         booking_summary = (
@@ -1461,7 +1508,8 @@ def get_landing_page_vendor(vendor_id):
                 "peakBookingHours": peak_booking_hours
             },
             "upcomingBookings": upcoming_bookings,
-            "currentSlots": current_slots
+            "currentSlots": current_slots,
+            "historyBookings": history_bookings,
         }
 
         with _landing_page_cache_lock:
