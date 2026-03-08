@@ -130,12 +130,11 @@ def _normalize_lifecycle(book_status: str, row_date, start_time=None, end_time=N
         return "upcoming"
     if isinstance(row_date, date) and row_date < today_ist:
         return "completed"
-    # For today's rows, trust persisted dashboard status.
-    # Only auto-close clearly stale "current" rows whose end time has passed.
+    # For today's rows, trust persisted status unless slot end has already passed.
+    # This prevents stale "upcoming" rows from showing after their end time.
     if (
         isinstance(row_date, date)
         and row_date == today_ist
-        and status == "current"
         and start_time
         and end_time
     ):
@@ -1233,6 +1232,9 @@ def get_landing_page_vendor(vendor_id):
         table_name = f"VENDOR_{vendor_id}_DASHBOARD"
         availability_table = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
         today = datetime.utcnow().date()
+        now_ist_dt = datetime.now(IST).replace(tzinfo=None)
+        today_ist = now_ist_dt.date()
+        now_ist_time = now_ist_dt.time()
 
         terminal_booking_statuses = (
             "completed",
@@ -1290,6 +1292,41 @@ def get_landing_page_vendor(vendor_id):
             {},
         )
         db.session.commit()
+
+        # Self-heal stale time-expired rows:
+        # - any past-date upcoming/current -> completed
+        # - today's non-overnight slots whose end_time already passed -> completed
+        time_expired_rows = db.session.execute(
+            text(f"""
+                UPDATE {table_name} b
+                SET book_status = 'completed'
+                WHERE b.book_status IN ('upcoming', 'current')
+                  AND (
+                      b.date < :today_ist
+                      OR (
+                          b.date = :today_ist
+                          AND b.end_time > b.start_time
+                          AND b.end_time < :now_ist_time
+                      )
+                  )
+                RETURNING b.book_id
+            """),
+            {"today_ist": today_ist, "now_ist_time": now_ist_time},
+        ).fetchall()
+        if time_expired_rows:
+            expired_ids = [int(r[0]) for r in time_expired_rows if r and r[0] is not None]
+            if expired_ids:
+                db.session.execute(
+                    text("""
+                        UPDATE bookings
+                        SET status = 'completed'
+                        WHERE id = ANY(:booking_ids)
+                          AND LOWER(COALESCE(status, '')) NOT IN
+                              ('completed', 'cancelled', 'canceled', 'rejected', 'discarded', 'verification_failed')
+                    """),
+                    {"booking_ids": expired_ids},
+                )
+                db.session.commit()
 
         # Vendor-scoped transaction summary in one query.
         transaction_summary = (
