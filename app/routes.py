@@ -82,7 +82,15 @@ def _invalidate_vendor_caches(vendor_id: int):
 
 dashboard_service = Blueprint("dashboard_service", __name__)
 IST = ZoneInfo("Asia/Kolkata")
-LIFECYCLE_ORDER = {"upcoming": 1, "current": 2, "completed": 3}
+LIFECYCLE_ORDER = {
+    "upcoming": 1,
+    "current": 2,
+    "completed": 3,
+    "discarded": 3,
+    "cancelled": 3,
+    "canceled": 3,
+    "rejected": 3,
+}
 
 
 def _booking_start_eligibility(slot_date, start_time, end_time):
@@ -1319,14 +1327,12 @@ def get_landing_page_vendor(vendor_id):
         )
         db.session.commit()
 
-        # Self-heal stale time-expired rows:
-        # - any past-date upcoming/current -> completed
-        # - today's non-overnight slots whose end_time already passed -> completed
-        time_expired_rows = db.session.execute(
+        # Self-heal overdue upcoming rows as "discarded" (no-show), not completed.
+        overdue_upcoming_rows = db.session.execute(
             text(f"""
                 UPDATE {table_name} b
-                SET book_status = 'completed'
-                WHERE b.book_status IN ('upcoming', 'current')
+                SET book_status = 'discarded'
+                WHERE b.book_status = 'upcoming'
                   AND (
                       b.date < :today_ist
                       OR (
@@ -1339,9 +1345,49 @@ def get_landing_page_vendor(vendor_id):
             """),
             {"today_ist": today_ist, "now_ist_time": now_ist_time},
         ).fetchall()
-        if time_expired_rows:
-            expired_ids = [int(r[0]) for r in time_expired_rows if r and r[0] is not None]
-            if expired_ids:
+        if overdue_upcoming_rows:
+            discarded_ids = [int(r[0]) for r in overdue_upcoming_rows if r and r[0] is not None]
+            if discarded_ids:
+                db.session.execute(
+                    text("""
+                        UPDATE bookings
+                        SET status = 'discarded'
+                        WHERE id = ANY(:booking_ids)
+                          AND LOWER(COALESCE(status, '')) NOT IN
+                              ('completed', 'cancelled', 'canceled', 'rejected', 'discarded', 'verification_failed')
+                    """),
+                    {"booking_ids": discarded_ids},
+                )
+                db.session.commit()
+
+        # Self-heal overdue current rows to completed only if console is no longer occupied.
+        overdue_current_rows = db.session.execute(
+            text(f"""
+                UPDATE {table_name} b
+                SET book_status = 'completed'
+                WHERE b.book_status = 'current'
+                  AND (
+                      b.date < :today_ist
+                      OR (
+                          b.date = :today_ist
+                          AND b.end_time > b.start_time
+                          AND b.end_time < :now_ist_time
+                      )
+                  )
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM {availability_table} ca
+                      WHERE ca.vendor_id = :vendor_id
+                        AND ca.console_id = b.console_id
+                        AND COALESCE(ca.is_available, TRUE) = FALSE
+                  )
+                RETURNING b.book_id
+            """),
+            {"today_ist": today_ist, "now_ist_time": now_ist_time, "vendor_id": vendor_id},
+        ).fetchall()
+        if overdue_current_rows:
+            completed_ids = [int(r[0]) for r in overdue_current_rows if r and r[0] is not None]
+            if completed_ids:
                 db.session.execute(
                     text("""
                         UPDATE bookings
@@ -1350,7 +1396,7 @@ def get_landing_page_vendor(vendor_id):
                           AND LOWER(COALESCE(status, '')) NOT IN
                               ('completed', 'cancelled', 'canceled', 'rejected', 'discarded', 'verification_failed')
                     """),
-                    {"booking_ids": expired_ids},
+                    {"booking_ids": completed_ids},
                 )
                 db.session.commit()
 
@@ -1438,12 +1484,17 @@ def get_landing_page_vendor(vendor_id):
         
         for row in result:
             has_meals = row.book_id in meals_lookup
+            is_console_occupied = bool(row.console_id is not None and row.console_is_available is False)
+
             lifecycle_status = _normalize_lifecycle(
                 row.book_status,
                 row.date,
                 row.start_time,
                 row.end_time,
             )
+            # Occupied current sessions must remain live even if scheduled end passed (extra-time play).
+            if str(row.book_status or "").strip().lower() == "current" and is_console_occupied:
+                lifecycle_status = "current"
             session_identifier = _build_session_identifier(row.book_id, row.date, row.start_time, row.end_time)
             lifecycle_step = LIFECYCLE_ORDER.get(lifecycle_status, 1)
 
@@ -1500,7 +1551,6 @@ def get_landing_page_vendor(vendor_id):
 
             booking_record_status = str(getattr(row, "status", "") or "").strip().lower()
             is_terminal = booking_record_status in terminal_booking_statuses
-            is_console_occupied = bool(row.console_id is not None and row.console_is_available is False)
 
             if is_terminal:
                 history_bookings.append(booking_data)
