@@ -1319,7 +1319,7 @@ def get_landing_page_vendor(vendor_id):
              AND ca.game_id = b.game_id
             LEFT JOIN consoles c ON c.id = b.console_id
         """)
-        result = db.session.execute(sql_fetch_bookings).fetchall()
+        result = db.session.execute(sql_fetch_bookings, {"vendor_id": vendor_id}).fetchall()
 
         upcoming_bookings = []
         current_slots = []
