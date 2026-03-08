@@ -67,6 +67,7 @@ STATE_CODE_REGEX = re.compile(r"^[0-9A-Z]{2}$")
 LANDING_PAGE_CACHE_TTL_SEC = 5
 _landing_page_cache = {}
 _landing_page_cache_lock = threading.Lock()
+LANDING_HISTORY_DAYS = 1
 CONSOLES_CACHE_TTL_SEC = 10
 _vendor_consoles_cache = {}
 _vendor_consoles_cache_lock = threading.Lock()
@@ -1235,6 +1236,31 @@ def get_landing_page_vendor(vendor_id):
         now_ist_dt = datetime.now(IST).replace(tzinfo=None)
         today_ist = now_ist_dt.date()
         now_ist_time = now_ist_dt.time()
+        # Optional history controls:
+        # - history_date=YYYY-MM-DD (exact date)
+        # - history_days=N (rolling window, capped)
+        history_days = LANDING_HISTORY_DAYS
+        history_days_raw = request.args.get("history_days")
+        if history_days_raw:
+            try:
+                history_days = max(0, min(60, int(history_days_raw)))
+            except (TypeError, ValueError):
+                history_days = LANDING_HISTORY_DAYS
+
+        history_date_raw = (request.args.get("history_date") or "").strip()
+        exact_history_date = None
+        if history_date_raw:
+            try:
+                exact_history_date = datetime.strptime(history_date_raw, "%Y-%m-%d").date()
+            except ValueError:
+                exact_history_date = None
+
+        if exact_history_date is not None:
+            history_from_date = exact_history_date
+            history_to_date = exact_history_date
+        else:
+            history_from_date = today_ist - timedelta(days=history_days)
+            history_to_date = today_ist
 
         terminal_booking_statuses = (
             "completed",
@@ -1383,8 +1409,17 @@ def get_landing_page_vendor(vendor_id):
              AND ca.console_id = b.console_id
              AND ca.game_id = b.game_id
             LEFT JOIN consoles c ON c.id = b.console_id
+            WHERE b.date BETWEEN :history_from_date AND :history_to_date
+            ORDER BY b.date ASC, b.start_time ASC, b.book_id ASC
         """)
-        result = db.session.execute(sql_fetch_bookings, {"vendor_id": vendor_id}).fetchall()
+        result = db.session.execute(
+            sql_fetch_bookings,
+            {
+                "vendor_id": vendor_id,
+                "history_from_date": history_from_date,
+                "history_to_date": history_to_date,
+            },
+        ).fetchall()
 
         upcoming_bookings = []
         current_slots = []
