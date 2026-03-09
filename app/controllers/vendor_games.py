@@ -3,11 +3,61 @@ from app.services.game_service import GameService
 from app.models.game import Game
 from app.models.vendorGame import VendorGame
 from app.models.console import Console
-from app.models.availableGame import AvailableGame
+from app.models.availableGame import AvailableGame, available_game_console
+from app.models.consolePricingOffer import ConsolePricingOffer
+from sqlalchemy.orm import joinedload
+from datetime import datetime
+import pytz
+import threading
+import time
 from app.extension.extensions import db
 
 
 vendor_games_bp = Blueprint('vendor_games', __name__)
+IST = pytz.timezone("Asia/Kolkata")
+_VENDOR_GAMES_CACHE = {}
+_VENDOR_GAMES_CACHE_TTL_SECONDS = 20
+_VENDOR_GAMES_CACHE_LOCK = threading.Lock()
+
+
+def _vendor_games_cache_get(vendor_id, now_ts):
+    with _VENDOR_GAMES_CACHE_LOCK:
+        item = _VENDOR_GAMES_CACHE.get(vendor_id)
+        if not item:
+            return None
+        if (now_ts - item["ts"]) >= _VENDOR_GAMES_CACHE_TTL_SECONDS:
+            _VENDOR_GAMES_CACHE.pop(vendor_id, None)
+            return None
+        return item["payload"]
+
+
+def _vendor_games_cache_set(vendor_id, payload, now_ts):
+    with _VENDOR_GAMES_CACHE_LOCK:
+        _VENDOR_GAMES_CACHE[vendor_id] = {"ts": now_ts, "payload": payload}
+
+
+def _vendor_games_cache_invalidate(vendor_id):
+    with _VENDOR_GAMES_CACHE_LOCK:
+        _VENDOR_GAMES_CACHE.pop(vendor_id, None)
+
+
+def _offer_is_active_now(offer, now_ist):
+    if not offer or not offer.is_active:
+        return False
+
+    current_date = now_ist.date()
+    current_time = now_ist.time().replace(tzinfo=None)
+
+    if not (offer.start_date <= current_date <= offer.end_date):
+        return False
+
+    if offer.start_date == offer.end_date:
+        return offer.start_time <= current_time <= offer.end_time
+    if current_date == offer.start_date:
+        return current_time >= offer.start_time
+    if current_date == offer.end_date:
+        return current_time <= offer.end_time
+    return True
 
 
 # ==================== AVAILABLE GAMES (PLATFORM TYPES) ====================
@@ -110,15 +160,105 @@ def list_vendor_games(vendor_id):
     List all games added by vendor with console details.
     price_per_hour is now dynamically computed from AvailableGame + active offers.
     """
-    vendor_games = VendorGame.query.filter_by(
-        vendor_id=vendor_id,
-        is_available=True
-    ).all()
+    now_ts = time.time()
+    cached_payload = _vendor_games_cache_get(vendor_id, now_ts)
+    if cached_payload is not None:
+        return jsonify(cached_payload), 200
+
+    vendor_games = (
+        VendorGame.query
+        .options(
+            joinedload(VendorGame.game),
+            joinedload(VendorGame.console),
+        )
+        .filter_by(vendor_id=vendor_id, is_available=True)
+        .all()
+    )
+
+    if not vendor_games:
+        payload = []
+        _vendor_games_cache_set(vendor_id, payload, now_ts)
+        return jsonify(payload), 200
+
+    console_ids = {vg.console_id for vg in vendor_games if vg.console_id}
+
+    mapping_rows = (
+        db.session.query(
+            AvailableGame.id.label("available_game_id"),
+            AvailableGame.single_slot_price.label("single_slot_price"),
+            AvailableGame.game_name.label("console_type"),
+            available_game_console.c.console_id.label("console_id"),
+        )
+        .select_from(AvailableGame)
+        .join(
+            available_game_console,
+            available_game_console.c.available_game_id == AvailableGame.id,
+        )
+        .filter(
+            AvailableGame.vendor_id == vendor_id,
+            available_game_console.c.console_id.in_(console_ids),
+        )
+        .all()
+    )
+
+    available_game_by_console_id = {}
+    for row in mapping_rows:
+        available_game_by_console_id[int(row.console_id)] = {
+            "available_game_id": int(row.available_game_id),
+            "default_price": float(row.single_slot_price or 0),
+            "console_type": (row.console_type or "").lower(),
+        }
+
+    available_game_ids = [
+        v["available_game_id"] for v in available_game_by_console_id.values()
+    ]
+    offers = []
+    if available_game_ids:
+        offers = (
+            ConsolePricingOffer.query
+            .filter(
+                ConsolePricingOffer.vendor_id == vendor_id,
+                ConsolePricingOffer.available_game_id.in_(available_game_ids),
+                ConsolePricingOffer.is_active.is_(True),
+            )
+            .all()
+        )
+
+    now_ist = datetime.now(IST)
+    active_offer_by_game_id = {}
+    for offer in offers:
+        if not _offer_is_active_now(offer, now_ist):
+            continue
+        existing = active_offer_by_game_id.get(int(offer.available_game_id))
+        if existing is None or int(offer.id) > int(existing.id):
+            active_offer_by_game_id[int(offer.available_game_id)] = offer
 
     games_dict = {}
     for vg in vendor_games:
         game_id = vg.game_id
-        price_info = vg.effective_price_info  # ✅ Single call, reuse for both console entry and avg
+        mapping = available_game_by_console_id.get(int(vg.console_id))
+        default_price = float(mapping["default_price"]) if mapping else 0.0
+        offer = None
+        if mapping:
+            offer = active_offer_by_game_id.get(int(mapping["available_game_id"]))
+        if offer:
+            price_info = {
+                "price": float(offer.offered_price),
+                "is_offer": True,
+                "default_price": default_price,
+                "offer_name": offer.offer_name,
+                "discount_percentage": offer.get_discount_percentage(),
+                "valid_until": f"{offer.end_date} {offer.end_time.strftime('%H:%M')}",
+            }
+        else:
+            price_info = {
+                "price": default_price,
+                "is_offer": False,
+                "default_price": default_price,
+                "offer_name": None,
+                "discount_percentage": None,
+                "valid_until": None,
+            }
 
         if game_id not in games_dict:
             games_dict[game_id] = {
@@ -153,6 +293,7 @@ def list_vendor_games(vendor_id):
             'avg_price': sum(data['prices']) / len(data['prices']) if data['prices'] else 0
         })
 
+    _vendor_games_cache_set(vendor_id, result, now_ts)
     return jsonify(result), 200
 
 
@@ -217,6 +358,7 @@ def add_game_to_consoles(vendor_id):
             added_count += 1
 
         db.session.commit()
+        _vendor_games_cache_invalidate(vendor_id)
 
         return jsonify({
             'message': f'Game added to {added_count} console(s) successfully',
@@ -263,6 +405,7 @@ def update_vendor_game(vendor_id, vendor_game_id):
             }), 400
 
         db.session.commit()
+        _vendor_games_cache_invalidate(vendor_id)
 
         return jsonify({
             'message': 'Game updated successfully',
@@ -290,6 +433,7 @@ def delete_vendor_game(vendor_id, vendor_game_id):
 
         db.session.delete(vendor_game)
         db.session.commit()
+        _vendor_games_cache_invalidate(vendor_id)
 
         return jsonify({
             'message': f'{game_name} removed from Console #{console_number} successfully'
@@ -318,6 +462,7 @@ def bulk_delete_game(vendor_id, game_id):
             db.session.delete(vg)
 
         db.session.commit()
+        _vendor_games_cache_invalidate(vendor_id)
 
         return jsonify({
             'message': f'{game_name} removed from {count} console(s) successfully'
