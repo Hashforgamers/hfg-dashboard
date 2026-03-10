@@ -3380,6 +3380,8 @@ def get_payment_method_stats(vendor_id):
 def get_booking_details(booking_id):
     """Get detailed booking information including extra services/meals"""
     try:
+        from app.models.bookingSquadMember import BookingSquadMember
+
         # Get the booking
         booking = Booking.query.filter_by(id=booking_id).first()
         
@@ -3392,6 +3394,12 @@ def get_booking_details(booking_id):
         # Get extra services for this booking
         extra_services = []
         booking_extra_services = BookingExtraService.query.filter_by(booking_id=booking_id).all()
+        squad_members = (
+            BookingSquadMember.query
+            .filter_by(booking_id=booking_id)
+            .order_by(BookingSquadMember.member_position.asc())
+            .all()
+        )
         
         for extra in booking_extra_services:
             # Get menu item details
@@ -3420,6 +3428,18 @@ def get_booking_details(booking_id):
                 "game_id": booking.game_id,
                 "slot_id": booking.slot_id,
                 "status": booking.status,
+                "squad_details": booking.squad_details or {},
+                "squad_members": [
+                    {
+                        "id": member.id,
+                        "member_user_id": member.member_user_id,
+                        "member_position": member.member_position,
+                        "is_captain": member.is_captain,
+                        "name": member.name_snapshot,
+                        "phone": member.phone_snapshot,
+                    }
+                    for member in squad_members
+                ],
                
                 "extra_services": extra_services
             }
