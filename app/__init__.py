@@ -73,6 +73,9 @@ def create_app():
     Migrate(app, db)
     socketio.init_app(app, cors_allowed_origins="*")
 
+    # Force model mapper registration order for relationship string references.
+    from app.models.bookingSquadMember import BookingSquadMember  # noqa: F401
+
     # Import blueprints
     from .routes import dashboard_service
     from app.controllers.package_controller import bp_packages

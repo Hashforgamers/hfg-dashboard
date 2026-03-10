@@ -24,3 +24,7 @@ class Booking(db.Model):
 
     # Relationship with Slot (many-to-one)
     slot = relationship('Slot', back_populates='bookings')
+
+
+# Ensure BookingSquadMember mapper is registered before first query-time mapper configure.
+from .bookingSquadMember import BookingSquadMember  # noqa: E402,F401
