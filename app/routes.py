@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify, current_app
 from datetime import datetime,timedelta
+from typing import Dict
 import re
 import time
 import threading
@@ -924,12 +925,27 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
             {"booking_id": booking_id}
         )
 
+        assigned_console_labels = []
+        if selected_console_ids:
+            label_rows = (
+                db.session.query(Console.id, Console.console_number, Console.model_number)
+                .filter(Console.id.in_(selected_console_ids))
+                .all()
+            )
+            label_map = {}
+            for lr in label_rows:
+                preferred = str(lr.console_number or "").strip() or str(lr.model_number or "").strip()
+                label_map[int(lr.id)] = preferred or f"Console-{int(lr.id)}"
+            assigned_console_labels = [label_map.get(int(cid), f"Console-{int(cid)}") for cid in selected_console_ids]
+
         if booking_detail:
             updated_squad_details = dict(squad_details) if isinstance(squad_details, dict) else {}
             if is_pc_squad:
                 updated_squad_details["assigned_console_ids"] = selected_console_ids
             else:
                 updated_squad_details["assigned_console_ids"] = [int(console_id)]
+            if assigned_console_labels:
+                updated_squad_details["assigned_console_labels"] = assigned_console_labels
             updated_squad_details["assigned_at"] = datetime.utcnow().isoformat()
             booking_detail.squad_details = updated_squad_details
 
@@ -955,7 +971,8 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
                     ag.single_slot_price,
                     d.slot_id,
                     d.squad_details,
-                    c.model_number AS console_name
+                    c.model_number AS console_name,
+                    c.console_number AS console_number
                 FROM {booking_table_name} b
                 JOIN available_games ag ON b.game_id = ag.id
                 JOIN bookings d ON b.book_id = d.id
@@ -1001,6 +1018,7 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
                     "date": b_row["date"],
                     "single_slot_price": b_row["single_slot_price"],
                     "console_name": b_row.get("console_name"),
+                    "console_number": b_row.get("console_number"),
                     "squad_enabled": bool(squad_details.get("enabled")) or len(squad_member_payload) > 1,
                     "squad_player_count": int(
                         squad_details.get("player_count")
@@ -1047,6 +1065,7 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
         return jsonify({
             "message": "Console status and booking status updated successfully!",
             "assigned_console_ids": selected_console_ids,
+            "assigned_console_labels": assigned_console_labels,
             "required_console_count": required_console_count,
             "is_pc_squad": is_pc_squad,
         }), 200
@@ -1176,11 +1195,26 @@ def assign_console_to_multiple_bookings():
             {"booking_ids": booking_ids}
         )
 
+        assigned_console_labels = []
+        if selected_console_ids:
+            label_rows = (
+                db.session.query(Console.id, Console.console_number, Console.model_number)
+                .filter(Console.id.in_(selected_console_ids))
+                .all()
+            )
+            label_map = {}
+            for lr in label_rows:
+                preferred = str(lr.console_number or "").strip() or str(lr.model_number or "").strip()
+                label_map[int(lr.id)] = preferred or f"Console-{int(lr.id)}"
+            assigned_console_labels = [label_map.get(int(cid), f"Console-{int(cid)}") for cid in selected_console_ids]
+
         booking_models = Booking.query.filter(Booking.id.in_(booking_ids)).all()
         for booking_model in booking_models:
             current_squad = booking_model.squad_details if isinstance(booking_model.squad_details, dict) else {}
             updated_squad = dict(current_squad)
             updated_squad["assigned_console_ids"] = selected_console_ids if is_pc_squad else [int(console_id)]
+            if assigned_console_labels:
+                updated_squad["assigned_console_labels"] = assigned_console_labels
             updated_squad["assigned_at"] = datetime.utcnow().isoformat()
             booking_model.squad_details = updated_squad
 
@@ -1190,6 +1224,7 @@ def assign_console_to_multiple_bookings():
         return jsonify({
             "message": "Console assigned to multiple bookings successfully.",
             "assigned_console_ids": selected_console_ids,
+            "assigned_console_labels": assigned_console_labels,
             "required_console_count": required_console_count,
             "is_pc_squad": is_pc_squad,
         }), 200
@@ -1611,6 +1646,7 @@ def get_landing_page_vendor(vendor_id):
         history_bookings = []
 
         booking_ids = [row.book_id for row in result]
+        assigned_console_labels: Dict[int, str] = {}
         if booking_ids:
             meals_lookup = set(
                 r[0] for r in db.session.query(BookingExtraService.booking_id)
@@ -1618,6 +1654,30 @@ def get_landing_page_vendor(vendor_id):
                 .distinct()
                 .all()
             )
+            assigned_console_ids = set()
+            for r in result:
+                details = r.squad_details if isinstance(r.squad_details, dict) else {}
+                ids = details.get("assigned_console_ids")
+                if isinstance(ids, list):
+                    for cid in ids:
+                        try:
+                            assigned_console_ids.add(int(cid))
+                        except (TypeError, ValueError):
+                            continue
+            if assigned_console_ids:
+                console_rows = (
+                    db.session.query(Console.id, Console.console_number, Console.model_number, Console.brand)
+                    .filter(Console.id.in_(assigned_console_ids))
+                    .all()
+                )
+                for console_row in console_rows:
+                    label_bits = [
+                        str(console_row.console_number or "").strip(),
+                        str(console_row.model_number or "").strip(),
+                    ]
+                    preferred = next((bit for bit in label_bits if bit), None)
+                    fallback = f"Console-{console_row.id}"
+                    assigned_console_labels[int(console_row.id)] = preferred or fallback
             squad_member_rows = (
                 BookingSquadMember.query
                 .filter(BookingSquadMember.booking_id.in_(booking_ids))
@@ -1661,6 +1721,20 @@ def get_landing_page_vendor(vendor_id):
                 or squad_details.get("playerCount")
                 or (len(squad_members) if squad_members else 1)
             )
+            assigned_ids = squad_details.get("assigned_console_ids") if isinstance(squad_details.get("assigned_console_ids"), list) else []
+            assigned_label_list = []
+            for assigned_id in assigned_ids:
+                try:
+                    parsed_id = int(assigned_id)
+                except (TypeError, ValueError):
+                    continue
+                if parsed_id in assigned_console_labels:
+                    assigned_label_list.append(assigned_console_labels[parsed_id])
+                else:
+                    assigned_label_list.append(f"Console-{parsed_id}")
+            if assigned_label_list:
+                squad_details = dict(squad_details)
+                squad_details["assigned_console_labels"] = assigned_label_list
             squad_member_names = [m.get("name") for m in squad_members if m.get("name")]
 
             booking_data = {
@@ -1702,7 +1776,7 @@ def get_landing_page_vendor(vendor_id):
                 "consoleId": row.console_id,
                 "consoleName": row.console_name,
                 "consoleBrand": row.console_brand,
-                "consoleNumber": str(row.console_id),
+                "consoleNumber": str(row.console_number or row.console_id),
                 "consoleCode": row.console_number,
                 "consoleCategory": row.console_type,
                 "username": row.username,
