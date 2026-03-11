@@ -1295,33 +1295,119 @@ def release_console(gameid, console_id, vendor_id):
             "game_id": gameid
         })
 
-         # ✅ Move lifecycle one-way: current -> completed only
-        sql_update_booking_status = text(f"""
-            UPDATE {booking_table_name}
-            SET book_status = 'completed'
-            WHERE console_id = :console_id AND game_id = :game_id AND book_status = 'current'
-        """)
-
-        upd_release = db.session.execute(sql_update_booking_status, {
-            "console_id": console_id,
-            "game_id": gameid
-        })
-        if getattr(upd_release, "rowcount", 0) <= 0:
-            db.session.rollback()
-            return jsonify({"error": "No active current session found to release"}), 400
-
-        db.session.execute(
+        # For PC squad sessions, a single booking may own multiple consoles.
+        # Releasing one console should only partially end session until all assigned
+        # consoles are released.
+        active_rows = db.session.execute(
             text(f"""
-                UPDATE bookings
-                SET status = 'completed'
-                WHERE id IN (
-                    SELECT book_id
-                    FROM {booking_table_name}
-                    WHERE console_id = :console_id AND game_id = :game_id AND book_status = 'completed'
-                )
+                SELECT DISTINCT book_id
+                FROM {booking_table_name}
+                WHERE game_id = :game_id AND book_status = 'current'
             """),
-            {"console_id": console_id, "game_id": gameid}
-        )
+            {"game_id": gameid}
+        ).fetchall()
+        active_booking_ids = [int(r.book_id) for r in active_rows if r and r.book_id is not None]
+
+        partial_release = False
+        completed_booking_ids = []
+        matched_pc_squad_booking_id = None
+
+        if active_booking_ids:
+            booking_models = Booking.query.filter(Booking.id.in_(active_booking_ids)).all()
+            for booking_model in booking_models:
+                details = booking_model.squad_details if isinstance(booking_model.squad_details, dict) else {}
+                assigned_ids = details.get("assigned_console_ids") if isinstance(details.get("assigned_console_ids"), list) else []
+                normalized_assigned = []
+                for cid in assigned_ids:
+                    try:
+                        normalized_assigned.append(int(cid))
+                    except (TypeError, ValueError):
+                        continue
+                is_pc_squad = bool(
+                    details.get("enabled")
+                    and str(details.get("console_group") or "").lower() == "pc"
+                    and len(normalized_assigned) > 0
+                )
+                if not is_pc_squad:
+                    continue
+                if int(console_id) not in normalized_assigned:
+                    continue
+
+                matched_pc_squad_booking_id = int(booking_model.id)
+                remaining_ids = [cid for cid in normalized_assigned if cid != int(console_id)]
+                released_ids = details.get("released_console_ids") if isinstance(details.get("released_console_ids"), list) else []
+                normalized_released = []
+                for rid in released_ids:
+                    try:
+                        normalized_released.append(int(rid))
+                    except (TypeError, ValueError):
+                        continue
+                if int(console_id) not in normalized_released:
+                    normalized_released.append(int(console_id))
+
+                updated = dict(details)
+                updated["assigned_console_ids"] = remaining_ids
+                updated["released_console_ids"] = normalized_released
+                booking_model.squad_details = updated
+
+                if remaining_ids:
+                    partial_release = True
+                    db.session.execute(
+                        text(f"""
+                            UPDATE {booking_table_name}
+                            SET console_id = :next_console_id
+                            WHERE book_id = :booking_id
+                              AND game_id = :game_id
+                              AND book_status = 'current'
+                        """),
+                        {
+                            "next_console_id": int(remaining_ids[0]),
+                            "booking_id": int(booking_model.id),
+                            "game_id": gameid,
+                        }
+                    )
+                else:
+                    db.session.execute(
+                        text(f"""
+                            UPDATE {booking_table_name}
+                            SET book_status = 'completed'
+                            WHERE book_id = :booking_id
+                              AND game_id = :game_id
+                              AND book_status = 'current'
+                        """),
+                        {"booking_id": int(booking_model.id), "game_id": gameid}
+                    )
+                    booking_model.status = "completed"
+                    completed_booking_ids.append(int(booking_model.id))
+                break
+
+        if not matched_pc_squad_booking_id:
+            # ✅ Move lifecycle one-way: current -> completed only
+            sql_update_booking_status = text(f"""
+                UPDATE {booking_table_name}
+                SET book_status = 'completed'
+                WHERE console_id = :console_id AND game_id = :game_id AND book_status = 'current'
+                RETURNING book_id
+            """)
+
+            upd_release = db.session.execute(sql_update_booking_status, {
+                "console_id": console_id,
+                "game_id": gameid
+            }).fetchall()
+            if not upd_release:
+                db.session.rollback()
+                return jsonify({"error": "No active current session found to release"}), 400
+            completed_booking_ids = [int(r.book_id) for r in upd_release if r and r.book_id is not None]
+
+            if completed_booking_ids:
+                db.session.execute(
+                    text("""
+                        UPDATE bookings
+                        SET status = 'completed'
+                        WHERE id = ANY(:booking_ids)
+                    """),
+                    {"booking_ids": completed_booking_ids}
+                )
 
         # Commit the changes
         db.session.commit()
@@ -1348,7 +1434,18 @@ def release_console(gameid, console_id, vendor_id):
         current_app.logger.debug("Emitted console_availability event to room=%s - console now available", room)
         
 
-        return jsonify({"message": "Console released successfully!"}), 200
+        if partial_release:
+            return jsonify({
+                "message": "Console released for squad member. Session remains active for remaining consoles.",
+                "partial_release": True,
+                "booking_id": matched_pc_squad_booking_id,
+            }), 200
+
+        return jsonify({
+            "message": "Console released successfully!",
+            "partial_release": False,
+            "completed_booking_ids": completed_booking_ids,
+        }), 200
 
     except Exception as e:
         db.session.rollback()
