@@ -16,13 +16,10 @@ pricing_blueprint = Blueprint('pricing', __name__)
 
 IST = pytz.timezone('Asia/Kolkata')
 SUPPORTED_CONTROLLER_TYPES = {"ps5", "xbox"}
-SUPPORTED_SQUAD_GROUPS = {"ps", "xbox", "pc", "vr"}
-SQUAD_MAX_PLAYERS = {"ps": 8, "xbox": 6, "pc": 10, "vr": 4}
+SUPPORTED_SQUAD_GROUPS = {"pc"}
+SQUAD_MAX_PLAYERS = {"pc": 10}
 DEFAULT_SQUAD_POLICY = {
-    "ps": {2: 0, 3: 5, 4: 10, 5: 12, 6: 15, 7: 18, 8: 20},
-    "xbox": {2: 0, 3: 4, 4: 8, 5: 10, 6: 12},
     "pc": {2: 0, 3: 3, 4: 5, 5: 8, 6: 10, 7: 12, 8: 15, 9: 18, 10: 20},
-    "vr": {2: 0, 3: 0, 4: 0},
 }
 
 def get_ist_now():
@@ -87,12 +84,6 @@ def _serialize_squad_rules(rules):
 
 def _resolve_squad_group_for_game_name(value):
     text = str(value or "").strip().lower()
-    if "ps" in text:
-        return "ps"
-    if "xbox" in text:
-        return "xbox"
-    if "vr" in text:
-        return "vr"
     if "pc" in text:
         return "pc"
     return None
@@ -774,6 +765,8 @@ def get_squad_pricing_rules(vendor_id):
             'pricing': pricing,
             'max_players': SQUAD_MAX_PLAYERS,
             'base_prices': base_prices,
+            'rule_engine_scope': ['pc'],
+            'note': 'Squad discount rules apply only to PC. PS/Xbox squad pricing is handled by controller pricing.',
         }), 200
     except Exception as e:
         current_app.logger.error(f"❌ Error fetching squad pricing rules: {str(e)}")
@@ -884,6 +877,13 @@ def upsert_squad_pricing_rules(vendor_id):
                     )
                     break
                 prev_discount = current_discount
+
+        if not validated_rows:
+            return jsonify({
+                'success': False,
+                'message': 'At least one PC squad rule is required',
+                'errors': ['Only "pc" console_group is supported for squad discount rules'],
+            }), 400
 
         if errors:
             return jsonify({'success': False, 'message': 'Validation failed', 'errors': errors}), 400

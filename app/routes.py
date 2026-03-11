@@ -28,6 +28,7 @@ from app.models.bankTransferDetails import BankTransferDetails, PayoutTransactio
 from app.models.paymentMethod import PaymentMethod
 from app.models.paymentVendorMap import PaymentVendorMap
 from app.models.bookingExtraService import BookingExtraService
+from app.models.bookingSquadMember import BookingSquadMember
 from app.models.vendorTaxProfile import VendorTaxProfile
 
 from .models.hardwareSpecification import HardwareSpecification
@@ -897,6 +898,7 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
                     b.book_status,
                     ag.single_slot_price,
                     d.slot_id,
+                    d.squad_details,
                     c.model_number AS console_name
                 FROM {booking_table_name} b
                 JOIN available_games ag ON b.game_id = ag.id
@@ -912,6 +914,24 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
             current_app.logger.debug("Fetched booking row: %s", dict(b_row) if b_row else None)
 
             if b_row and b_row.get("book_status") == "current":
+                squad_members = (
+                    BookingSquadMember.query
+                    .filter(BookingSquadMember.booking_id == int(b_row["book_id"]))
+                    .order_by(BookingSquadMember.member_position.asc())
+                    .all()
+                )
+                squad_member_payload = [
+                    {
+                        "id": int(member.id),
+                        "member_user_id": int(member.member_user_id) if member.member_user_id else None,
+                        "member_position": int(member.member_position),
+                        "is_captain": bool(member.is_captain),
+                        "name": member.name_snapshot,
+                        "phone": member.phone_snapshot,
+                    }
+                    for member in squad_members
+                ]
+                squad_details = b_row.get("squad_details") if isinstance(b_row.get("squad_details"), dict) else {}
                 current_item = format_current_slot_item(row={
                     "slot_id": b_row["slot_id"],
                     "book_id": b_row["book_id"],
@@ -925,6 +945,14 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
                     "date": b_row["date"],
                     "single_slot_price": b_row["single_slot_price"],
                     "console_name": b_row.get("console_name"),
+                    "squad_enabled": bool(squad_details.get("enabled")) or len(squad_member_payload) > 1,
+                    "squad_player_count": int(
+                        squad_details.get("player_count")
+                        or squad_details.get("playerCount")
+                        or (len(squad_member_payload) if squad_member_payload else 1)
+                    ),
+                    "squad_members": squad_member_payload,
+                    "squad_details": squad_details,
                 })
                 room = f"vendor_{int(vendor_id)}"
                 socketio.emit("current_slot", current_item, room=room)
@@ -1441,6 +1469,7 @@ def get_landing_page_vendor(vendor_id):
                 b.book_status,
                 ag.single_slot_price,
                 d.slot_id,
+                d.squad_details,
                 ca.is_available AS console_is_available,
                 c.model_number AS console_name,
                 c.brand AS console_brand,
@@ -1479,8 +1508,25 @@ def get_landing_page_vendor(vendor_id):
                 .distinct()
                 .all()
             )
+            squad_member_rows = (
+                BookingSquadMember.query
+                .filter(BookingSquadMember.booking_id.in_(booking_ids))
+                .order_by(BookingSquadMember.booking_id.asc(), BookingSquadMember.member_position.asc())
+                .all()
+            )
+            squad_members_by_booking = defaultdict(list)
+            for member in squad_member_rows:
+                squad_members_by_booking[int(member.booking_id)].append({
+                    "id": int(member.id),
+                    "member_user_id": int(member.member_user_id) if member.member_user_id else None,
+                    "member_position": int(member.member_position),
+                    "is_captain": bool(member.is_captain),
+                    "name": member.name_snapshot,
+                    "phone": member.phone_snapshot,
+                })
         else:
             meals_lookup = set()
+            squad_members_by_booking = defaultdict(list)
         
         for row in result:
             has_meals = row.book_id in meals_lookup
@@ -1497,6 +1543,15 @@ def get_landing_page_vendor(vendor_id):
                 lifecycle_status = "current"
             session_identifier = _build_session_identifier(row.book_id, row.date, row.start_time, row.end_time)
             lifecycle_step = LIFECYCLE_ORDER.get(lifecycle_status, 1)
+            squad_details = row.squad_details if isinstance(row.squad_details, dict) else {}
+            squad_members = squad_members_by_booking.get(int(row.book_id), [])
+            squad_enabled = bool(squad_details.get("enabled")) or len(squad_members) > 1
+            squad_player_count = int(
+                squad_details.get("player_count")
+                or squad_details.get("playerCount")
+                or (len(squad_members) if squad_members else 1)
+            )
+            squad_member_names = [m.get("name") for m in squad_members if m.get("name")]
 
             booking_data = {
                 "slotId": row.slot_id,
@@ -1520,7 +1575,11 @@ def get_landing_page_vendor(vendor_id):
                 "lifecycleStep": lifecycle_step,
                 "sessionIdentifier": session_identifier,
                 "bookingRecordStatus": str(getattr(row, "status", "") or "").strip().lower(),
-
+                "squadEnabled": squad_enabled,
+                "squadPlayerCount": max(1, squad_player_count),
+                "squadMembers": squad_members,
+                "squadMemberNames": squad_member_names,
+                "squadDetails": squad_details,
             }
             
             slot_data = {
@@ -1546,7 +1605,11 @@ def get_landing_page_vendor(vendor_id):
                 "lifecycleStep": lifecycle_step,
                 "sessionIdentifier": session_identifier,
                 "bookingRecordStatus": str(getattr(row, "status", "") or "").strip().lower(),
-                
+                "squadEnabled": squad_enabled,
+                "squadPlayerCount": max(1, squad_player_count),
+                "squadMembers": squad_members,
+                "squadMemberNames": squad_member_names,
+                "squadDetails": squad_details,
             }
 
             booking_record_status = str(getattr(row, "status", "") or "").strip().lower()

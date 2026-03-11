@@ -42,6 +42,10 @@ def format_current_slot_item(*, row: Dict[str, Any]) -> Dict[str, Any]:
         "lifecycleStatus": "current",
         "lifecycleStep": 2,
         "sessionIdentifier": session_identifier,
+        "squadEnabled": bool(row.get("squad_enabled", False)),
+        "squadPlayerCount": int(row.get("squad_player_count", 1) or 1),
+        "squadMembers": row.get("squad_members", []) or [],
+        "squadDetails": row.get("squad_details", {}) or {},
     }
 
 
@@ -78,6 +82,9 @@ def format_upcoming_booking_from_upstream(data: Dict[str, Any]) -> Optional[Dict
             "game_id": data.get("game_id"),
             "date": data.get("date"),
             "slot_price": data.get("slot_price"),
+            "squadDetails": data.get("squad_details") or data.get("squadDetails") or {},
+            "squadEnabled": bool((data.get("squad_details") or data.get("squadDetails") or {}).get("enabled", False)),
+            "squadPlayerCount": int((data.get("squad_details") or data.get("squadDetails") or {}).get("player_count", 1) or 1),
         }
         # Ensure core IDs exist
         if not payload["bookingId"] or not payload["slotId"]:
