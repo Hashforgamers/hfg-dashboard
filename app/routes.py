@@ -926,6 +926,7 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
         )
 
         assigned_console_labels = []
+        member_console_map = []
         if selected_console_ids:
             label_rows = (
                 db.session.query(Console.id, Console.console_number, Console.model_number)
@@ -937,6 +938,24 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
                 preferred = str(lr.console_number or "").strip() or str(lr.model_number or "").strip()
                 label_map[int(lr.id)] = preferred or f"Console-{int(lr.id)}"
             assigned_console_labels = [label_map.get(int(cid), f"Console-{int(cid)}") for cid in selected_console_ids]
+            if is_pc_squad:
+                squad_members = (
+                    BookingSquadMember.query
+                    .filter(BookingSquadMember.booking_id == int(booking_id))
+                    .order_by(BookingSquadMember.member_position.asc())
+                    .all()
+                )
+                for idx, member in enumerate(squad_members):
+                    if idx >= len(selected_console_ids):
+                        break
+                    cid = int(selected_console_ids[idx])
+                    member_console_map.append({
+                        "member_position": int(member.member_position),
+                        "member_user_id": int(member.member_user_id) if member.member_user_id else None,
+                        "member_name": member.name_snapshot,
+                        "console_id": cid,
+                        "console_label": label_map.get(cid, f"Console-{cid}")
+                    })
 
         if booking_detail:
             updated_squad_details = dict(squad_details) if isinstance(squad_details, dict) else {}
@@ -946,6 +965,8 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
                 updated_squad_details["assigned_console_ids"] = [int(console_id)]
             if assigned_console_labels:
                 updated_squad_details["assigned_console_labels"] = assigned_console_labels
+            if member_console_map:
+                updated_squad_details["member_console_map"] = member_console_map
             updated_squad_details["assigned_at"] = datetime.utcnow().isoformat()
             booking_detail.squad_details = updated_squad_details
 
@@ -1066,6 +1087,7 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
             "message": "Console status and booking status updated successfully!",
             "assigned_console_ids": selected_console_ids,
             "assigned_console_labels": assigned_console_labels,
+            "member_console_map": member_console_map,
             "required_console_count": required_console_count,
             "is_pc_squad": is_pc_squad,
         }), 200
@@ -1215,6 +1237,27 @@ def assign_console_to_multiple_bookings():
             updated_squad["assigned_console_ids"] = selected_console_ids if is_pc_squad else [int(console_id)]
             if assigned_console_labels:
                 updated_squad["assigned_console_labels"] = assigned_console_labels
+            if is_pc_squad:
+                members = (
+                    BookingSquadMember.query
+                    .filter(BookingSquadMember.booking_id == int(booking_model.id))
+                    .order_by(BookingSquadMember.member_position.asc())
+                    .all()
+                )
+                member_console_map = []
+                for idx, member in enumerate(members):
+                    if idx >= len(selected_console_ids):
+                        break
+                    cid = int(selected_console_ids[idx])
+                    member_console_map.append({
+                        "member_position": int(member.member_position),
+                        "member_user_id": int(member.member_user_id) if member.member_user_id else None,
+                        "member_name": member.name_snapshot,
+                        "console_id": cid,
+                        "console_label": label_map.get(cid, f"Console-{cid}")
+                    })
+                if member_console_map:
+                    updated_squad["member_console_map"] = member_console_map
             updated_squad["assigned_at"] = datetime.utcnow().isoformat()
             booking_model.squad_details = updated_squad
 
