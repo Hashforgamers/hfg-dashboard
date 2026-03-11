@@ -4,6 +4,7 @@ from app.models.consolePricingOffer import ConsolePricingOffer
 from app.models.availableGame import AvailableGame
 from app.models.controllerPricingRule import ControllerPricingRule
 from app.models.controllerPricingTier import ControllerPricingTier
+from app.models.squadPricingRule import SquadPricingRule
 from app.models.vendor import Vendor
 from app.extension.extensions import db
 from datetime import datetime, date, time as dt_time
@@ -15,6 +16,14 @@ pricing_blueprint = Blueprint('pricing', __name__)
 
 IST = pytz.timezone('Asia/Kolkata')
 SUPPORTED_CONTROLLER_TYPES = {"ps5", "xbox"}
+SUPPORTED_SQUAD_GROUPS = {"ps", "xbox", "pc", "vr"}
+SQUAD_MAX_PLAYERS = {"ps": 8, "xbox": 6, "pc": 10, "vr": 4}
+DEFAULT_SQUAD_POLICY = {
+    "ps": {2: 0, 3: 5, 4: 10, 5: 12, 6: 15, 7: 18, 8: 20},
+    "xbox": {2: 0, 3: 4, 4: 8, 5: 10, 6: 12},
+    "pc": {2: 0, 3: 3, 4: 5, 5: 8, 6: 10, 7: 12, 8: 15, 9: 18, 10: 20},
+    "vr": {2: 0, 3: 0, 4: 0},
+}
 
 def get_ist_now():
     """Returns current datetime in IST"""
@@ -58,6 +67,46 @@ def _serialize_controller_rule(rule, console_type, available_game_id):
         "tiers": active_tiers,
         "is_active": rule.is_active,
     }
+
+
+def _serialize_squad_rules(rules):
+    payload = {}
+    for group in sorted(SUPPORTED_SQUAD_GROUPS):
+        payload[group] = {}
+
+    for row in rules:
+        group = (row.console_group or "").strip().lower()
+        if group not in SUPPORTED_SQUAD_GROUPS:
+            continue
+        max_players = int(SQUAD_MAX_PLAYERS[group])
+        if int(row.player_count) < 2 or int(row.player_count) > max_players:
+            continue
+        payload[group][str(int(row.player_count))] = float(row.discount_percent or 0)
+    return payload
+
+
+def _resolve_squad_group_for_game_name(value):
+    text = str(value or "").strip().lower()
+    if "ps" in text:
+        return "ps"
+    if "xbox" in text:
+        return "xbox"
+    if "vr" in text:
+        return "vr"
+    if "pc" in text:
+        return "pc"
+    return None
+
+
+def _get_vendor_squad_base_prices(vendor_id: int):
+    rows = AvailableGame.query.filter_by(vendor_id=vendor_id).all()
+    result = {}
+    for game in rows:
+        group = _resolve_squad_group_for_game_name(game.game_name)
+        if group is None or group in result:
+            continue
+        result[group] = float(game.single_slot_price or 0)
+    return result
 
 
 # ================================
@@ -695,4 +744,185 @@ def calculate_controller_pricing(vendor_id):
         }), 200
     except Exception as e:
         current_app.logger.error(f"❌ Error calculating controller pricing: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@pricing_blueprint.route('/vendor/<int:vendor_id>/squad-pricing-rules', methods=['GET'])
+def get_squad_pricing_rules(vendor_id):
+    try:
+        vendor = Vendor.query.get(vendor_id)
+        if not vendor:
+            return jsonify({'success': False, 'message': 'Vendor not found'}), 404
+
+        rows = (
+            SquadPricingRule.query
+            .filter_by(vendor_id=vendor_id, is_active=True)
+            .order_by(SquadPricingRule.console_group.asc(), SquadPricingRule.player_count.asc())
+            .all()
+        )
+        base_prices = _get_vendor_squad_base_prices(vendor_id)
+
+        pricing = _serialize_squad_rules(rows)
+        if not rows:
+            pricing = {
+                group: {str(k): float(v) for k, v in values.items()}
+                for group, values in DEFAULT_SQUAD_POLICY.items()
+            }
+
+        return jsonify({
+            'success': True,
+            'pricing': pricing,
+            'max_players': SQUAD_MAX_PLAYERS,
+            'base_prices': base_prices,
+        }), 200
+    except Exception as e:
+        current_app.logger.error(f"❌ Error fetching squad pricing rules: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@pricing_blueprint.route('/vendor/<int:vendor_id>/squad-pricing-rules', methods=['PUT'])
+def upsert_squad_pricing_rules(vendor_id):
+    try:
+        vendor = Vendor.query.get(vendor_id)
+        if not vendor:
+            return jsonify({'success': False, 'message': 'Vendor not found'}), 404
+
+        data = request.get_json(silent=True) or {}
+        pricing = data.get("pricing")
+        if not isinstance(pricing, dict):
+            return jsonify({
+                'success': False,
+                'message': 'Payload must include pricing object'
+            }), 400
+        base_prices = _get_vendor_squad_base_prices(vendor_id)
+
+        validated_rows = []
+        rows_by_group = {group: [] for group in SUPPORTED_SQUAD_GROUPS}
+        errors = []
+        for group, rules in pricing.items():
+            normalized_group = str(group or "").strip().lower()
+            if normalized_group not in SUPPORTED_SQUAD_GROUPS:
+                continue
+            if not isinstance(rules, dict):
+                errors.append(f'Rules for "{normalized_group}" must be an object')
+                continue
+
+            max_players = int(SQUAD_MAX_PLAYERS[normalized_group])
+            for player_key, discount_value in rules.items():
+                try:
+                    player_count = int(player_key)
+                except (TypeError, ValueError):
+                    errors.append(f'Invalid rule for "{normalized_group}" player "{player_key}"')
+                    continue
+
+                discount_percent = None
+                if isinstance(discount_value, dict):
+                    raw_discount = discount_value.get("discount_percent")
+                    raw_final_amount = discount_value.get("final_amount")
+                    if raw_discount is not None:
+                        try:
+                            discount_percent = float(raw_discount)
+                        except (TypeError, ValueError):
+                            errors.append(f'Invalid discount_percent for "{normalized_group}" player {player_count}')
+                            continue
+                    elif raw_final_amount is not None:
+                        try:
+                            final_amount = float(raw_final_amount)
+                        except (TypeError, ValueError):
+                            errors.append(f'Invalid final_amount for "{normalized_group}" player {player_count}')
+                            continue
+                        base_price = float(base_prices.get(normalized_group, 0) or 0)
+                        if base_price <= 0:
+                            errors.append(f'Base console price missing for "{normalized_group}"')
+                            continue
+                        max_total_for_slab = base_price * float(player_count)
+                        if final_amount < 0 or final_amount > max_total_for_slab:
+                            errors.append(
+                                f'final_amount must be between 0 and slab total ({max_total_for_slab}) '
+                                f'for "{normalized_group}" player {player_count}'
+                            )
+                            continue
+                        discount_percent = ((max_total_for_slab - final_amount) / max_total_for_slab) * 100.0
+                    else:
+                        errors.append(f'Provide discount_percent or final_amount for "{normalized_group}" player {player_count}')
+                        continue
+                else:
+                    try:
+                        discount_percent = float(discount_value)
+                    except (TypeError, ValueError):
+                        errors.append(f'Invalid discount value for "{normalized_group}" player {player_count}')
+                        continue
+
+                if player_count < 2 or player_count > max_players:
+                    errors.append(
+                        f'player_count must be between 2 and {max_players} for "{normalized_group}"'
+                    )
+                    continue
+                if discount_percent < 0 or discount_percent > 90:
+                    errors.append(
+                        f'discount_percent must be between 0 and 90 for "{normalized_group}" player {player_count}'
+                    )
+                    continue
+
+                row = {
+                    "console_group": normalized_group,
+                    "player_count": player_count,
+                    "discount_percent": round(discount_percent, 2),
+                }
+                validated_rows.append(row)
+                rows_by_group[normalized_group].append(row)
+
+        # Keep rule engine sane: discount should not decrease for higher player count.
+        for group, rows_for_group in rows_by_group.items():
+            sorted_rows = sorted(rows_for_group, key=lambda item: item["player_count"])
+            prev_discount = None
+            for row in sorted_rows:
+                current_discount = float(row["discount_percent"])
+                if prev_discount is not None and current_discount < prev_discount:
+                    errors.append(
+                        f'discount_percent must be non-decreasing as player_count increases for "{group}"'
+                    )
+                    break
+                prev_discount = current_discount
+
+        if errors:
+            return jsonify({'success': False, 'message': 'Validation failed', 'errors': errors}), 400
+
+        incoming_keys = {
+            (row["console_group"], row["player_count"])
+            for row in validated_rows
+        }
+
+        existing = SquadPricingRule.query.filter_by(vendor_id=vendor_id).all()
+        existing_map = {
+            (str(r.console_group).lower(), int(r.player_count)): r
+            for r in existing
+        }
+
+        for key, row in existing_map.items():
+            if key not in incoming_keys:
+                row.is_active = False
+
+        for row in validated_rows:
+            key = (row["console_group"], row["player_count"])
+            db_row = existing_map.get(key)
+            if db_row is None:
+                db_row = SquadPricingRule(
+                    vendor_id=vendor_id,
+                    console_group=row["console_group"],
+                    player_count=row["player_count"],
+                    discount_percent=row["discount_percent"],
+                    is_active=True,
+                )
+                db.session.add(db_row)
+            else:
+                db_row.discount_percent = row["discount_percent"]
+                db_row.is_active = True
+
+        db.session.commit()
+
+        return jsonify({'success': True, 'message': 'Squad pricing rules saved'}), 200
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"❌ Error saving squad pricing rules: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
