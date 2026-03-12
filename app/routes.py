@@ -1554,9 +1554,9 @@ def release_console(gameid, console_id, vendor_id):
                     except (TypeError, ValueError):
                         continue
                 is_pc_squad = bool(
-                    details.get("enabled")
-                    and str(details.get("console_group") or "").lower() == "pc"
+                    str(details.get("console_group") or "").lower() == "pc"
                     and len(normalized_assigned) > 0
+                    and (details.get("enabled") is True or int(details.get("player_count") or details.get("playerCount") or 1) > 1)
                 )
                 if not is_pc_squad:
                     continue
@@ -1625,8 +1625,13 @@ def release_console(gameid, console_id, vendor_id):
                 "game_id": gameid
             }).fetchall()
             if not upd_release:
-                db.session.rollback()
-                return jsonify({"error": "No active current session found to release"}), 400
+                # Console was occupied in availability but no current dashboard row matched.
+                # Keep console released and return a self-healed response instead of rolling back.
+                db.session.commit()
+                _invalidate_vendor_caches(int(vendor_id))
+                return jsonify({
+                    "message": "Console released from stale occupied state; no active current session row found."
+                }), 200
             completed_booking_ids = [int(r.book_id) for r in upd_release if r and r.book_id is not None]
 
             if completed_booking_ids:
