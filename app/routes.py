@@ -427,7 +427,7 @@ def get_consoles(vendor_id):
         availability_table = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
         booking_table = f"VENDOR_{vendor_id}_DASHBOARD"
         sql_query = text(f"""
-            SELECT DISTINCT ON (c.id)
+            SELECT
                 c.id,
                 c.console_type,
                 c.model_number,
@@ -439,8 +439,8 @@ def get_consoles(vendor_id):
                 hs.storage_capacity,
                 hs.console_model_type,
                 ms.available_status,
-                ca.is_available,
-                ca.game_id,
+                ca_agg.is_available_int,
+                COALESCE(cur.game_id, ca_agg.occupied_game_id, ca_agg.any_game_id) AS game_id,
                 cur.book_id AS current_booking_id,
                 cur.user_id AS current_user_id,
                 cur.username AS current_username,
@@ -448,18 +448,39 @@ def get_consoles(vendor_id):
                 cur.end_time AS current_end_time,
                 cur.date AS current_date,
                 due.pending_due
-            FROM available_games ag
-            JOIN available_game_console agc ON agc.available_game_id = ag.id
-            JOIN consoles c ON c.id = agc.console_id
+            FROM consoles c
             LEFT JOIN hardware_specifications hs ON hs.console_id = c.id
             LEFT JOIN maintenance_status ms ON ms.console_id = c.id
-            LEFT JOIN {availability_table} ca ON ca.console_id = c.id AND ca.vendor_id = :vendor_id
             LEFT JOIN LATERAL (
-                SELECT b.book_id, b.user_id, b.username, b.start_time, b.end_time, b.date
+                SELECT
+                    MIN(CASE WHEN ca.is_available THEN 1 ELSE 0 END) AS is_available_int,
+                    MIN(ca.game_id) FILTER (WHERE ca.is_available = FALSE) AS occupied_game_id,
+                    MIN(ca.game_id) AS any_game_id
+                FROM {availability_table} ca
+                WHERE ca.vendor_id = :vendor_id
+                  AND ca.console_id = c.id
+            ) ca_agg ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT b.book_id, b.user_id, b.username, b.start_time, b.end_time, b.date, b.game_id
                 FROM {booking_table} b
-                WHERE b.console_id = c.id
-                  AND b.book_status = 'current'
-                  AND COALESCE(ca.is_available, TRUE) = FALSE
+                LEFT JOIN bookings bk ON bk.id = b.book_id
+                WHERE b.book_status = 'current'
+                  AND (
+                    b.console_id = c.id
+                    OR EXISTS (
+                        SELECT 1
+                        FROM jsonb_array_elements_text(
+                            CASE
+                                WHEN bk.squad_details IS NOT NULL
+                                     AND jsonb_typeof(bk.squad_details::jsonb -> 'assigned_console_ids') = 'array'
+                                THEN bk.squad_details::jsonb -> 'assigned_console_ids'
+                                ELSE '[]'::jsonb
+                            END
+                        ) AS assigned(cid)
+                        WHERE assigned.cid ~ '^[0-9]+$'
+                          AND assigned.cid::int = c.id
+                    )
+                  )
                 ORDER BY b.date DESC, b.start_time DESC
                 LIMIT 1
             ) cur ON TRUE
@@ -475,8 +496,14 @@ def get_consoles(vendor_id):
                   AND t.vendor_id = :vendor_id
                   AND t.settlement_status = 'pending'
             ) due ON TRUE
-            WHERE ag.vendor_id = :vendor_id
-              AND c.vendor_id = :vendor_id
+            WHERE c.vendor_id = :vendor_id
+              AND EXISTS (
+                SELECT 1
+                FROM available_game_console agc
+                JOIN available_games ag ON ag.id = agc.available_game_id
+                WHERE ag.vendor_id = :vendor_id
+                  AND agc.console_id = c.id
+              )
             ORDER BY c.id
         """)
 
@@ -487,7 +514,8 @@ def get_consoles(vendor_id):
             is_pc = normalized_type == "pc"
             raw_maintenance = str(row.available_status or "").strip().lower()
             is_maintenance = raw_maintenance in {"under maintenance", "maintenance"}
-            has_live_booking = bool(row.current_booking_id) and (row.is_available is False)
+            is_available = bool(int(row.is_available_int or 0) == 1) if row.is_available_int is not None else True
+            has_live_booking = (not is_available) or bool(row.current_booking_id)
             occupancy_state = "maintenance" if is_maintenance else ("occupied" if has_live_booking else "free")
             pending_due = float(row.pending_due or 0.0)
             pending_due = round(pending_due, 2)
