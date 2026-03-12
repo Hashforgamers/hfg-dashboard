@@ -447,6 +447,7 @@ def get_consoles(vendor_id):
                 cur.start_time AS current_start_time,
                 cur.end_time AS current_end_time,
                 cur.date AS current_date,
+                cur.squad_details AS current_squad_details,
                 due.pending_due
             FROM consoles c
             LEFT JOIN hardware_specifications hs ON hs.console_id = c.id
@@ -461,7 +462,15 @@ def get_consoles(vendor_id):
                   AND ca.console_id = c.id
             ) ca_agg ON TRUE
             LEFT JOIN LATERAL (
-                SELECT b.book_id, b.user_id, b.username, b.start_time, b.end_time, b.date, b.game_id
+                SELECT
+                    b.book_id,
+                    b.user_id,
+                    b.username,
+                    b.start_time,
+                    b.end_time,
+                    b.date,
+                    b.game_id,
+                    bk.squad_details
                 FROM {booking_table} b
                 LEFT JOIN bookings bk ON bk.id = b.book_id
                 WHERE b.book_status = 'current'
@@ -519,6 +528,24 @@ def get_consoles(vendor_id):
             occupancy_state = "maintenance" if is_maintenance else ("occupied" if has_live_booking else "free")
             pending_due = float(row.pending_due or 0.0)
             pending_due = round(pending_due, 2)
+            display_username = row.current_username
+            squad_details = row.current_squad_details if isinstance(row.current_squad_details, dict) else {}
+            member_console_map = (
+                squad_details.get("member_console_map")
+                if isinstance(squad_details.get("member_console_map"), list)
+                else []
+            )
+            if row.current_booking_id and member_console_map:
+                for mapped in member_console_map:
+                    try:
+                        mapped_console_id = int(mapped.get("console_id"))
+                    except Exception:
+                        continue
+                    if mapped_console_id == int(row.id):
+                        mapped_name = str(mapped.get("member_name") or "").strip()
+                        if mapped_name:
+                            display_username = mapped_name
+                        break
             payload.append({
                 "id": row.id,
                 "type": normalized_type,
@@ -536,7 +563,7 @@ def get_consoles(vendor_id):
                 "gameId": row.game_id,
                 "currentBookingId": row.current_booking_id,
                 "currentUserId": row.current_user_id,
-                "currentUsername": row.current_username,
+                "currentUsername": display_username,
                 "currentStartTime": row.current_start_time.strftime('%I:%M %p') if row.current_start_time else None,
                 "currentEndTime": row.current_end_time.strftime('%I:%M %p') if row.current_end_time else None,
                 "currentDate": row.current_date.isoformat() if row.current_date else None,
