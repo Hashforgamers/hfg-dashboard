@@ -776,6 +776,7 @@ def get_device_for_console_type(gameid, vendor_id):
     try:
         # ✅ Define the dynamic console availability table name
         console_table_name = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
+        booking_table_name = f"VENDOR_{vendor_id}_DASHBOARD"
         vendor_id_int = int(vendor_id)
         game_id_int = int(gameid)
 
@@ -834,12 +835,49 @@ def get_device_for_console_type(gameid, vendor_id):
                     db.session.commit()
                     _invalidate_vendor_caches(vendor_id_int)
 
+        # Reconcile stale availability flags: if a console has no current session,
+        # mark all its availability rows as available.
+        stale_rows = db.session.execute(
+            text(f"""
+                SELECT DISTINCT ca.console_id
+                FROM {console_table_name} ca
+                WHERE ca.game_id = :game_id
+                  AND ca.is_available = FALSE
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM {booking_table_name} b
+                      WHERE b.console_id = ca.console_id
+                        AND b.book_status = 'current'
+                  )
+            """),
+            {"game_id": game_id_int},
+        ).fetchall()
+        stale_console_ids = [int(r.console_id) for r in stale_rows if r and r.console_id is not None]
+        if stale_console_ids:
+            db.session.execute(
+                text(f"""
+                    UPDATE {console_table_name}
+                    SET is_available = TRUE
+                    WHERE console_id = ANY(:console_ids)
+                """),
+                {"console_ids": stale_console_ids},
+            )
+            db.session.commit()
+            _invalidate_vendor_caches(vendor_id_int)
+
         # ✅ SQL query to fetch console details
         sql_query = text(f"""
-            SELECT ca.console_id, c.model_number, c.brand, ca.is_available, ca.game_id
+            SELECT
+                ca.console_id,
+                c.model_number,
+                c.brand,
+                MIN(CASE WHEN ca_all.is_available THEN 1 ELSE 0 END) AS is_available_int,
+                :game_id AS game_id
             FROM {console_table_name} ca
             JOIN consoles c ON ca.console_id = c.id
+            JOIN {console_table_name} ca_all ON ca_all.console_id = ca.console_id
             WHERE ca.game_id = :game_id
+            GROUP BY ca.console_id, c.model_number, c.brand
         """)
 
         # ✅ Execute the query
@@ -855,7 +893,7 @@ def get_device_for_console_type(gameid, vendor_id):
                 "consoleId": row.console_id,
                 "consoleModelNumber": row.model_number,
                 "brand": row.brand,
-                "is_available": row.is_available,
+                "is_available": bool(int(row.is_available_int or 0) == 1),
                 "consoleTypeName": game.game_name if game else "Unknown",  # If game exists, use game_name
                 "consolePrice": game.single_slot_price
             })
@@ -931,21 +969,41 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
             selected_console_ids = selected_console_ids[:required_console_count]
 
         for selected_console_id in selected_console_ids:
+            stale_current = db.session.execute(
+                text(f"""
+                    SELECT 1
+                    FROM {booking_table_name}
+                    WHERE console_id = :console_id
+                      AND book_status = 'current'
+                    LIMIT 1
+                """),
+                {"console_id": selected_console_id},
+            ).fetchone()
+            if not stale_current:
+                db.session.execute(
+                    text(f"""
+                        UPDATE {console_table_name}
+                        SET is_available = TRUE
+                        WHERE console_id = :console_id
+                    """),
+                    {"console_id": selected_console_id},
+                )
+
             sql_check_availability = text(f"""
-                SELECT is_available FROM {console_table_name}
-                WHERE console_id = :console_id AND game_id = :game_id
+                SELECT MIN(CASE WHEN is_available THEN 1 ELSE 0 END) AS is_available_int
+                FROM {console_table_name}
+                WHERE console_id = :console_id
             """)
             result = db.session.execute(sql_check_availability, {
                 "console_id": selected_console_id,
-                "game_id": gameid
             }).fetchone()
             current_app.logger.debug("Console availability query result: %s", result)
 
-            if not result:
+            if not result or result.is_available_int is None:
                 current_app.logger.warning("Console not found in availability table")
                 return jsonify({"error": f"Console {selected_console_id} not found in availability table"}), 404
 
-            if not result.is_available:
+            if int(result.is_available_int) != 1:
                 current_app.logger.warning("Console already in use | console_id=%s", selected_console_id)
                 return jsonify({"error": f"Console {selected_console_id} is already in use"}), 400
 
@@ -953,11 +1011,10 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
             sql_update_status = text(f"""
                 UPDATE {console_table_name}
                 SET is_available = FALSE
-                WHERE console_id = :console_id AND game_id = :game_id
+                WHERE console_id = :console_id
             """)
             db.session.execute(sql_update_status, {
                 "console_id": selected_console_id,
-                "game_id": gameid
             })
         current_app.logger.debug("Updated console statuses to occupied: %s", selected_console_ids)
 
@@ -1225,32 +1282,51 @@ def assign_console_to_multiple_bookings():
             selected_console_ids = selected_console_ids[:required_console_count]
 
         for selected_console_id in selected_console_ids:
+            stale_current = db.session.execute(
+                text(f"""
+                    SELECT 1
+                    FROM {booking_table_name}
+                    WHERE console_id = :console_id
+                      AND book_status = 'current'
+                    LIMIT 1
+                """),
+                {"console_id": selected_console_id},
+            ).fetchone()
+            if not stale_current:
+                db.session.execute(
+                    text(f"""
+                        UPDATE {console_table_name}
+                        SET is_available = TRUE
+                        WHERE console_id = :console_id
+                    """),
+                    {"console_id": selected_console_id},
+                )
+
             sql_check_availability = text(f"""
-                SELECT is_available FROM {console_table_name}
-                WHERE console_id = :console_id AND game_id = :game_id
+                SELECT MIN(CASE WHEN is_available THEN 1 ELSE 0 END) AS is_available_int
+                FROM {console_table_name}
+                WHERE console_id = :console_id
             """)
 
             result = db.session.execute(sql_check_availability, {
                 "console_id": selected_console_id,
-                "game_id": game_id
             }).fetchone()
 
-            if not result:
+            if not result or result.is_available_int is None:
                 return jsonify({"error": f"Console {selected_console_id} not found"}), 404
 
-            if not result.is_available:
+            if int(result.is_available_int) != 1:
                 return jsonify({"error": f"Console {selected_console_id} is already in use"}), 400
 
         for selected_console_id in selected_console_ids:
             sql_update_console_status = text(f"""
                 UPDATE {console_table_name}
                 SET is_available = FALSE
-                WHERE console_id = :console_id AND game_id = :game_id
+                WHERE console_id = :console_id
             """)
 
             db.session.execute(sql_update_console_status, {
                 "console_id": selected_console_id,
-                "game_id": game_id
             })
 
         # ✅ Update multiple bookings to status 'current' and assign the console
@@ -1342,19 +1418,19 @@ def release_console(gameid, console_id, vendor_id):
 
         # ✅ Check if the console exists in the table
         sql_check_console = text(f"""
-            SELECT is_available FROM {console_table_name}
-            WHERE console_id = :console_id AND game_id = :game_id
+            SELECT MIN(CASE WHEN is_available THEN 1 ELSE 0 END) AS is_available_int
+            FROM {console_table_name}
+            WHERE console_id = :console_id
         """)
 
         result = db.session.execute(sql_check_console, {
             "console_id": console_id,
-            "game_id": gameid
         }).fetchone()
 
-        if not result:
+        if not result or result.is_available_int is None:
             return jsonify({"error": "Console not found in the availability table"}), 404
 
-        is_available = result.is_available
+        is_available = int(result.is_available_int) == 1
 
         if is_available:
             # Self-heal stale dashboard linkage if console is already free but
@@ -1387,12 +1463,11 @@ def release_console(gameid, console_id, vendor_id):
         sql_update_status = text(f"""
             UPDATE {console_table_name}
             SET is_available = TRUE
-            WHERE console_id = :console_id AND game_id = :game_id
+            WHERE console_id = :console_id
         """)
 
         db.session.execute(sql_update_status, {
             "console_id": console_id,
-            "game_id": gameid
         })
 
         # For PC squad sessions, a single booking may own multiple consoles.
