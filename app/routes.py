@@ -1998,13 +1998,14 @@ def get_landing_page_vendor(vendor_id):
                     .all()
                 )
                 for console_row in console_rows:
-                    label_bits = [
-                        str(console_row.console_number or "").strip(),
-                        str(console_row.model_number or "").strip(),
-                    ]
-                    preferred = next((bit for bit in label_bits if bit), None)
-                    fallback = f"Console-{console_row.id}"
-                    assigned_console_labels[int(console_row.id)] = preferred or fallback
+                    model_label = str(console_row.model_number or "").strip()
+                    number_label = str(console_row.console_number or "").strip()
+                    if model_label:
+                        assigned_console_labels[int(console_row.id)] = model_label
+                    elif number_label:
+                        assigned_console_labels[int(console_row.id)] = f"Console {number_label}"
+                    else:
+                        assigned_console_labels[int(console_row.id)] = f"Console-{console_row.id}"
             squad_member_rows = (
                 BookingSquadMember.query
                 .filter(BookingSquadMember.booking_id.in_(booking_ids))
