@@ -776,6 +776,63 @@ def get_device_for_console_type(gameid, vendor_id):
     try:
         # ✅ Define the dynamic console availability table name
         console_table_name = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
+        vendor_id_int = int(vendor_id)
+        game_id_int = int(gameid)
+
+        requested_game = AvailableGame.query.filter_by(id=game_id_int).first()
+        requested_group = _resolve_console_group_from_name(requested_game.game_name if requested_game else "")
+
+        # For PC bookings, keep availability rows aligned with full PC inventory.
+        # This avoids modal showing fewer PCs than Console Control when some
+        # VENDOR_X_CONSOLE_AVAILABILITY rows are missing for given game_id.
+        if requested_group == "pc":
+            pc_console_rows = (
+                db.session.query(Console.id)
+                .filter(Console.vendor_id == vendor_id_int)
+                .filter(func.lower(func.coalesce(Console.console_type, "")) == "pc")
+                .all()
+            )
+            pc_console_ids = [int(r.id) for r in pc_console_rows]
+            if pc_console_ids:
+                existing_for_game = db.session.execute(
+                    text(f"""
+                        SELECT console_id
+                        FROM {console_table_name}
+                        WHERE game_id = :game_id
+                          AND console_id = ANY(:console_ids)
+                    """),
+                    {"game_id": game_id_int, "console_ids": pc_console_ids},
+                ).fetchall()
+                existing_ids = {int(r.console_id) for r in existing_for_game if r and r.console_id is not None}
+                missing_ids = [cid for cid in pc_console_ids if cid not in existing_ids]
+
+                for cid in missing_ids:
+                    any_busy_row = db.session.execute(
+                        text(f"""
+                            SELECT 1
+                            FROM {console_table_name}
+                            WHERE console_id = :console_id
+                              AND is_available = FALSE
+                            LIMIT 1
+                        """),
+                        {"console_id": cid},
+                    ).fetchone()
+                    inferred_available = False if any_busy_row else True
+                    db.session.execute(
+                        text(f"""
+                            INSERT INTO {console_table_name} (vendor_id, console_id, game_id, is_available)
+                            VALUES (:vendor_id, :console_id, :game_id, :is_available)
+                        """),
+                        {
+                            "vendor_id": vendor_id_int,
+                            "console_id": cid,
+                            "game_id": game_id_int,
+                            "is_available": inferred_available,
+                        },
+                    )
+                if missing_ids:
+                    db.session.commit()
+                    _invalidate_vendor_caches(vendor_id_int)
 
         # ✅ SQL query to fetch console details
         sql_query = text(f"""
@@ -786,7 +843,7 @@ def get_device_for_console_type(gameid, vendor_id):
         """)
 
         # ✅ Execute the query
-        result = db.session.execute(sql_query, {"game_id": gameid}).fetchall()
+        result = db.session.execute(sql_query, {"game_id": game_id_int}).fetchall()
 
         # ✅ Format the response
         devices = []
