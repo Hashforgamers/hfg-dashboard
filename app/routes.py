@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify, current_app
 from datetime import datetime,timedelta
+from typing import Dict
 import re
 import time
 import threading
@@ -28,6 +29,7 @@ from app.models.bankTransferDetails import BankTransferDetails, PayoutTransactio
 from app.models.paymentMethod import PaymentMethod
 from app.models.paymentVendorMap import PaymentVendorMap
 from app.models.bookingExtraService import BookingExtraService
+from app.models.bookingSquadMember import BookingSquadMember
 from app.models.vendorTaxProfile import VendorTaxProfile
 
 from .models.hardwareSpecification import HardwareSpecification
@@ -91,6 +93,19 @@ LIFECYCLE_ORDER = {
     "canceled": 3,
     "rejected": 3,
 }
+
+
+def _resolve_console_group_from_name(console_name: str) -> str:
+    value = str(console_name or "").strip().lower()
+    if "pc" in value:
+        return "pc"
+    if "ps" in value:
+        return "ps"
+    if "xbox" in value:
+        return "xbox"
+    if "vr" in value:
+        return "vr"
+    return "unknown"
 
 
 def _booking_start_eligibility(slot_date, start_time, end_time):
@@ -412,7 +427,7 @@ def get_consoles(vendor_id):
         availability_table = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
         booking_table = f"VENDOR_{vendor_id}_DASHBOARD"
         sql_query = text(f"""
-            SELECT DISTINCT ON (c.id)
+            SELECT
                 c.id,
                 c.console_type,
                 c.model_number,
@@ -424,27 +439,57 @@ def get_consoles(vendor_id):
                 hs.storage_capacity,
                 hs.console_model_type,
                 ms.available_status,
-                ca.is_available,
-                ca.game_id,
+                ca_agg.is_available_int,
+                COALESCE(cur.game_id, ca_agg.occupied_game_id, ca_agg.any_game_id) AS game_id,
                 cur.book_id AS current_booking_id,
                 cur.user_id AS current_user_id,
                 cur.username AS current_username,
                 cur.start_time AS current_start_time,
                 cur.end_time AS current_end_time,
                 cur.date AS current_date,
+                cur.squad_details AS current_squad_details,
                 due.pending_due
-            FROM available_games ag
-            JOIN available_game_console agc ON agc.available_game_id = ag.id
-            JOIN consoles c ON c.id = agc.console_id
+            FROM consoles c
             LEFT JOIN hardware_specifications hs ON hs.console_id = c.id
             LEFT JOIN maintenance_status ms ON ms.console_id = c.id
-            LEFT JOIN {availability_table} ca ON ca.console_id = c.id AND ca.vendor_id = :vendor_id
             LEFT JOIN LATERAL (
-                SELECT b.book_id, b.user_id, b.username, b.start_time, b.end_time, b.date
+                SELECT
+                    MIN(CASE WHEN ca.is_available THEN 1 ELSE 0 END) AS is_available_int,
+                    MIN(ca.game_id) FILTER (WHERE ca.is_available = FALSE) AS occupied_game_id,
+                    MIN(ca.game_id) AS any_game_id
+                FROM {availability_table} ca
+                WHERE ca.vendor_id = :vendor_id
+                  AND ca.console_id = c.id
+            ) ca_agg ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT
+                    b.book_id,
+                    b.user_id,
+                    b.username,
+                    b.start_time,
+                    b.end_time,
+                    b.date,
+                    b.game_id,
+                    bk.squad_details
                 FROM {booking_table} b
-                WHERE b.console_id = c.id
-                  AND b.book_status = 'current'
-                  AND COALESCE(ca.is_available, TRUE) = FALSE
+                LEFT JOIN bookings bk ON bk.id = b.book_id
+                WHERE b.book_status = 'current'
+                  AND (
+                    b.console_id = c.id
+                    OR EXISTS (
+                        SELECT 1
+                        FROM jsonb_array_elements_text(
+                            CASE
+                                WHEN bk.squad_details IS NOT NULL
+                                     AND jsonb_typeof(bk.squad_details::jsonb -> 'assigned_console_ids') = 'array'
+                                THEN bk.squad_details::jsonb -> 'assigned_console_ids'
+                                ELSE '[]'::jsonb
+                            END
+                        ) AS assigned(cid)
+                        WHERE assigned.cid ~ '^[0-9]+$'
+                          AND assigned.cid::int = c.id
+                    )
+                  )
                 ORDER BY b.date DESC, b.start_time DESC
                 LIMIT 1
             ) cur ON TRUE
@@ -460,8 +505,14 @@ def get_consoles(vendor_id):
                   AND t.vendor_id = :vendor_id
                   AND t.settlement_status = 'pending'
             ) due ON TRUE
-            WHERE ag.vendor_id = :vendor_id
-              AND c.vendor_id = :vendor_id
+            WHERE c.vendor_id = :vendor_id
+              AND EXISTS (
+                SELECT 1
+                FROM available_game_console agc
+                JOIN available_games ag ON ag.id = agc.available_game_id
+                WHERE ag.vendor_id = :vendor_id
+                  AND agc.console_id = c.id
+              )
             ORDER BY c.id
         """)
 
@@ -472,10 +523,29 @@ def get_consoles(vendor_id):
             is_pc = normalized_type == "pc"
             raw_maintenance = str(row.available_status or "").strip().lower()
             is_maintenance = raw_maintenance in {"under maintenance", "maintenance"}
-            has_live_booking = bool(row.current_booking_id) and (row.is_available is False)
+            is_available = bool(int(row.is_available_int or 0) == 1) if row.is_available_int is not None else True
+            has_live_booking = (not is_available) or bool(row.current_booking_id)
             occupancy_state = "maintenance" if is_maintenance else ("occupied" if has_live_booking else "free")
             pending_due = float(row.pending_due or 0.0)
             pending_due = round(pending_due, 2)
+            display_username = row.current_username
+            squad_details = row.current_squad_details if isinstance(row.current_squad_details, dict) else {}
+            member_console_map = (
+                squad_details.get("member_console_map")
+                if isinstance(squad_details.get("member_console_map"), list)
+                else []
+            )
+            if row.current_booking_id and member_console_map:
+                for mapped in member_console_map:
+                    try:
+                        mapped_console_id = int(mapped.get("console_id"))
+                    except Exception:
+                        continue
+                    if mapped_console_id == int(row.id):
+                        mapped_name = str(mapped.get("member_name") or "").strip()
+                        if mapped_name:
+                            display_username = mapped_name
+                        break
             payload.append({
                 "id": row.id,
                 "type": normalized_type,
@@ -493,7 +563,7 @@ def get_consoles(vendor_id):
                 "gameId": row.game_id,
                 "currentBookingId": row.current_booking_id,
                 "currentUserId": row.current_user_id,
-                "currentUsername": row.current_username,
+                "currentUsername": display_username,
                 "currentStartTime": row.current_start_time.strftime('%I:%M %p') if row.current_start_time else None,
                 "currentEndTime": row.current_end_time.strftime('%I:%M %p') if row.current_end_time else None,
                 "currentDate": row.current_date.isoformat() if row.current_date else None,
@@ -761,17 +831,112 @@ def get_device_for_console_type(gameid, vendor_id):
     try:
         # ✅ Define the dynamic console availability table name
         console_table_name = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
+        booking_table_name = f"VENDOR_{vendor_id}_DASHBOARD"
+        vendor_id_int = int(vendor_id)
+        game_id_int = int(gameid)
+
+        requested_game = AvailableGame.query.filter_by(id=game_id_int).first()
+        requested_group = _resolve_console_group_from_name(requested_game.game_name if requested_game else "")
+
+        # For PC bookings, keep availability rows aligned with full PC inventory.
+        # This avoids modal showing fewer PCs than Console Control when some
+        # VENDOR_X_CONSOLE_AVAILABILITY rows are missing for given game_id.
+        if requested_group == "pc":
+            pc_console_rows = (
+                db.session.query(Console.id)
+                .filter(Console.vendor_id == vendor_id_int)
+                .filter(func.lower(func.coalesce(Console.console_type, "")) == "pc")
+                .all()
+            )
+            pc_console_ids = [int(r.id) for r in pc_console_rows]
+            if pc_console_ids:
+                existing_for_game = db.session.execute(
+                    text(f"""
+                        SELECT console_id
+                        FROM {console_table_name}
+                        WHERE game_id = :game_id
+                          AND console_id = ANY(:console_ids)
+                    """),
+                    {"game_id": game_id_int, "console_ids": pc_console_ids},
+                ).fetchall()
+                existing_ids = {int(r.console_id) for r in existing_for_game if r and r.console_id is not None}
+                missing_ids = [cid for cid in pc_console_ids if cid not in existing_ids]
+
+                for cid in missing_ids:
+                    any_busy_row = db.session.execute(
+                        text(f"""
+                            SELECT 1
+                            FROM {console_table_name}
+                            WHERE console_id = :console_id
+                              AND is_available = FALSE
+                            LIMIT 1
+                        """),
+                        {"console_id": cid},
+                    ).fetchone()
+                    inferred_available = False if any_busy_row else True
+                    db.session.execute(
+                        text(f"""
+                            INSERT INTO {console_table_name} (vendor_id, console_id, game_id, is_available)
+                            VALUES (:vendor_id, :console_id, :game_id, :is_available)
+                        """),
+                        {
+                            "vendor_id": vendor_id_int,
+                            "console_id": cid,
+                            "game_id": game_id_int,
+                            "is_available": inferred_available,
+                        },
+                    )
+                if missing_ids:
+                    db.session.commit()
+                    _invalidate_vendor_caches(vendor_id_int)
+
+        # Reconcile stale availability flags: if a console has no current session,
+        # mark all its availability rows as available.
+        stale_rows = db.session.execute(
+            text(f"""
+                SELECT DISTINCT ca.console_id
+                FROM {console_table_name} ca
+                WHERE ca.game_id = :game_id
+                  AND ca.is_available = FALSE
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM {booking_table_name} b
+                      WHERE b.console_id = ca.console_id
+                        AND b.book_status = 'current'
+                  )
+            """),
+            {"game_id": game_id_int},
+        ).fetchall()
+        stale_console_ids = [int(r.console_id) for r in stale_rows if r and r.console_id is not None]
+        if stale_console_ids:
+            db.session.execute(
+                text(f"""
+                    UPDATE {console_table_name}
+                    SET is_available = TRUE
+                    WHERE console_id = ANY(:console_ids)
+                """),
+                {"console_ids": stale_console_ids},
+            )
+            db.session.commit()
+            _invalidate_vendor_caches(vendor_id_int)
 
         # ✅ SQL query to fetch console details
         sql_query = text(f"""
-            SELECT ca.console_id, c.model_number, c.brand, ca.is_available, ca.game_id
+            SELECT
+                ca.console_id,
+                c.model_number,
+                c.brand,
+                MIN(CASE WHEN ca_all.is_available THEN 1 ELSE 0 END) AS is_available_int,
+                :game_id AS game_id
             FROM {console_table_name} ca
             JOIN consoles c ON ca.console_id = c.id
+            JOIN {console_table_name} ca_all ON ca_all.console_id = ca.console_id
             WHERE ca.game_id = :game_id
+            GROUP BY ca.console_id, c.model_number, c.brand
         """)
 
         # ✅ Execute the query
-        result = db.session.execute(sql_query, {"game_id": gameid}).fetchall()
+        result = db.session.execute(sql_query, {"game_id": game_id_int}).fetchall()
 
         # ✅ Format the response
         devices = []
@@ -783,7 +948,7 @@ def get_device_for_console_type(gameid, vendor_id):
                 "consoleId": row.console_id,
                 "consoleModelNumber": row.model_number,
                 "brand": row.brand,
-                "is_available": row.is_available,
+                "is_available": bool(int(row.is_available_int or 0) == 1),
                 "consoleTypeName": game.game_name if game else "Unknown",  # If game exists, use game_name
                 "consolePrice": game.single_slot_price
             })
@@ -796,6 +961,11 @@ def get_device_for_console_type(gameid, vendor_id):
 @dashboard_service.route('/updateDeviceStatus/consoleTypeId/<gameid>/console/<console_id>/bookingId/<booking_id>/vendor/<vendor_id>', methods=['POST'])
 def update_console_status(gameid, console_id, booking_id, vendor_id):
     try:
+        body = request.get_json(silent=True) or {}
+        requested_additional_console_ids = body.get("additional_console_ids") or []
+        if requested_additional_console_ids and not isinstance(requested_additional_console_ids, list):
+            return jsonify({"error": "additional_console_ids must be a list"}), 400
+
         current_app.logger.debug(
             "Starting update_console_status | gameid=%s console_id=%s booking_id=%s vendor_id=%s",
             gameid, console_id, booking_id, vendor_id
@@ -824,36 +994,84 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
         if not allowed:
             return jsonify({"error": reason}), 400
 
-        # Check if the console is available
-        sql_check_availability = text(f"""
-            SELECT is_available FROM {console_table_name}
-            WHERE console_id = :console_id AND game_id = :game_id
-        """)
-        result = db.session.execute(sql_check_availability, {
-            "console_id": console_id,
-            "game_id": gameid
-        }).fetchone()
-        current_app.logger.debug("Console availability query result: %s", result)
+        booking_detail = Booking.query.filter_by(id=int(booking_id)).first()
+        squad_details = booking_detail.squad_details if booking_detail and isinstance(booking_detail.squad_details, dict) else {}
 
-        if not result:
-            current_app.logger.warning("Console not found in availability table")
-            return jsonify({"error": "Console not found in the availability table"}), 404
+        game = AvailableGame.query.filter_by(id=int(gameid)).first()
+        console_group = _resolve_console_group_from_name(game.game_name if game else "")
+        is_pc_squad = bool(
+            console_group == "pc"
+            and bool(squad_details.get("enabled"))
+            and int(squad_details.get("player_count") or 1) > 1
+        )
+        required_console_count = int(squad_details.get("player_count") or 1) if is_pc_squad else 1
 
-        if not result.is_available:
-            current_app.logger.warning("Console already in use | console_id=%s", console_id)
-            return jsonify({"error": "Console is already in use"}), 400
+        selected_console_ids = [int(console_id)]
+        for raw_id in requested_additional_console_ids:
+            try:
+                cid = int(raw_id)
+            except (TypeError, ValueError):
+                continue
+            if cid not in selected_console_ids:
+                selected_console_ids.append(cid)
 
-        # Update console status to FALSE (occupied)
-        sql_update_status = text(f"""
-            UPDATE {console_table_name}
-            SET is_available = FALSE
-            WHERE console_id = :console_id AND game_id = :game_id
-        """)
-        db.session.execute(sql_update_status, {
-            "console_id": console_id,
-            "game_id": gameid
-        })
-        current_app.logger.debug("Updated console status to occupied")
+        if is_pc_squad and len(selected_console_ids) < required_console_count:
+            return jsonify({
+                "error": f"PC squad booking requires {required_console_count} consoles. "
+                         f"Selected {len(selected_console_ids)}."
+            }), 400
+        if is_pc_squad and len(selected_console_ids) > required_console_count:
+            selected_console_ids = selected_console_ids[:required_console_count]
+
+        for selected_console_id in selected_console_ids:
+            stale_current = db.session.execute(
+                text(f"""
+                    SELECT 1
+                    FROM {booking_table_name}
+                    WHERE console_id = :console_id
+                      AND book_status = 'current'
+                    LIMIT 1
+                """),
+                {"console_id": selected_console_id},
+            ).fetchone()
+            if not stale_current:
+                db.session.execute(
+                    text(f"""
+                        UPDATE {console_table_name}
+                        SET is_available = TRUE
+                        WHERE console_id = :console_id
+                    """),
+                    {"console_id": selected_console_id},
+                )
+
+            sql_check_availability = text(f"""
+                SELECT MIN(CASE WHEN is_available THEN 1 ELSE 0 END) AS is_available_int
+                FROM {console_table_name}
+                WHERE console_id = :console_id
+            """)
+            result = db.session.execute(sql_check_availability, {
+                "console_id": selected_console_id,
+            }).fetchone()
+            current_app.logger.debug("Console availability query result: %s", result)
+
+            if not result or result.is_available_int is None:
+                current_app.logger.warning("Console not found in availability table")
+                return jsonify({"error": f"Console {selected_console_id} not found in availability table"}), 404
+
+            if int(result.is_available_int) != 1:
+                current_app.logger.warning("Console already in use | console_id=%s", selected_console_id)
+                return jsonify({"error": f"Console {selected_console_id} is already in use"}), 400
+
+        for selected_console_id in selected_console_ids:
+            sql_update_status = text(f"""
+                UPDATE {console_table_name}
+                SET is_available = FALSE
+                WHERE console_id = :console_id
+            """)
+            db.session.execute(sql_update_status, {
+                "console_id": selected_console_id,
+            })
+        current_app.logger.debug("Updated console statuses to occupied: %s", selected_console_ids)
 
         # Update booking status
         sql_update_booking_status = text(f"""
@@ -876,6 +1094,51 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
             {"booking_id": booking_id}
         )
 
+        assigned_console_labels = []
+        member_console_map = []
+        if selected_console_ids:
+            label_rows = (
+                db.session.query(Console.id, Console.console_number, Console.model_number)
+                .filter(Console.id.in_(selected_console_ids))
+                .all()
+            )
+            label_map = {}
+            for lr in label_rows:
+                preferred = str(lr.console_number or "").strip() or str(lr.model_number or "").strip()
+                label_map[int(lr.id)] = preferred or f"Console-{int(lr.id)}"
+            assigned_console_labels = [label_map.get(int(cid), f"Console-{int(cid)}") for cid in selected_console_ids]
+            if is_pc_squad:
+                squad_members = (
+                    BookingSquadMember.query
+                    .filter(BookingSquadMember.booking_id == int(booking_id))
+                    .order_by(BookingSquadMember.member_position.asc())
+                    .all()
+                )
+                for idx, member in enumerate(squad_members):
+                    if idx >= len(selected_console_ids):
+                        break
+                    cid = int(selected_console_ids[idx])
+                    member_console_map.append({
+                        "member_position": int(member.member_position),
+                        "member_user_id": int(member.member_user_id) if member.member_user_id else None,
+                        "member_name": member.name_snapshot,
+                        "console_id": cid,
+                        "console_label": label_map.get(cid, f"Console-{cid}")
+                    })
+
+        if booking_detail:
+            updated_squad_details = dict(squad_details) if isinstance(squad_details, dict) else {}
+            if is_pc_squad:
+                updated_squad_details["assigned_console_ids"] = selected_console_ids
+            else:
+                updated_squad_details["assigned_console_ids"] = [int(console_id)]
+            if assigned_console_labels:
+                updated_squad_details["assigned_console_labels"] = assigned_console_labels
+            if member_console_map:
+                updated_squad_details["member_console_map"] = member_console_map
+            updated_squad_details["assigned_at"] = datetime.utcnow().isoformat()
+            booking_detail.squad_details = updated_squad_details
+
         db.session.commit()
         current_app.logger.debug("DB commit successful")
         _invalidate_vendor_caches(int(vendor_id))
@@ -897,7 +1160,9 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
                     b.book_status,
                     ag.single_slot_price,
                     d.slot_id,
-                    c.model_number AS console_name
+                    d.squad_details,
+                    c.model_number AS console_name,
+                    c.console_number AS console_number
                 FROM {booking_table_name} b
                 JOIN available_games ag ON b.game_id = ag.id
                 JOIN bookings d ON b.book_id = d.id
@@ -912,6 +1177,24 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
             current_app.logger.debug("Fetched booking row: %s", dict(b_row) if b_row else None)
 
             if b_row and b_row.get("book_status") == "current":
+                squad_members = (
+                    BookingSquadMember.query
+                    .filter(BookingSquadMember.booking_id == int(b_row["book_id"]))
+                    .order_by(BookingSquadMember.member_position.asc())
+                    .all()
+                )
+                squad_member_payload = [
+                    {
+                        "id": int(member.id),
+                        "member_user_id": int(member.member_user_id) if member.member_user_id else None,
+                        "member_position": int(member.member_position),
+                        "is_captain": bool(member.is_captain),
+                        "name": member.name_snapshot,
+                        "phone": member.phone_snapshot,
+                    }
+                    for member in squad_members
+                ]
+                squad_details = b_row.get("squad_details") if isinstance(b_row.get("squad_details"), dict) else {}
                 current_item = format_current_slot_item(row={
                     "slot_id": b_row["slot_id"],
                     "book_id": b_row["book_id"],
@@ -925,6 +1208,15 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
                     "date": b_row["date"],
                     "single_slot_price": b_row["single_slot_price"],
                     "console_name": b_row.get("console_name"),
+                    "console_number": b_row.get("console_number"),
+                    "squad_enabled": bool(squad_details.get("enabled")) or len(squad_member_payload) > 1,
+                    "squad_player_count": int(
+                        squad_details.get("player_count")
+                        or squad_details.get("playerCount")
+                        or (len(squad_member_payload) if squad_member_payload else 1)
+                    ),
+                    "squad_members": squad_member_payload,
+                    "squad_details": squad_details,
                 })
                 room = f"vendor_{int(vendor_id)}"
                 socketio.emit("current_slot", current_item, room=room)
@@ -947,10 +1239,27 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
                     "remaining_available_for_game": remaining
                 }, room=room)
                 current_app.logger.debug("Emitted console_availability event to room=%s", room)
+                for sid in selected_console_ids:
+                    if int(sid) == int(console_id):
+                        continue
+                    socketio.emit("console_availability", {
+                        "vendorId": int(vendor_id),
+                        "game_id": int(gameid),
+                        "console_id": int(sid),
+                        "is_available": False,
+                        "remaining_available_for_game": remaining
+                    }, room=room)
         # ======= END =======
 
         current_app.logger.debug("Successfully completed update_console_status")
-        return jsonify({"message": "Console status and booking status updated successfully!"}), 200
+        return jsonify({
+            "message": "Console status and booking status updated successfully!",
+            "assigned_console_ids": selected_console_ids,
+            "assigned_console_labels": assigned_console_labels,
+            "member_console_map": member_console_map,
+            "required_console_count": required_console_count,
+            "is_pc_squad": is_pc_squad,
+        }), 200
 
     except Exception as e:
         db.session.rollback()
@@ -962,6 +1271,7 @@ def assign_console_to_multiple_bookings():
     try:
         data = request.get_json()
         console_id = data.get('console_id')
+        additional_console_ids = data.get('additional_console_ids') or []
         game_id = data.get('game_id')
         booking_ids = data.get('booking_ids')  # List[int]
         vendor_id = data.get('vendor_id')
@@ -971,6 +1281,8 @@ def assign_console_to_multiple_bookings():
 
         if not isinstance(booking_ids, list) or not all(isinstance(bid, int) for bid in booking_ids):
             return jsonify({"error": "booking_ids must be a list of integers"}), 400
+        if additional_console_ids and not isinstance(additional_console_ids, list):
+            return jsonify({"error": "additional_console_ids must be a list"}), 400
 
         # Dynamic table names
         console_table_name = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
@@ -1001,34 +1313,76 @@ def assign_console_to_multiple_bookings():
         if not_eligible:
             return jsonify({"error": "Some bookings are not eligible to start", "details": not_eligible}), 400
 
-        # ✅ Check if the console is currently available
-        sql_check_availability = text(f"""
-            SELECT is_available FROM {console_table_name}
-            WHERE console_id = :console_id AND game_id = :game_id
-        """)
+        first_booking = Booking.query.filter_by(id=int(booking_ids[0])).first()
+        first_squad = first_booking.squad_details if first_booking and isinstance(first_booking.squad_details, dict) else {}
+        game = AvailableGame.query.filter_by(id=int(game_id)).first()
+        console_group = _resolve_console_group_from_name(game.game_name if game else "")
+        is_pc_squad = bool(
+            console_group == "pc"
+            and bool(first_squad.get("enabled"))
+            and int(first_squad.get("player_count") or 1) > 1
+        )
+        required_console_count = int(first_squad.get("player_count") or 1) if is_pc_squad else 1
+        selected_console_ids = [int(console_id)]
+        for raw_id in additional_console_ids:
+            try:
+                cid = int(raw_id)
+            except (TypeError, ValueError):
+                continue
+            if cid not in selected_console_ids:
+                selected_console_ids.append(cid)
+        if is_pc_squad and len(selected_console_ids) < required_console_count:
+            return jsonify({"error": f"PC squad booking requires {required_console_count} consoles"}), 400
+        if is_pc_squad and len(selected_console_ids) > required_console_count:
+            selected_console_ids = selected_console_ids[:required_console_count]
 
-        result = db.session.execute(sql_check_availability, {
-            "console_id": console_id,
-            "game_id": game_id
-        }).fetchone()
+        for selected_console_id in selected_console_ids:
+            stale_current = db.session.execute(
+                text(f"""
+                    SELECT 1
+                    FROM {booking_table_name}
+                    WHERE console_id = :console_id
+                      AND book_status = 'current'
+                    LIMIT 1
+                """),
+                {"console_id": selected_console_id},
+            ).fetchone()
+            if not stale_current:
+                db.session.execute(
+                    text(f"""
+                        UPDATE {console_table_name}
+                        SET is_available = TRUE
+                        WHERE console_id = :console_id
+                    """),
+                    {"console_id": selected_console_id},
+                )
 
-        if not result:
-            return jsonify({"error": "Console not found"}), 404
+            sql_check_availability = text(f"""
+                SELECT MIN(CASE WHEN is_available THEN 1 ELSE 0 END) AS is_available_int
+                FROM {console_table_name}
+                WHERE console_id = :console_id
+            """)
 
-        if not result.is_available:
-            return jsonify({"error": "Console is already in use"}), 400
+            result = db.session.execute(sql_check_availability, {
+                "console_id": selected_console_id,
+            }).fetchone()
 
-        # ✅ Mark the console as unavailable
-        sql_update_console_status = text(f"""
-            UPDATE {console_table_name}
-            SET is_available = FALSE
-            WHERE console_id = :console_id AND game_id = :game_id
-        """)
+            if not result or result.is_available_int is None:
+                return jsonify({"error": f"Console {selected_console_id} not found"}), 404
 
-        db.session.execute(sql_update_console_status, {
-            "console_id": console_id,
-            "game_id": game_id
-        })
+            if int(result.is_available_int) != 1:
+                return jsonify({"error": f"Console {selected_console_id} is already in use"}), 400
+
+        for selected_console_id in selected_console_ids:
+            sql_update_console_status = text(f"""
+                UPDATE {console_table_name}
+                SET is_available = FALSE
+                WHERE console_id = :console_id
+            """)
+
+            db.session.execute(sql_update_console_status, {
+                "console_id": selected_console_id,
+            })
 
         # ✅ Update multiple bookings to status 'current' and assign the console
         sql_update_bookings = text(f"""
@@ -1051,10 +1405,60 @@ def assign_console_to_multiple_bookings():
             {"booking_ids": booking_ids}
         )
 
+        assigned_console_labels = []
+        if selected_console_ids:
+            label_rows = (
+                db.session.query(Console.id, Console.console_number, Console.model_number)
+                .filter(Console.id.in_(selected_console_ids))
+                .all()
+            )
+            label_map = {}
+            for lr in label_rows:
+                preferred = str(lr.console_number or "").strip() or str(lr.model_number or "").strip()
+                label_map[int(lr.id)] = preferred or f"Console-{int(lr.id)}"
+            assigned_console_labels = [label_map.get(int(cid), f"Console-{int(cid)}") for cid in selected_console_ids]
+
+        booking_models = Booking.query.filter(Booking.id.in_(booking_ids)).all()
+        for booking_model in booking_models:
+            current_squad = booking_model.squad_details if isinstance(booking_model.squad_details, dict) else {}
+            updated_squad = dict(current_squad)
+            updated_squad["assigned_console_ids"] = selected_console_ids if is_pc_squad else [int(console_id)]
+            if assigned_console_labels:
+                updated_squad["assigned_console_labels"] = assigned_console_labels
+            if is_pc_squad:
+                members = (
+                    BookingSquadMember.query
+                    .filter(BookingSquadMember.booking_id == int(booking_model.id))
+                    .order_by(BookingSquadMember.member_position.asc())
+                    .all()
+                )
+                member_console_map = []
+                for idx, member in enumerate(members):
+                    if idx >= len(selected_console_ids):
+                        break
+                    cid = int(selected_console_ids[idx])
+                    member_console_map.append({
+                        "member_position": int(member.member_position),
+                        "member_user_id": int(member.member_user_id) if member.member_user_id else None,
+                        "member_name": member.name_snapshot,
+                        "console_id": cid,
+                        "console_label": label_map.get(cid, f"Console-{cid}")
+                    })
+                if member_console_map:
+                    updated_squad["member_console_map"] = member_console_map
+            updated_squad["assigned_at"] = datetime.utcnow().isoformat()
+            booking_model.squad_details = updated_squad
+
         db.session.commit()
         _invalidate_vendor_caches(int(vendor_id))
 
-        return jsonify({"message": "Console assigned to multiple bookings successfully."}), 200
+        return jsonify({
+            "message": "Console assigned to multiple bookings successfully.",
+            "assigned_console_ids": selected_console_ids,
+            "assigned_console_labels": assigned_console_labels,
+            "required_console_count": required_console_count,
+            "is_pc_squad": is_pc_squad,
+        }), 200
 
     except Exception as e:
         db.session.rollback()
@@ -1069,19 +1473,19 @@ def release_console(gameid, console_id, vendor_id):
 
         # ✅ Check if the console exists in the table
         sql_check_console = text(f"""
-            SELECT is_available FROM {console_table_name}
-            WHERE console_id = :console_id AND game_id = :game_id
+            SELECT MIN(CASE WHEN is_available THEN 1 ELSE 0 END) AS is_available_int
+            FROM {console_table_name}
+            WHERE console_id = :console_id
         """)
 
         result = db.session.execute(sql_check_console, {
             "console_id": console_id,
-            "game_id": gameid
         }).fetchone()
 
-        if not result:
+        if not result or result.is_available_int is None:
             return jsonify({"error": "Console not found in the availability table"}), 404
 
-        is_available = result.is_available
+        is_available = int(result.is_available_int) == 1
 
         if is_available:
             # Self-heal stale dashboard linkage if console is already free but
@@ -1114,41 +1518,131 @@ def release_console(gameid, console_id, vendor_id):
         sql_update_status = text(f"""
             UPDATE {console_table_name}
             SET is_available = TRUE
-            WHERE console_id = :console_id AND game_id = :game_id
+            WHERE console_id = :console_id
         """)
 
         db.session.execute(sql_update_status, {
             "console_id": console_id,
-            "game_id": gameid
         })
 
-         # ✅ Move lifecycle one-way: current -> completed only
-        sql_update_booking_status = text(f"""
-            UPDATE {booking_table_name}
-            SET book_status = 'completed'
-            WHERE console_id = :console_id AND game_id = :game_id AND book_status = 'current'
-        """)
-
-        upd_release = db.session.execute(sql_update_booking_status, {
-            "console_id": console_id,
-            "game_id": gameid
-        })
-        if getattr(upd_release, "rowcount", 0) <= 0:
-            db.session.rollback()
-            return jsonify({"error": "No active current session found to release"}), 400
-
-        db.session.execute(
+        # For PC squad sessions, a single booking may own multiple consoles.
+        # Releasing one console should only partially end session until all assigned
+        # consoles are released.
+        active_rows = db.session.execute(
             text(f"""
-                UPDATE bookings
-                SET status = 'completed'
-                WHERE id IN (
-                    SELECT book_id
-                    FROM {booking_table_name}
-                    WHERE console_id = :console_id AND game_id = :game_id AND book_status = 'completed'
-                )
+                SELECT DISTINCT book_id
+                FROM {booking_table_name}
+                WHERE game_id = :game_id AND book_status = 'current'
             """),
-            {"console_id": console_id, "game_id": gameid}
-        )
+            {"game_id": gameid}
+        ).fetchall()
+        active_booking_ids = [int(r.book_id) for r in active_rows if r and r.book_id is not None]
+
+        partial_release = False
+        completed_booking_ids = []
+        matched_pc_squad_booking_id = None
+
+        if active_booking_ids:
+            booking_models = Booking.query.filter(Booking.id.in_(active_booking_ids)).all()
+            for booking_model in booking_models:
+                details = booking_model.squad_details if isinstance(booking_model.squad_details, dict) else {}
+                assigned_ids = details.get("assigned_console_ids") if isinstance(details.get("assigned_console_ids"), list) else []
+                normalized_assigned = []
+                for cid in assigned_ids:
+                    try:
+                        normalized_assigned.append(int(cid))
+                    except (TypeError, ValueError):
+                        continue
+                is_pc_squad = bool(
+                    str(details.get("console_group") or "").lower() == "pc"
+                    and len(normalized_assigned) > 0
+                    and (details.get("enabled") is True or int(details.get("player_count") or details.get("playerCount") or 1) > 1)
+                )
+                if not is_pc_squad:
+                    continue
+                if int(console_id) not in normalized_assigned:
+                    continue
+
+                matched_pc_squad_booking_id = int(booking_model.id)
+                remaining_ids = [cid for cid in normalized_assigned if cid != int(console_id)]
+                released_ids = details.get("released_console_ids") if isinstance(details.get("released_console_ids"), list) else []
+                normalized_released = []
+                for rid in released_ids:
+                    try:
+                        normalized_released.append(int(rid))
+                    except (TypeError, ValueError):
+                        continue
+                if int(console_id) not in normalized_released:
+                    normalized_released.append(int(console_id))
+
+                updated = dict(details)
+                updated["assigned_console_ids"] = remaining_ids
+                updated["released_console_ids"] = normalized_released
+                booking_model.squad_details = updated
+
+                if remaining_ids:
+                    partial_release = True
+                    db.session.execute(
+                        text(f"""
+                            UPDATE {booking_table_name}
+                            SET console_id = :next_console_id
+                            WHERE book_id = :booking_id
+                              AND game_id = :game_id
+                              AND book_status = 'current'
+                        """),
+                        {
+                            "next_console_id": int(remaining_ids[0]),
+                            "booking_id": int(booking_model.id),
+                            "game_id": gameid,
+                        }
+                    )
+                else:
+                    db.session.execute(
+                        text(f"""
+                            UPDATE {booking_table_name}
+                            SET book_status = 'completed'
+                            WHERE book_id = :booking_id
+                              AND game_id = :game_id
+                              AND book_status = 'current'
+                        """),
+                        {"booking_id": int(booking_model.id), "game_id": gameid}
+                    )
+                    booking_model.status = "completed"
+                    completed_booking_ids.append(int(booking_model.id))
+                break
+
+        if not matched_pc_squad_booking_id:
+            # ✅ Move lifecycle one-way: current -> completed only
+            sql_update_booking_status = text(f"""
+                UPDATE {booking_table_name}
+                SET book_status = 'completed'
+                WHERE console_id = :console_id AND game_id = :game_id AND book_status = 'current'
+                RETURNING book_id
+            """)
+
+            upd_release = db.session.execute(sql_update_booking_status, {
+                "console_id": console_id,
+                "game_id": gameid
+            }).fetchall()
+            if not upd_release:
+                # Console was occupied in availability but no current dashboard row matched.
+                # Keep console released and return a self-healed response instead of rolling back.
+                db.session.commit()
+                _invalidate_vendor_caches(int(vendor_id))
+                return jsonify({
+                    "message": "Console released from stale occupied state; no active current session row found."
+                }), 200
+            completed_booking_ids = [int(r.book_id) for r in upd_release if r and r.book_id is not None]
+
+            if completed_booking_ids:
+                db.session.execute(
+                    text("""
+                        UPDATE bookings
+                        SET status = 'completed'
+                        WHERE id = ANY(:booking_ids)
+                    """),
+                    {"booking_ids": completed_booking_ids}
+                )
 
         # Commit the changes
         db.session.commit()
@@ -1175,7 +1669,18 @@ def release_console(gameid, console_id, vendor_id):
         current_app.logger.debug("Emitted console_availability event to room=%s - console now available", room)
         
 
-        return jsonify({"message": "Console released successfully!"}), 200
+        if partial_release:
+            return jsonify({
+                "message": "Console released for squad member. Session remains active for remaining consoles.",
+                "partial_release": True,
+                "booking_id": matched_pc_squad_booking_id,
+            }), 200
+
+        return jsonify({
+            "message": "Console released successfully!",
+            "partial_release": False,
+            "completed_booking_ids": completed_booking_ids,
+        }), 200
 
     except Exception as e:
         db.session.rollback()
@@ -1441,6 +1946,7 @@ def get_landing_page_vendor(vendor_id):
                 b.book_status,
                 ag.single_slot_price,
                 d.slot_id,
+                d.squad_details,
                 ca.is_available AS console_is_available,
                 c.model_number AS console_name,
                 c.brand AS console_brand,
@@ -1472,6 +1978,7 @@ def get_landing_page_vendor(vendor_id):
         history_bookings = []
 
         booking_ids = [row.book_id for row in result]
+        assigned_console_labels: Dict[int, str] = {}
         if booking_ids:
             meals_lookup = set(
                 r[0] for r in db.session.query(BookingExtraService.booking_id)
@@ -1479,8 +1986,50 @@ def get_landing_page_vendor(vendor_id):
                 .distinct()
                 .all()
             )
+            assigned_console_ids = set()
+            for r in result:
+                details = r.squad_details if isinstance(r.squad_details, dict) else {}
+                ids = details.get("assigned_console_ids")
+                if isinstance(ids, list):
+                    for cid in ids:
+                        try:
+                            assigned_console_ids.add(int(cid))
+                        except (TypeError, ValueError):
+                            continue
+            if assigned_console_ids:
+                console_rows = (
+                    db.session.query(Console.id, Console.console_number, Console.model_number, Console.brand)
+                    .filter(Console.id.in_(assigned_console_ids))
+                    .all()
+                )
+                for console_row in console_rows:
+                    model_label = str(console_row.model_number or "").strip()
+                    number_label = str(console_row.console_number or "").strip()
+                    if model_label:
+                        assigned_console_labels[int(console_row.id)] = model_label
+                    elif number_label:
+                        assigned_console_labels[int(console_row.id)] = f"Console {number_label}"
+                    else:
+                        assigned_console_labels[int(console_row.id)] = f"Console-{console_row.id}"
+            squad_member_rows = (
+                BookingSquadMember.query
+                .filter(BookingSquadMember.booking_id.in_(booking_ids))
+                .order_by(BookingSquadMember.booking_id.asc(), BookingSquadMember.member_position.asc())
+                .all()
+            )
+            squad_members_by_booking = defaultdict(list)
+            for member in squad_member_rows:
+                squad_members_by_booking[int(member.booking_id)].append({
+                    "id": int(member.id),
+                    "member_user_id": int(member.member_user_id) if member.member_user_id else None,
+                    "member_position": int(member.member_position),
+                    "is_captain": bool(member.is_captain),
+                    "name": member.name_snapshot,
+                    "phone": member.phone_snapshot,
+                })
         else:
             meals_lookup = set()
+            squad_members_by_booking = defaultdict(list)
         
         for row in result:
             has_meals = row.book_id in meals_lookup
@@ -1497,6 +2046,29 @@ def get_landing_page_vendor(vendor_id):
                 lifecycle_status = "current"
             session_identifier = _build_session_identifier(row.book_id, row.date, row.start_time, row.end_time)
             lifecycle_step = LIFECYCLE_ORDER.get(lifecycle_status, 1)
+            squad_details = row.squad_details if isinstance(row.squad_details, dict) else {}
+            squad_members = squad_members_by_booking.get(int(row.book_id), [])
+            squad_enabled = bool(squad_details.get("enabled")) or len(squad_members) > 1
+            squad_player_count = int(
+                squad_details.get("player_count")
+                or squad_details.get("playerCount")
+                or (len(squad_members) if squad_members else 1)
+            )
+            assigned_ids = squad_details.get("assigned_console_ids") if isinstance(squad_details.get("assigned_console_ids"), list) else []
+            assigned_label_list = []
+            for assigned_id in assigned_ids:
+                try:
+                    parsed_id = int(assigned_id)
+                except (TypeError, ValueError):
+                    continue
+                if parsed_id in assigned_console_labels:
+                    assigned_label_list.append(assigned_console_labels[parsed_id])
+                else:
+                    assigned_label_list.append(f"Console-{parsed_id}")
+            if assigned_label_list:
+                squad_details = dict(squad_details)
+                squad_details["assigned_console_labels"] = assigned_label_list
+            squad_member_names = [m.get("name") for m in squad_members if m.get("name")]
 
             booking_data = {
                 "slotId": row.slot_id,
@@ -1520,7 +2092,11 @@ def get_landing_page_vendor(vendor_id):
                 "lifecycleStep": lifecycle_step,
                 "sessionIdentifier": session_identifier,
                 "bookingRecordStatus": str(getattr(row, "status", "") or "").strip().lower(),
-
+                "squadEnabled": squad_enabled,
+                "squadPlayerCount": max(1, squad_player_count),
+                "squadMembers": squad_members,
+                "squadMemberNames": squad_member_names,
+                "squadDetails": squad_details,
             }
             
             slot_data = {
@@ -1533,7 +2109,7 @@ def get_landing_page_vendor(vendor_id):
                 "consoleId": row.console_id,
                 "consoleName": row.console_name,
                 "consoleBrand": row.console_brand,
-                "consoleNumber": str(row.console_id),
+                "consoleNumber": str(row.console_number or row.console_id),
                 "consoleCode": row.console_number,
                 "consoleCategory": row.console_type,
                 "username": row.username,
@@ -1546,7 +2122,11 @@ def get_landing_page_vendor(vendor_id):
                 "lifecycleStep": lifecycle_step,
                 "sessionIdentifier": session_identifier,
                 "bookingRecordStatus": str(getattr(row, "status", "") or "").strip().lower(),
-                
+                "squadEnabled": squad_enabled,
+                "squadPlayerCount": max(1, squad_player_count),
+                "squadMembers": squad_members,
+                "squadMemberNames": squad_member_names,
+                "squadDetails": squad_details,
             }
 
             booking_record_status = str(getattr(row, "status", "") or "").strip().lower()
@@ -3380,6 +3960,8 @@ def get_payment_method_stats(vendor_id):
 def get_booking_details(booking_id):
     """Get detailed booking information including extra services/meals"""
     try:
+        from app.models.bookingSquadMember import BookingSquadMember
+
         # Get the booking
         booking = Booking.query.filter_by(id=booking_id).first()
         
@@ -3392,6 +3974,12 @@ def get_booking_details(booking_id):
         # Get extra services for this booking
         extra_services = []
         booking_extra_services = BookingExtraService.query.filter_by(booking_id=booking_id).all()
+        squad_members = (
+            BookingSquadMember.query
+            .filter_by(booking_id=booking_id)
+            .order_by(BookingSquadMember.member_position.asc())
+            .all()
+        )
         
         for extra in booking_extra_services:
             # Get menu item details
@@ -3420,6 +4008,20 @@ def get_booking_details(booking_id):
                 "game_id": booking.game_id,
                 "slot_id": booking.slot_id,
                 "status": booking.status,
+                "squad_details": booking.squad_details or {},
+                "squad_members": [
+                    {
+                        "id": member.id,
+                        "member_user_id": member.member_user_id,
+                        "member_position": member.member_position,
+                        "is_captain": member.is_captain,
+                        "name": member.name_snapshot,
+                        "name_snapshot": member.name_snapshot,
+                        "phone": member.phone_snapshot,
+                        "phone_snapshot": member.phone_snapshot,
+                    }
+                    for member in squad_members
+                ],
                
                 "extra_services": extra_services
             }

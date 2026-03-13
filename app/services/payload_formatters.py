@@ -33,7 +33,9 @@ def format_current_slot_item(*, row: Dict[str, Any]) -> Dict[str, Any]:
         "endTime": _to_time_str(end_time),
         "status": "Booked" if row.get("status") != "pending_verified" else "Available",
         "consoleType": console_name or (f"HASH{row['console_id']}" if row.get("console_id") is not None else None),
-        "consoleNumber": str(row["console_id"]) if row.get("console_id") is not None else None,
+        "consoleNumber": str(row.get("console_number") or row["console_id"]) if row.get("console_id") is not None else None,
+        "consoleCode": row.get("console_number"),
+        "consoleId": row.get("console_id"),
         "username": row.get("username"),
         "userId": row.get("user_id"),
         "game_id": row.get("game_id"),
@@ -42,6 +44,10 @@ def format_current_slot_item(*, row: Dict[str, Any]) -> Dict[str, Any]:
         "lifecycleStatus": "current",
         "lifecycleStep": 2,
         "sessionIdentifier": session_identifier,
+        "squadEnabled": bool(row.get("squad_enabled", False)),
+        "squadPlayerCount": int(row.get("squad_player_count", 1) or 1),
+        "squadMembers": row.get("squad_members", []) or [],
+        "squadDetails": row.get("squad_details", {}) or {},
     }
 
 
@@ -78,6 +84,9 @@ def format_upcoming_booking_from_upstream(data: Dict[str, Any]) -> Optional[Dict
             "game_id": data.get("game_id"),
             "date": data.get("date"),
             "slot_price": data.get("slot_price"),
+            "squadDetails": data.get("squad_details") or data.get("squadDetails") or {},
+            "squadEnabled": bool((data.get("squad_details") or data.get("squadDetails") or {}).get("enabled", False)),
+            "squadPlayerCount": int((data.get("squad_details") or data.get("squadDetails") or {}).get("player_count", 1) or 1),
         }
         # Ensure core IDs exist
         if not payload["bookingId"] or not payload["slotId"]:
