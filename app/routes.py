@@ -4016,7 +4016,9 @@ def get_booking_details(booking_id):
                         "member_position": member.member_position,
                         "is_captain": member.is_captain,
                         "name": member.name_snapshot,
+                        "name_snapshot": member.name_snapshot,
                         "phone": member.phone_snapshot,
+                        "phone_snapshot": member.phone_snapshot,
                     }
                     for member in squad_members
                 ],
