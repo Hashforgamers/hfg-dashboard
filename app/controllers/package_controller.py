@@ -6,7 +6,7 @@ from app.services.subscription_service import get_package_price
 bp_packages = Blueprint('packages', __name__)
 
 
-@bp_packages.get('/')
+@bp_packages.get('/', strict_slashes=False)
 def list_packages():
     """
     Get all active packages with prices
@@ -45,7 +45,7 @@ def list_packages():
     }), 200
 
 
-@bp_packages.get('/<package_code>')
+@bp_packages.get('/<package_code>', strict_slashes=False)
 def get_package(package_code):
     """Get single package details"""
     package = Package.query.filter_by(code=package_code, active=True).first_or_404()
