@@ -135,6 +135,9 @@ def _emit_to_kiosk(kiosk_id: int, event: str, data: Dict[str, Any]):
         room = f"kiosk_{kiosk_id}"
         _log_info("Emitting %s to kiosk room %s", event, room)
         socketio.emit(event, data, room=room)
+        # Compatibility room for older kiosk clients
+        alt_room = f"console:{kiosk_id}"
+        socketio.emit(event, data, room=alt_room)
     except Exception as e:
         _log_err("Kiosk emit failed: %s", e)
 
@@ -509,6 +512,7 @@ def register_dashboard_events():
             return
         room = f"kiosk_{kiosk_id}"
         join_room(room)
+        join_room(f"console:{kiosk_id}")
         _log_info("Kiosk client joined room %s", room)
 
 
