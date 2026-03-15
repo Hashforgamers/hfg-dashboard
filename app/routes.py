@@ -2864,23 +2864,6 @@ def add_extra_service_category(vendor_id):
     if not name:
         return jsonify({"error": "Category name required"}), 400
 
-    # Check if the vendor already has 'food' amenity
-    food_amenity = Amenity.query.filter_by(vendor_id=vendor_id, name='food').first()
-    
-    if not food_amenity:
-        # Create a new 'food' amenity if it doesn't exist
-        food_amenity = Amenity(
-            vendor_id=vendor_id,
-            name='food',
-            available=True
-        )
-        db.session.add(food_amenity)
-    else:
-        # If it exists but is not available, mark it as available
-        if not food_amenity.available:
-            food_amenity.available = True
-        db.session.add(food_amenity)  # ensure update is tracked
-
     # Add the new category
     category = ExtraServiceCategory(
         vendor_id=vendor_id,
@@ -2888,8 +2871,6 @@ def add_extra_service_category(vendor_id):
         description=description
     )
     db.session.add(category)
-
-    # Commit all changes together (amenity + category)
     db.session.commit()
 
     return jsonify({
@@ -2913,6 +2894,7 @@ def add_extra_service_menu(vendor_id, category_id):
 
     menu = ExtraServiceMenu(category_id=category.id, name=name, price=price, description=description)
     db.session.add(menu)
+    ExtraServiceService._sync_food_amenity(vendor_id)
     db.session.commit()
     return jsonify({"id": menu.id, "name": menu.name, "price": menu.price, "description": menu.description}), 201
 
@@ -2960,19 +2942,7 @@ def delete_extra_service_category(vendor_id, category_id):
         for menu in category.menus:
             menu.is_active = False
 
-        # Check if this vendor has any active categories left
-        active_categories = ExtraServiceCategory.query.filter_by(
-            vendor_id=vendor_id, is_active=True
-        ).count()
-
-        if active_categories == 0:
-            # If no active categories left → disable "food" amenity
-            food_amenity = Amenity.query.filter_by(
-                vendor_id=vendor_id, name='food'
-            ).first()
-            if food_amenity and food_amenity.available:
-                food_amenity.available = False
-                db.session.add(food_amenity)
+        ExtraServiceService._sync_food_amenity(vendor_id)
 
         db.session.commit()
         return jsonify({"message": "Category and related menus deactivated"}), 200
@@ -3026,6 +2996,7 @@ def delete_extra_service_menu(vendor_id, category_id, menu_id):
         menu = ExtraServiceMenu.query.filter_by(id=menu_id, category_id=category.id, is_active=True).first_or_404()
 
         menu.is_active = False
+        ExtraServiceService._sync_food_amenity(vendor_id)
         db.session.commit()
         return jsonify({"message": "Menu item deactivated"}), 200
 

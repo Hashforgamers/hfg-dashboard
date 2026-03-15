@@ -3,12 +3,42 @@ from app.extension.extensions import db
 from app.models.extraServiceCategory import ExtraServiceCategory
 from app.models.extraServiceMenu import ExtraServiceMenu
 from app.models.extraServiceMenuImage import ExtraServiceMenuImage
+from app.models.amenity import Amenity
 from app.services.cloudinary_services import CloudinaryMenuImageService
 
 from flask import current_app
 from sqlalchemy.orm import joinedload
 
 class ExtraServiceService:
+
+    @staticmethod
+    def _sync_food_amenity(vendor_id: int):
+        """Enable Food amenity if any active menu item exists; disable otherwise."""
+        active_item_exists = (
+            db.session.query(ExtraServiceMenu.id)
+            .join(ExtraServiceCategory, ExtraServiceMenu.category_id == ExtraServiceCategory.id)
+            .filter(
+                ExtraServiceCategory.vendor_id == vendor_id,
+                ExtraServiceCategory.is_active == True,
+                ExtraServiceMenu.is_active == True,
+            )
+            .first()
+            is not None
+        )
+
+        amenity = (
+            db.session.query(Amenity)
+            .filter(
+                Amenity.vendor_id == vendor_id,
+                Amenity.name.ilike("%food%"),
+            )
+            .first()
+        )
+        if not amenity:
+            amenity = Amenity(vendor_id=vendor_id, name="food", available=active_item_exists)
+            db.session.add(amenity)
+        else:
+            amenity.available = bool(active_item_exists)
     
     @staticmethod
     def get_categories_with_menus(vendor_id):
@@ -306,7 +336,14 @@ class ExtraServiceService:
 
             db.session.commit()
             current_app.logger.info(f"Menu item created successfully: {name} (ID: {menu_item.id})")
-        
+
+            # Ensure Food amenity is enabled when at least one menu exists.
+            try:
+                ExtraServiceService._sync_food_amenity(vendor_id)
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+
         # FIXED: Include all necessary fields including images
             result = {
                'id': menu_item.id,
@@ -328,4 +365,62 @@ class ExtraServiceService:
           db.session.rollback()
           current_app.logger.error(f"Error creating menu item for vendor {vendor_id}: {str(e)}")
           return {'error': str(e)}, 500
+
+
+    @staticmethod
+    def delete_category(vendor_id, category_id):
+        """Soft delete category and its menu items."""
+        try:
+            category = db.session.query(ExtraServiceCategory).filter(
+                ExtraServiceCategory.id == category_id,
+                ExtraServiceCategory.vendor_id == vendor_id,
+                ExtraServiceCategory.is_active == True
+            ).first()
+
+            if not category:
+                return {'error': 'Category not found'}, 404
+
+            # Soft delete category and its menus
+            category.is_active = False
+            db.session.query(ExtraServiceMenu).filter(
+                ExtraServiceMenu.category_id == category_id
+            ).update({"is_active": False})
+
+            ExtraServiceService._sync_food_amenity(vendor_id)
+            db.session.commit()
+
+            return {
+                'success': True,
+                'message': 'Category deleted successfully'
+            }, 200
+        except Exception as e:
+            db.session.rollback()
+            return {'error': str(e)}, 500
+
+    @staticmethod
+    def delete_menu_item(vendor_id, category_id, menu_id):
+        """Soft delete menu item."""
+        try:
+            menu_item = db.session.query(ExtraServiceMenu).join(
+                ExtraServiceCategory
+            ).filter(
+                ExtraServiceMenu.id == menu_id,
+                ExtraServiceMenu.category_id == category_id,
+                ExtraServiceCategory.vendor_id == vendor_id
+            ).first()
+
+            if not menu_item:
+                return {'error': 'Menu item not found'}, 404
+
+            menu_item.is_active = False
+            ExtraServiceService._sync_food_amenity(vendor_id)
+            db.session.commit()
+
+            return {
+                'success': True,
+                'message': 'Menu item deleted successfully'
+            }, 200
+        except Exception as e:
+            db.session.rollback()
+            return {'error': str(e)}, 500
     
