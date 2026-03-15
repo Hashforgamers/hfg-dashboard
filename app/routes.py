@@ -1292,7 +1292,7 @@ def assign_console_to_multiple_bookings():
 
         # Validate all bookings before occupying console.
         sql_bookings_for_start = text(f"""
-            SELECT book_id, date, start_time, end_time, book_status
+            SELECT book_id, date, start_time, end_time, book_status, user_id
             FROM {booking_table_name}
             WHERE book_id = ANY(:booking_ids) AND game_id = :game_id
         """)
@@ -1312,6 +1312,35 @@ def assign_console_to_multiple_bookings():
             allowed, reason = _booking_start_eligibility(r.date, r.start_time, r.end_time)
             if not allowed:
                 not_eligible.append({"booking_id": r.book_id, "reason": reason})
+
+        # Allow contiguous continuation slots if the first slot is eligible.
+        if not_eligible and len(booking_rows) > 1:
+            try:
+                rows = list(booking_rows)
+                rows.sort(key=lambda x: (x.date, x.start_time))
+                first = rows[0]
+                first_allowed, _ = _booking_start_eligibility(first.date, first.start_time, first.end_time)
+
+                same_user = len({int(r.user_id) for r in rows if r.user_id is not None}) == 1
+                continuous = True
+                prev_end_dt = None
+                for r in rows:
+                    start_dt = datetime.combine(r.date, r.start_time)
+                    end_dt = datetime.combine(r.date, r.end_time)
+                    if end_dt <= start_dt:
+                        end_dt += timedelta(days=1)
+                    if prev_end_dt is not None:
+                        # Allow a 1-minute tolerance for boundary alignment.
+                        if abs((start_dt - prev_end_dt).total_seconds()) > 60:
+                            continuous = False
+                            break
+                    prev_end_dt = end_dt
+
+                if first_allowed and same_user and continuous:
+                    not_eligible = []
+            except Exception:
+                pass
+
         if not_eligible:
             return jsonify({"error": "Some bookings are not eligible to start", "details": not_eligible}), 400
 
