@@ -209,6 +209,16 @@ def _handle_upstream_console_availability(data: Dict[str, Any]):
     except Exception:
         _log_err("Error handling upstream console_availability payload")
 
+
+def _handle_upstream_pay_at_cafe_event(event: str, data: Dict[str, Any]):
+    try:
+        _mark_pong()
+        vendor_id = data.get("vendorId") or data.get("vendor_id")
+        _emit_downstream_to_vendor(vendor_id, event, data)
+        _log_info("Relayed %s vendor=%s bookingId=%s", event, vendor_id, data.get("bookingId"))
+    except Exception:
+        _log_err("Error handling upstream %s payload", event)
+
 def _connect_upstream():
     headers = {}
     if BOOKING_AUTH_TOKEN:
@@ -267,6 +277,14 @@ def _register_upstream_handlers():
         def _on_pong_health_ns(_data=None):
             _mark_pong()
             _log_info("Received upstream pong_health")
+
+        @_upstream_sio.on("pay_at_cafe_accepted", namespace=ns)
+        def _on_pay_at_cafe_accepted_ns(data):
+            _handle_upstream_pay_at_cafe_event("pay_at_cafe_accepted", data)
+
+        @_upstream_sio.on("pay_at_cafe_rejected", namespace=ns)
+        def _on_pay_at_cafe_rejected_ns(data):
+            _handle_upstream_pay_at_cafe_event("pay_at_cafe_rejected", data)
     else:
         @_upstream_sio.on("booking")
         def _on_booking(data):
@@ -292,6 +310,14 @@ def _register_upstream_handlers():
             except Exception:
                 nonce = None
             _log_info("Received upstream pong_health (event) nonce=%s payload=%s", nonce, _data)
+
+        @_upstream_sio.on("pay_at_cafe_accepted")
+        def _on_pay_at_cafe_accepted(data):
+            _handle_upstream_pay_at_cafe_event("pay_at_cafe_accepted", data)
+
+        @_upstream_sio.on("pay_at_cafe_rejected")
+        def _on_pay_at_cafe_rejected(data):
+            _handle_upstream_pay_at_cafe_event("pay_at_cafe_rejected", data)
 
 
 # --- helper ack callback for health pings ----------------------------------

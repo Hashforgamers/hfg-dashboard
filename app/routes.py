@@ -1198,6 +1198,7 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
                 current_item = format_current_slot_item(row={
                     "slot_id": b_row["slot_id"],
                     "book_id": b_row["book_id"],
+                    "vendor_id": int(vendor_id),
                     "start_time": b_row["start_time"],
                     "end_time": b_row["end_time"],
                     "status": b_row["status"],
