@@ -1,9 +1,11 @@
 # app/controllers/team_controller.py
 from flask import Blueprint, jsonify
 from flask_jwt_extended import jwt_required, get_jwt
+from app.extension.extensions import db
 from app.models.event import Event
 from app.models.team import Team
 from app.models.teamMember import TeamMember
+from sqlalchemy import func
 
 bp_teams = Blueprint('teams', __name__, url_prefix='/api/vendor/events/<uuid:event_id>/teams')
 
@@ -17,12 +19,22 @@ def list_teams(event_id):
     vid = _vendor_id()
     Event.query.filter_by(id=event_id, vendor_id=vid).first_or_404()
     teams = Team.query.filter_by(event_id=event_id).order_by(Team.created_at.asc()).all()
+    team_ids = [t.id for t in teams]
+    counts = {}
+    if team_ids:
+        counts = dict(
+            db.session.query(TeamMember.team_id, func.count(TeamMember.user_id))
+            .filter(TeamMember.team_id.in_(team_ids))
+            .group_by(TeamMember.team_id)
+            .all()
+        )
     return jsonify([{
         "id": str(t.id),
         "name": t.team_name,
         "created_by_user": t.created_by_user,
         "created_at": t.created_at.isoformat(),
-        "is_individual": t.is_individual
+        "is_individual": t.is_individual,
+        "member_count": int(counts.get(t.id, 0))
     } for t in teams]), 200
 
 @bp_teams.get('/<uuid:team_id>/members')
