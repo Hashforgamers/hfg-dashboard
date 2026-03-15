@@ -29,6 +29,7 @@ def format_current_slot_item(*, row: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "slotId": row["slot_id"],
         "bookId": row["book_id"],
+        "vendorId": row.get("vendor_id"),
         "startTime": _to_time_str(start_time),
         "endTime": _to_time_str(end_time),
         "status": "Booked" if row.get("status") != "pending_verified" else "Available",
