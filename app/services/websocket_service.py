@@ -219,6 +219,15 @@ def _handle_upstream_pay_at_cafe_event(event: str, data: Dict[str, Any]):
     except Exception:
         _log_err("Error handling upstream %s payload", event)
 
+def _handle_upstream_booking_payment_update(data: Dict[str, Any]):
+    try:
+        _mark_pong()
+        vendor_id = data.get("vendorId") or data.get("vendor_id")
+        _emit_downstream_to_vendor(vendor_id, "booking_payment_update", data)
+        _log_info("Relayed booking_payment_update vendor=%s bookingId=%s", vendor_id, data.get("bookingId"))
+    except Exception:
+        _log_err("Error handling upstream booking_payment_update payload")
+
 def _connect_upstream():
     headers = {}
     if BOOKING_AUTH_TOKEN:
@@ -285,6 +294,10 @@ def _register_upstream_handlers():
         @_upstream_sio.on("pay_at_cafe_rejected", namespace=ns)
         def _on_pay_at_cafe_rejected_ns(data):
             _handle_upstream_pay_at_cafe_event("pay_at_cafe_rejected", data)
+
+        @_upstream_sio.on("booking_payment_update", namespace=ns)
+        def _on_booking_payment_update_ns(data):
+            _handle_upstream_booking_payment_update(data)
     else:
         @_upstream_sio.on("booking")
         def _on_booking(data):
@@ -318,6 +331,10 @@ def _register_upstream_handlers():
         @_upstream_sio.on("pay_at_cafe_rejected")
         def _on_pay_at_cafe_rejected(data):
             _handle_upstream_pay_at_cafe_event("pay_at_cafe_rejected", data)
+
+        @_upstream_sio.on("booking_payment_update")
+        def _on_booking_payment_update(data):
+            _handle_upstream_booking_payment_update(data)
 
 
 # --- helper ack callback for health pings ----------------------------------
