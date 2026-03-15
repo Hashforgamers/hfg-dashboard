@@ -70,6 +70,7 @@ LANDING_PAGE_CACHE_TTL_SEC = 5
 _landing_page_cache = {}
 _landing_page_cache_lock = threading.Lock()
 LANDING_HISTORY_DAYS = 1
+LANDING_UPCOMING_DAYS_AHEAD = 7
 CONSOLES_CACHE_TTL_SEC = 10
 _vendor_consoles_cache = {}
 _vendor_consoles_cache_lock = threading.Lock()
@@ -1774,7 +1775,7 @@ def get_landing_page_vendor(vendor_id):
             history_to_date = exact_history_date
         else:
             history_from_date = today_ist - timedelta(days=history_days)
-            history_to_date = today_ist
+            history_to_date = today_ist + timedelta(days=LANDING_UPCOMING_DAYS_AHEAD)
 
         terminal_booking_statuses = (
             "completed",
