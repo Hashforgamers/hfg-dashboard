@@ -23,6 +23,7 @@ ALL_PERMISSIONS: List[Permission] = [
     "store.manage",
     "games.manage",
     "tournaments.manage",
+    "reviews.manage",
     "account.manage",
     "staff.manage",
     "subscription.manage",
@@ -43,6 +44,7 @@ DEFAULT_ROLE_PERMISSIONS: Dict[Role, List[Permission]] = {
         "store.manage",
         "games.manage",
         "tournaments.manage",
+        "reviews.manage",
         "cafe.switch",
     ],
     "staff": [
