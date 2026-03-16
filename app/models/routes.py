@@ -52,6 +52,8 @@ def get_transaction_report(to_date, from_date, vendor_id):
             "slotTime": txn.booking_time.strftime("%I:%M %p"),
             "userName": txn.user_name,
             "amount": txn.amount,
+            "appFeeAmount": float(getattr(txn, "app_fee_amount", 0) or 0),
+            "netAmount": round(float(txn.amount or 0) - float(getattr(txn, "app_fee_amount", 0) or 0), 2),
             "modeOfPayment": txn.mode_of_payment,
             "bookingType": txn.booking_type,
             "settlementStatus": txn.settlement_status

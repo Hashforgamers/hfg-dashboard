@@ -231,6 +231,8 @@ def get_transaction_report(to_date, from_date, vendor_id):
                 total_with_tax = round(taxable_amount + total_tax_amount, 2)
                 if total_with_tax <= 0:
                     total_with_tax = float(txn.amount or 0)
+            app_fee_amount = float(getattr(txn, "app_fee_amount", 0) or 0)
+            net_amount = round(float(txn.amount or 0) - app_fee_amount, 2)
 
             result.append({
                 "id": txn.id,
@@ -256,6 +258,8 @@ def get_transaction_report(to_date, from_date, vendor_id):
                 "mealsAmount": meals_amount,
                 "controllerAmount": controller_amount,
                 "waiveOffAmount": waive_off_amount,
+                "appFeeAmount": app_fee_amount,
+                "netAmount": net_amount,
                 "taxableAmount": taxable_amount,
                 "gstRate": gst_rate,
                 "cgstAmount": cgst_amount,
@@ -2410,6 +2414,14 @@ def get_landing_page_vendor(vendor_id):
                     func.sum(case((Transaction.settlement_status == 'pending', Transaction.amount), else_=0.0)),
                     0.0
                 ).label("pending_amount"),
+                func.coalesce(
+                    func.sum(case((Transaction.booked_date == today, Transaction.app_fee_amount), else_=0.0)),
+                    0.0
+                ).label("today_app_fees"),
+                func.coalesce(
+                    func.sum(case((Transaction.settlement_status == 'pending', Transaction.app_fee_amount), else_=0.0)),
+                    0.0
+                ).label("pending_app_fees"),
             )
             .filter(Transaction.vendor_id == vendor_id)
             .one()
@@ -2418,7 +2430,12 @@ def get_landing_page_vendor(vendor_id):
         today_earnings = float(transaction_summary.today_earnings or 0)
         today_bookings = int(transaction_summary.today_bookings or 0)
         pending_amount = float(transaction_summary.pending_amount or 0)
+        today_app_fees = float(transaction_summary.today_app_fees or 0)
+        pending_app_fees = float(transaction_summary.pending_app_fees or 0)
         cleared_amount = today_earnings - pending_amount
+        net_earnings = max(today_earnings - today_app_fees, 0.0)
+        net_pending_amount = max(pending_amount - pending_app_fees, 0.0)
+        net_cleared_amount = max(net_earnings - net_pending_amount, 0.0)
 
         # Fetch bookings from vendor-specific dashboard table (single query).
         sql_fetch_bookings = text(f"""
@@ -2689,7 +2706,12 @@ def get_landing_page_vendor(vendor_id):
                 "todayBookings": today_bookings,
                 "todayBookingsChange": 8,  # Placeholder value
                 "pendingAmount": pending_amount,
-                "clearedAmount": cleared_amount
+                "clearedAmount": cleared_amount,
+                "todayAppFees": today_app_fees,
+                "pendingAppFees": pending_app_fees,
+                "netEarnings": net_earnings,
+                "netPendingAmount": net_pending_amount,
+                "netClearedAmount": net_cleared_amount
             },
             "bookingStats": {
                 "totalBookings": total_bookings,
