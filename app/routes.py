@@ -332,6 +332,10 @@ def vendor_tax_profile(vendor_id):
         profile.tax_inclusive = tax_inclusive
 
         db.session.commit()
+        try:
+            socketio.emit("pricing_updated", {"vendor_id": vendor_id}, room=f"vendor_{vendor_id}")
+        except Exception:
+            current_app.logger.warning("pricing_updated emit failed for vendor %s", vendor_id)
         return jsonify({"success": True, "profile": profile.to_dict()}), 200
     except Exception as e:
         db.session.rollback()
@@ -407,6 +411,10 @@ def update_console_pricing(vendor_id):
                 updated_count += 1
 
         db.session.commit()
+        try:
+            socketio.emit("pricing_updated", {"vendor_id": vendor_id}, room=f"vendor_{vendor_id}")
+        except Exception:
+            current_app.logger.warning("pricing_updated emit failed for vendor %s", vendor_id)
         return jsonify({"success": True, "message": f"{updated_count} pricing records updated."}), 200
 
     except Exception as e:
@@ -3352,6 +3360,10 @@ def add_extra_service_category(vendor_id):
     )
     db.session.add(category)
     db.session.commit()
+    try:
+        socketio.emit("extras_updated", {"vendor_id": vendor_id}, room=f"vendor_{vendor_id}")
+    except Exception:
+        current_app.logger.warning("extras_updated emit failed for vendor %s", vendor_id)
 
     return jsonify({
         "id": category.id,
@@ -3376,6 +3388,10 @@ def add_extra_service_menu(vendor_id, category_id):
     db.session.add(menu)
     ExtraServiceService._sync_food_amenity(vendor_id)
     db.session.commit()
+    try:
+        socketio.emit("extras_updated", {"vendor_id": vendor_id}, room=f"vendor_{vendor_id}")
+    except Exception:
+        current_app.logger.warning("extras_updated emit failed for vendor %s", vendor_id)
     return jsonify({"id": menu.id, "name": menu.name, "price": menu.price, "description": menu.description}), 201
 
 # Update and delete endpoints similarly for categories and menus...
@@ -3397,6 +3413,10 @@ def update_extra_service_category(vendor_id, category_id):
             category.description = description
 
         db.session.commit()
+        try:
+            socketio.emit("extras_updated", {"vendor_id": vendor_id}, room=f"vendor_{vendor_id}")
+        except Exception:
+            current_app.logger.warning("extras_updated emit failed for vendor %s", vendor_id)
         return jsonify({"id": category.id, "name": category.name, "description": category.description}), 200
 
     except SQLAlchemyError as e:
@@ -3425,6 +3445,10 @@ def delete_extra_service_category(vendor_id, category_id):
         ExtraServiceService._sync_food_amenity(vendor_id)
 
         db.session.commit()
+        try:
+            socketio.emit("extras_updated", {"vendor_id": vendor_id}, room=f"vendor_{vendor_id}")
+        except Exception:
+            current_app.logger.warning("extras_updated emit failed for vendor %s", vendor_id)
         return jsonify({"message": "Category and related menus deactivated"}), 200
 
     except SQLAlchemyError as e:
@@ -3457,6 +3481,10 @@ def update_extra_service_menu(vendor_id, category_id, menu_id):
             menu.description = description
 
         db.session.commit()
+        try:
+            socketio.emit("extras_updated", {"vendor_id": vendor_id}, room=f"vendor_{vendor_id}")
+        except Exception:
+            current_app.logger.warning("extras_updated emit failed for vendor %s", vendor_id)
         return jsonify({"id": menu.id, "name": menu.name, "price": menu.price, "description": menu.description}), 200
 
     except SQLAlchemyError as e:
@@ -3478,6 +3506,10 @@ def delete_extra_service_menu(vendor_id, category_id, menu_id):
         menu.is_active = False
         ExtraServiceService._sync_food_amenity(vendor_id)
         db.session.commit()
+        try:
+            socketio.emit("extras_updated", {"vendor_id": vendor_id}, room=f"vendor_{vendor_id}")
+        except Exception:
+            current_app.logger.warning("extras_updated emit failed for vendor %s", vendor_id)
         return jsonify({"message": "Menu item deactivated"}), 200
 
     except SQLAlchemyError as e:
@@ -4555,6 +4587,10 @@ def create_vendor_pass(vendor_id):
         
         db.session.add(new_pass)
         db.session.commit()
+        try:
+            socketio.emit("passes_updated", {"vendor_id": vendor_id}, room=f"vendor_{vendor_id}")
+        except Exception:
+            current_app.logger.warning("passes_updated emit failed for vendor %s", vendor_id)
         
         current_app.logger.info(f"Pass created: {new_pass.name} (ID: {new_pass.id}) for vendor {vendor_id}")
         
@@ -4610,6 +4646,10 @@ def update_vendor_pass(vendor_id, pass_id):
                 cafe_pass.hours_per_slot = float(data['hours_per_slot']) if data['hours_per_slot'] else None
         
         db.session.commit()
+        try:
+            socketio.emit("passes_updated", {"vendor_id": vendor_id}, room=f"vendor_{vendor_id}")
+        except Exception:
+            current_app.logger.warning("passes_updated emit failed for vendor %s", vendor_id)
         
         current_app.logger.info(f"Pass updated: {cafe_pass.name} (ID: {pass_id})")
         
@@ -4639,6 +4679,10 @@ def delete_vendor_pass(vendor_id, pass_id):
         
         cafe_pass.is_active = False
         db.session.commit()
+        try:
+            socketio.emit("passes_updated", {"vendor_id": vendor_id}, room=f"vendor_{vendor_id}")
+        except Exception:
+            current_app.logger.warning("passes_updated emit failed for vendor %s", vendor_id)
         
         current_app.logger.info(f"Pass deactivated: {cafe_pass.name} (ID: {pass_id})")
         

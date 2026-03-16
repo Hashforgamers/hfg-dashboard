@@ -5,6 +5,7 @@ from app.extension.extensions import db
 from app.models.event import Event
 from app.models.registration import Registration
 from app.models.team import Team
+from app.services.websocket_service import socketio
 
 bp_regs = Blueprint('registrations', __name__, url_prefix='/api/vendor/events/<uuid:event_id>/registrations')
 
@@ -51,4 +52,8 @@ def update_payment_status(event_id, registration_id):
     reg = Registration.query.filter_by(id=registration_id, event_id=event_id).first_or_404()
     reg.payment_status = status
     db.session.commit()
+    try:
+        socketio.emit("tournaments_updated", {"vendor_id": vid}, room=f"vendor_{vid}")
+    except Exception:
+        pass
     return jsonify({"ok": True}), 200

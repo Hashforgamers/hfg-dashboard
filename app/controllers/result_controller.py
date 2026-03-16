@@ -7,6 +7,7 @@ from app.models.winner import Winner
 from app.models.team import Team
 from app.models.teamMember import TeamMember
 from app.models.user import User
+from app.services.websocket_service import socketio
 
 bp_results = Blueprint('results', __name__, url_prefix='/api/vendor/events/<uuid:event_id>/results')
 
@@ -98,4 +99,8 @@ def publish_winners(event_id):
         ))
     ev.status = EventStatus.COMPLETED
     db.session.commit()
+    try:
+        socketio.emit("tournaments_updated", {"vendor_id": vid}, room=f"vendor_{vid}")
+    except Exception:
+        pass
     return jsonify({"ok": True}), 201

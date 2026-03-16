@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from app.extension.extensions import db
 from app.models.cafeReview import CafeReview
 from app.models.user import User
+from app.services.websocket_service import socketio
 
 bp_reviews = Blueprint("reviews", __name__, url_prefix="/api/vendor/reviews")
 
@@ -127,6 +128,10 @@ def respond_review(review_id):
     review.responded_at = datetime.now(timezone.utc)
     review.responded_by = _staff_name()
     db.session.commit()
+    try:
+        socketio.emit("reviews_updated", {"vendor_id": vid}, room=f"vendor_{vid}")
+    except Exception:
+        pass
     return jsonify({"ok": True}), 200
 
 
@@ -145,4 +150,8 @@ def update_review_status(review_id):
 
     review.status = status
     db.session.commit()
+    try:
+        socketio.emit("reviews_updated", {"vendor_id": vid}, room=f"vendor_{vid}")
+    except Exception:
+        pass
     return jsonify({"ok": True}), 200

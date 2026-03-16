@@ -75,6 +75,10 @@ def post_event():
     payload = request.get_json()
     ev = create_event(vid, payload)
     socketio.emit("event_created", {"event_id": str(ev.id), "title": ev.title}, room=f"vendor_{vid}")
+    try:
+        socketio.emit("tournaments_updated", {"vendor_id": vid}, room=f"vendor_{vid}")
+    except Exception:
+        pass
     return jsonify({"id": str(ev.id)}), 201
 
 @bp_events.get('/')
@@ -95,6 +99,10 @@ def patch_event(event_id):
     vid = _vendor_id()
     ev = update_event(vid, event_id, request.get_json() or {})
     socketio.emit("event_updated", {"event_id": str(ev.id), "status": ev.status}, room=f"vendor_{vid}")
+    try:
+        socketio.emit("tournaments_updated", {"vendor_id": vid}, room=f"vendor_{vid}")
+    except Exception:
+        pass
     return jsonify({"ok": True}), 200
 
 @bp_events.post('/upload-banner')
