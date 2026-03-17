@@ -92,3 +92,26 @@ def internal_send_unlock():
         current_app.logger.exception("Internal WS Unlock failed")
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
+
+
+@bp_internal_ws.post('/store-updated')
+def internal_store_updated():
+    """
+    Internal endpoint to notify dashboard clients that store inventory/products changed.
+    Payload:
+      { "vendor_id": 123 }  # optional; if omitted, broadcast to all
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        vendor_id = data.get("vendor_id")
+        payload = {"vendor_id": vendor_id} if vendor_id else {}
+
+        if vendor_id:
+            socketio.emit("store_updated", payload, room=f"vendor_{int(vendor_id)}")
+        else:
+            socketio.emit("store_updated", payload, broadcast=True)
+
+        return jsonify({"ok": True}), 200
+    except Exception as e:
+        current_app.logger.exception("Internal WS store_updated failed")
+        return jsonify({"error": str(e)}), 500
