@@ -487,6 +487,31 @@ def get_landing_page_vendor(vendor_id):
             FROM {table_name}
         """)
         result = db.session.execute(sql_fetch_bookings).fetchall()
+
+        booking_ids = [row.book_id for row in result if row and row.book_id]
+        payment_use_case_map = {}
+        settlement_status_map = {}
+        if booking_ids:
+            txns = (
+                db.session.query(Transaction)
+                .filter(Transaction.booking_id.in_(booking_ids))
+                .order_by(Transaction.id.asc())
+                .all()
+            )
+            txn_map = {}
+            for tx in txns:
+                txn_map.setdefault(tx.booking_id, []).append(tx)
+            for bid, tx_list in txn_map.items():
+                use_cases = []
+                pending = False
+                for tx in tx_list:
+                    use_case = (tx.payment_use_case or tx.mode_of_payment or "").lower()
+                    if use_case:
+                        use_cases.append(use_case)
+                    if str(tx.settlement_status or "").lower() in {"pending", "unpaid", "due"}:
+                        pending = True
+                payment_use_case_map[bid] = "pay_at_cafe" if "pay_at_cafe" in use_cases else (use_cases[0] if use_cases else None)
+                settlement_status_map[bid] = "pending" if pending else ("completed" if use_cases else None)
         
         upcoming_bookings = []
         current_slots = []
@@ -501,6 +526,8 @@ def get_landing_page_vendor(vendor_id):
                 "status": "Confirmed" if row.status != 'pending_verified' else "Pending",
                 "game_id":row.game_id,
                 "date":row.date,
+                "payment_use_case": payment_use_case_map.get(row.book_id),
+                "settlement_status": settlement_status_map.get(row.book_id),
             }
             
             slot_data = {
