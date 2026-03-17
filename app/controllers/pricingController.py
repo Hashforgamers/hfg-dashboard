@@ -11,6 +11,7 @@ from datetime import datetime, date, time as dt_time
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import joinedload
 import pytz
+from app.services.websocket_service import socketio
 
 pricing_blueprint = Blueprint('pricing', __name__)
 
@@ -364,6 +365,10 @@ def create_pricing_offer(vendor_id):
         db.session.commit()
 
         current_app.logger.info(f"✅ Created pricing offer for vendor {vendor_id}: {new_offer.offer_name}")
+        try:
+            socketio.emit("pricing_updated", {"vendor_id": vendor_id}, room=f"vendor_{vendor_id}")
+        except Exception:
+            current_app.logger.warning("pricing_updated emit failed for vendor %s", vendor_id)
 
         return jsonify({
             'success': True,
@@ -432,6 +437,10 @@ def update_pricing_offer(vendor_id, offer_id):
         db.session.commit()
 
         current_app.logger.info(f"✅ Updated pricing offer {offer_id}")
+        try:
+            socketio.emit("pricing_updated", {"vendor_id": vendor_id}, room=f"vendor_{vendor_id}")
+        except Exception:
+            current_app.logger.warning("pricing_updated emit failed for vendor %s", vendor_id)
 
         return jsonify({
             'success': True,
@@ -467,6 +476,10 @@ def delete_pricing_offer(vendor_id, offer_id):
         db.session.commit()
 
         current_app.logger.info(f"✅ Deactivated pricing offer {offer_id}")
+        try:
+            socketio.emit("pricing_updated", {"vendor_id": vendor_id}, room=f"vendor_{vendor_id}")
+        except Exception:
+            current_app.logger.warning("pricing_updated emit failed for vendor %s", vendor_id)
 
         return jsonify({
             'success': True,
@@ -675,6 +688,10 @@ def upsert_controller_pricing(vendor_id):
             return jsonify({'success': False, 'message': 'Validation failed', 'errors': errors}), 400
 
         db.session.commit()
+        try:
+            socketio.emit("pricing_updated", {"vendor_id": vendor_id}, room=f"vendor_{vendor_id}")
+        except Exception:
+            current_app.logger.warning("pricing_updated emit failed for vendor %s", vendor_id)
 
         return jsonify({'success': True, 'updated_rules': updated}), 200
     except Exception as e:
@@ -920,6 +937,10 @@ def upsert_squad_pricing_rules(vendor_id):
                 db_row.is_active = True
 
         db.session.commit()
+        try:
+            socketio.emit("pricing_updated", {"vendor_id": vendor_id}, room=f"vendor_{vendor_id}")
+        except Exception:
+            current_app.logger.warning("pricing_updated emit failed for vendor %s", vendor_id)
 
         return jsonify({'success': True, 'message': 'Squad pricing rules saved'}), 200
     except Exception as e:

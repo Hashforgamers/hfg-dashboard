@@ -23,6 +23,7 @@ ALL_PERMISSIONS: List[Permission] = [
     "store.manage",
     "games.manage",
     "tournaments.manage",
+    "reviews.manage",
     "account.manage",
     "staff.manage",
     "subscription.manage",
@@ -43,6 +44,7 @@ DEFAULT_ROLE_PERMISSIONS: Dict[Role, List[Permission]] = {
         "store.manage",
         "games.manage",
         "tournaments.manage",
+        "reviews.manage",
         "cafe.switch",
     ],
     "staff": [
@@ -74,7 +76,10 @@ def _normalize_matrix(data: Optional[Dict[str, List[str]]] = None) -> Dict[str, 
         clean = [p for p in set(perms or []) if p in ALL_PERMISSIONS]
         matrix[role] = clean
 
-    if not matrix["owner"]:
+    # Always keep owner fully privileged to avoid missing new permissions (e.g., reviews.manage).
+    if matrix.get("owner") is not None:
+        matrix["owner"] = list(set(matrix["owner"]) | set(DEFAULT_ROLE_PERMISSIONS["owner"]))
+    else:
         matrix["owner"] = list(DEFAULT_ROLE_PERMISSIONS["owner"])
     return matrix
 

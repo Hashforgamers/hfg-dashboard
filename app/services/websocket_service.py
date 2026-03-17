@@ -180,6 +180,19 @@ def _handle_upstream_booking(data: Dict[str, Any]):
 
         # Always relay raw event for general consumers
         _emit_downstream_to_vendor(vendor_id, "booking", data)
+        try:
+            _emit_downstream_to_vendor(
+                vendor_id,
+                "booking_updated",
+                {
+                    "vendor_id": vendor_id,
+                    "booking_id": booking_id,
+                    "status": data.get("status"),
+                    "event": "booking",
+                },
+            )
+        except Exception:
+            _log_warn("Failed emitting booking_updated vendor=%s bookingId=%s", vendor_id, booking_id)
 
         # Emit upcoming for confirmed bookings
         upcoming_payload = format_upcoming_booking_from_upstream(data)
@@ -218,6 +231,19 @@ def _handle_upstream_pay_at_cafe_event(event: str, data: Dict[str, Any]):
         _mark_pong()
         vendor_id = data.get("vendorId") or data.get("vendor_id")
         _emit_downstream_to_vendor(vendor_id, event, data)
+        try:
+            _emit_downstream_to_vendor(
+                vendor_id,
+                "booking_queue_updated",
+                {
+                    "vendor_id": vendor_id,
+                    "booking_id": data.get("bookingId") or data.get("booking_id"),
+                    "status": data.get("status"),
+                    "event": event,
+                },
+            )
+        except Exception:
+            _log_warn("Failed emitting booking_queue_updated vendor=%s event=%s", vendor_id, event)
         _log_info("Relayed %s vendor=%s bookingId=%s", event, vendor_id, data.get("bookingId"))
     except Exception:
         _log_err("Error handling upstream %s payload", event)
@@ -227,6 +253,19 @@ def _handle_upstream_booking_payment_update(data: Dict[str, Any]):
         _mark_pong()
         vendor_id = data.get("vendorId") or data.get("vendor_id")
         _emit_downstream_to_vendor(vendor_id, "booking_payment_update", data)
+        try:
+            _emit_downstream_to_vendor(
+                vendor_id,
+                "booking_queue_updated",
+                {
+                    "vendor_id": vendor_id,
+                    "booking_id": data.get("bookingId") or data.get("booking_id"),
+                    "status": data.get("status"),
+                    "event": "booking_payment_update",
+                },
+            )
+        except Exception:
+            _log_warn("Failed emitting booking_queue_updated vendor=%s bookingId=%s", vendor_id, data.get("bookingId"))
         _log_info("Relayed booking_payment_update vendor=%s bookingId=%s", vendor_id, data.get("bookingId"))
     except Exception:
         _log_err("Error handling upstream booking_payment_update payload")

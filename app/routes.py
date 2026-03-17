@@ -231,6 +231,8 @@ def get_transaction_report(to_date, from_date, vendor_id):
                 total_with_tax = round(taxable_amount + total_tax_amount, 2)
                 if total_with_tax <= 0:
                     total_with_tax = float(txn.amount or 0)
+            app_fee_amount = float(getattr(txn, "app_fee_amount", 0) or 0)
+            net_amount = round(float(txn.amount or 0) - app_fee_amount, 2)
 
             result.append({
                 "id": txn.id,
@@ -256,6 +258,8 @@ def get_transaction_report(to_date, from_date, vendor_id):
                 "mealsAmount": meals_amount,
                 "controllerAmount": controller_amount,
                 "waiveOffAmount": waive_off_amount,
+                "appFeeAmount": app_fee_amount,
+                "netAmount": net_amount,
                 "taxableAmount": taxable_amount,
                 "gstRate": gst_rate,
                 "cgstAmount": cgst_amount,
@@ -332,6 +336,10 @@ def vendor_tax_profile(vendor_id):
         profile.tax_inclusive = tax_inclusive
 
         db.session.commit()
+        try:
+            socketio.emit("pricing_updated", {"vendor_id": vendor_id}, room=f"vendor_{vendor_id}")
+        except Exception:
+            current_app.logger.warning("pricing_updated emit failed for vendor %s", vendor_id)
         return jsonify({"success": True, "profile": profile.to_dict()}), 200
     except Exception as e:
         db.session.rollback()
@@ -407,6 +415,10 @@ def update_console_pricing(vendor_id):
                 updated_count += 1
 
         db.session.commit()
+        try:
+            socketio.emit("pricing_updated", {"vendor_id": vendor_id}, room=f"vendor_{vendor_id}")
+        except Exception:
+            current_app.logger.warning("pricing_updated emit failed for vendor %s", vendor_id)
         return jsonify({"success": True, "message": f"{updated_count} pricing records updated."}), 200
 
     except Exception as e:
@@ -2402,6 +2414,14 @@ def get_landing_page_vendor(vendor_id):
                     func.sum(case((Transaction.settlement_status == 'pending', Transaction.amount), else_=0.0)),
                     0.0
                 ).label("pending_amount"),
+                func.coalesce(
+                    func.sum(case((Transaction.booked_date == today, Transaction.app_fee_amount), else_=0.0)),
+                    0.0
+                ).label("today_app_fees"),
+                func.coalesce(
+                    func.sum(case((Transaction.settlement_status == 'pending', Transaction.app_fee_amount), else_=0.0)),
+                    0.0
+                ).label("pending_app_fees"),
             )
             .filter(Transaction.vendor_id == vendor_id)
             .one()
@@ -2410,7 +2430,12 @@ def get_landing_page_vendor(vendor_id):
         today_earnings = float(transaction_summary.today_earnings or 0)
         today_bookings = int(transaction_summary.today_bookings or 0)
         pending_amount = float(transaction_summary.pending_amount or 0)
+        today_app_fees = float(transaction_summary.today_app_fees or 0)
+        pending_app_fees = float(transaction_summary.pending_app_fees or 0)
         cleared_amount = today_earnings - pending_amount
+        net_earnings = max(today_earnings - today_app_fees, 0.0)
+        net_pending_amount = max(pending_amount - pending_app_fees, 0.0)
+        net_cleared_amount = max(net_earnings - net_pending_amount, 0.0)
 
         # Fetch bookings from vendor-specific dashboard table (single query).
         sql_fetch_bookings = text(f"""
@@ -2681,7 +2706,12 @@ def get_landing_page_vendor(vendor_id):
                 "todayBookings": today_bookings,
                 "todayBookingsChange": 8,  # Placeholder value
                 "pendingAmount": pending_amount,
-                "clearedAmount": cleared_amount
+                "clearedAmount": cleared_amount,
+                "todayAppFees": today_app_fees,
+                "pendingAppFees": pending_app_fees,
+                "netEarnings": net_earnings,
+                "netPendingAmount": net_pending_amount,
+                "netClearedAmount": net_cleared_amount
             },
             "bookingStats": {
                 "totalBookings": total_bookings,
@@ -3352,6 +3382,10 @@ def add_extra_service_category(vendor_id):
     )
     db.session.add(category)
     db.session.commit()
+    try:
+        socketio.emit("extras_updated", {"vendor_id": vendor_id}, room=f"vendor_{vendor_id}")
+    except Exception:
+        current_app.logger.warning("extras_updated emit failed for vendor %s", vendor_id)
 
     return jsonify({
         "id": category.id,
@@ -3376,6 +3410,10 @@ def add_extra_service_menu(vendor_id, category_id):
     db.session.add(menu)
     ExtraServiceService._sync_food_amenity(vendor_id)
     db.session.commit()
+    try:
+        socketio.emit("extras_updated", {"vendor_id": vendor_id}, room=f"vendor_{vendor_id}")
+    except Exception:
+        current_app.logger.warning("extras_updated emit failed for vendor %s", vendor_id)
     return jsonify({"id": menu.id, "name": menu.name, "price": menu.price, "description": menu.description}), 201
 
 # Update and delete endpoints similarly for categories and menus...
@@ -3397,6 +3435,10 @@ def update_extra_service_category(vendor_id, category_id):
             category.description = description
 
         db.session.commit()
+        try:
+            socketio.emit("extras_updated", {"vendor_id": vendor_id}, room=f"vendor_{vendor_id}")
+        except Exception:
+            current_app.logger.warning("extras_updated emit failed for vendor %s", vendor_id)
         return jsonify({"id": category.id, "name": category.name, "description": category.description}), 200
 
     except SQLAlchemyError as e:
@@ -3425,6 +3467,10 @@ def delete_extra_service_category(vendor_id, category_id):
         ExtraServiceService._sync_food_amenity(vendor_id)
 
         db.session.commit()
+        try:
+            socketio.emit("extras_updated", {"vendor_id": vendor_id}, room=f"vendor_{vendor_id}")
+        except Exception:
+            current_app.logger.warning("extras_updated emit failed for vendor %s", vendor_id)
         return jsonify({"message": "Category and related menus deactivated"}), 200
 
     except SQLAlchemyError as e:
@@ -3457,6 +3503,10 @@ def update_extra_service_menu(vendor_id, category_id, menu_id):
             menu.description = description
 
         db.session.commit()
+        try:
+            socketio.emit("extras_updated", {"vendor_id": vendor_id}, room=f"vendor_{vendor_id}")
+        except Exception:
+            current_app.logger.warning("extras_updated emit failed for vendor %s", vendor_id)
         return jsonify({"id": menu.id, "name": menu.name, "price": menu.price, "description": menu.description}), 200
 
     except SQLAlchemyError as e:
@@ -3478,6 +3528,10 @@ def delete_extra_service_menu(vendor_id, category_id, menu_id):
         menu.is_active = False
         ExtraServiceService._sync_food_amenity(vendor_id)
         db.session.commit()
+        try:
+            socketio.emit("extras_updated", {"vendor_id": vendor_id}, room=f"vendor_{vendor_id}")
+        except Exception:
+            current_app.logger.warning("extras_updated emit failed for vendor %s", vendor_id)
         return jsonify({"message": "Menu item deactivated"}), 200
 
     except SQLAlchemyError as e:
@@ -4555,6 +4609,10 @@ def create_vendor_pass(vendor_id):
         
         db.session.add(new_pass)
         db.session.commit()
+        try:
+            socketio.emit("passes_updated", {"vendor_id": vendor_id}, room=f"vendor_{vendor_id}")
+        except Exception:
+            current_app.logger.warning("passes_updated emit failed for vendor %s", vendor_id)
         
         current_app.logger.info(f"Pass created: {new_pass.name} (ID: {new_pass.id}) for vendor {vendor_id}")
         
@@ -4610,6 +4668,10 @@ def update_vendor_pass(vendor_id, pass_id):
                 cafe_pass.hours_per_slot = float(data['hours_per_slot']) if data['hours_per_slot'] else None
         
         db.session.commit()
+        try:
+            socketio.emit("passes_updated", {"vendor_id": vendor_id}, room=f"vendor_{vendor_id}")
+        except Exception:
+            current_app.logger.warning("passes_updated emit failed for vendor %s", vendor_id)
         
         current_app.logger.info(f"Pass updated: {cafe_pass.name} (ID: {pass_id})")
         
@@ -4639,6 +4701,10 @@ def delete_vendor_pass(vendor_id, pass_id):
         
         cafe_pass.is_active = False
         db.session.commit()
+        try:
+            socketio.emit("passes_updated", {"vendor_id": vendor_id}, room=f"vendor_{vendor_id}")
+        except Exception:
+            current_app.logger.warning("passes_updated emit failed for vendor %s", vendor_id)
         
         current_app.logger.info(f"Pass deactivated: {cafe_pass.name} (ID: {pass_id})")
         

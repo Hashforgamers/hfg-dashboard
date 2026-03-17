@@ -301,6 +301,52 @@ def init_pc_link_table_command():
         click.echo(f"❌ Failed to initialize console_link_sessions: {e}", err=True)
 
 
+@click.command('init-review-table')
+@with_appcontext
+def init_review_table_command():
+    """
+    Create cafe_reviews table and indexes if they don't exist.
+
+    Usage:
+        flask init-review-table
+    """
+    statements = [
+        """
+        CREATE TABLE IF NOT EXISTS cafe_reviews (
+            id UUID PRIMARY KEY,
+            vendor_id INTEGER NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            booking_id INTEGER NULL REFERENCES bookings(id) ON DELETE SET NULL,
+            rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+            title VARCHAR(120) NULL,
+            comment TEXT NULL,
+            status VARCHAR(16) NOT NULL DEFAULT 'published',
+            is_anonymous BOOLEAN NOT NULL DEFAULT FALSE,
+            user_name_snapshot VARCHAR(120) NULL,
+            user_avatar_snapshot VARCHAR(255) NULL,
+            response_text TEXT NULL,
+            responded_at TIMESTAMPTZ NULL,
+            responded_by VARCHAR(120) NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT uq_cafe_reviews_booking_id UNIQUE (booking_id)
+        );
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_cafe_reviews_vendor_id ON cafe_reviews (vendor_id);",
+        "CREATE INDEX IF NOT EXISTS ix_cafe_reviews_vendor_status ON cafe_reviews (vendor_id, status);",
+        "CREATE INDEX IF NOT EXISTS ix_cafe_reviews_user_id ON cafe_reviews (user_id);",
+        "CREATE INDEX IF NOT EXISTS ix_cafe_reviews_created_at ON cafe_reviews (created_at);",
+    ]
+
+    try:
+        with db.engine.begin() as conn:
+            for stmt in statements:
+                conn.execute(text(stmt))
+        click.echo("✓ cafe_reviews table is ready")
+    except Exception as e:
+        click.echo(f"❌ Failed to initialize cafe_reviews: {e}", err=True)
+
+
 @click.command('init-rbac-tables')
 @with_appcontext
 def init_rbac_tables_command():
@@ -456,5 +502,6 @@ def register_commands(app):
     app.cli.add_command(subscription_stats_command)
     app.cli.add_command(fix_expired_subscriptions_command)
     app.cli.add_command(init_pc_link_table_command)
+    app.cli.add_command(init_review_table_command)
     app.cli.add_command(init_rbac_tables_command)
     app.cli.add_command(migrate_rbac_legacy_command)

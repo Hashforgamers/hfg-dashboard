@@ -86,6 +86,7 @@ def create_app():
     from app.controllers.registration_controller import bp_regs
     from app.controllers.result_controller import bp_results
     from app.controllers.team_controller import bp_teams
+    from app.controllers.review_controller import bp_reviews
     from app.controllers.vendor_games import vendor_games_bp
     from app.controllers.admin_games_controller import admin_games_bp
     from app.controllers.pricingController import pricing_blueprint
@@ -102,6 +103,7 @@ def create_app():
     app.register_blueprint(bp_regs)
     app.register_blueprint(bp_results)
     app.register_blueprint(bp_teams)
+    app.register_blueprint(bp_reviews)
     app.register_blueprint(vendor_games_bp)
     app.register_blueprint(admin_games_bp)
     app.register_blueprint(pricing_blueprint, url_prefix="/api")
