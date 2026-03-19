@@ -10,13 +10,16 @@ from app.services.subscription_service import (
     create_subscription,
     renew_subscription,
     is_subscription_active,
-    get_package_price  # ✅ ADD THIS
+    get_package_price,  # ✅ ADD THIS
+    get_package_price_for_cycle,
+    normalize_billing_cycle,
 )
 from app.services.razorpay_service import (
     create_order,
     verify_payment_signature,
     get_payment_details,
     get_order_payments,
+    get_order_details,
 )
 from app.models.package import Package
 from app.extension.extensions import db  # ✅ ADD THIS
@@ -24,6 +27,8 @@ from sqlalchemy.exc import IntegrityError
 
 
 bp_subs = Blueprint('subscriptions', __name__)
+
+ALLOWED_BILLING_CYCLES = {"monthly", "quarterly", "yearly"}
 
 
 @bp_subs.get('/')
@@ -123,15 +128,18 @@ def create_payment_order(vendor_id):
         data = request.get_json()
         package_code = data.get('package_code')
         action = data.get('action', 'new')
+        billing_cycle = normalize_billing_cycle(data.get('billing_cycle'))
         
         if not package_code:
             return jsonify({"error": "package_code is required"}), 400
+        if billing_cycle not in ALLOWED_BILLING_CYCLES:
+            return jsonify({"error": "billing_cycle must be one of monthly|quarterly|yearly"}), 400
         
         package = Package.query.filter_by(code=package_code, active=True).first()
         if not package:
             return jsonify({"error": "Invalid package code"}), 404
         
-        price = get_package_price(package_code)
+        price = get_package_price_for_cycle(package, billing_cycle)
         
         if price == 0:
             return jsonify({
@@ -148,6 +156,7 @@ def create_payment_order(vendor_id):
                 'vendor_id': str(vendor_id),
                 'package_code': package_code,
                 'action': action,
+                'billing_cycle': billing_cycle,
                 'dev_mode': str(current_app.config.get('SUBSCRIPTION_DEV_MODE', False))
             }
         )
@@ -167,9 +176,11 @@ def create_payment_order(vendor_id):
                 "code": package.code,
                 "name": package.name,
                 "price": price,
+                "billing_cycle": billing_cycle,
                 "pc_limit": package.pc_limit,
                 "features": package.features
             },
+            "billing_cycle": billing_cycle,
             "dev_mode": current_app.config.get('SUBSCRIPTION_DEV_MODE', False)
         }), 200
         
@@ -200,6 +211,7 @@ def verify_and_activate(vendor_id):
         signature = data.get('razorpay_signature')
         package_code = data.get('package_code')
         action = data.get('action', 'new')
+        requested_cycle = normalize_billing_cycle(data.get('billing_cycle'))
         
         # Validate required fields
         if not all([order_id, payment_id, signature, package_code]):
@@ -222,6 +234,24 @@ def verify_and_activate(vendor_id):
                     "message": "Invalid payment signature. Please contact support."
                 }), 400
 
+        # Resolve billing-cycle + package from trusted order notes (source of truth).
+        order_details = get_order_details(order_id)
+        order_notes = order_details.get("notes", {}) if isinstance(order_details, dict) else {}
+        noted_package = str(order_notes.get("package_code") or "").strip().lower()
+        noted_cycle = normalize_billing_cycle(order_notes.get("billing_cycle") or requested_cycle)
+        if noted_package and noted_package != str(package_code).strip().lower():
+            return jsonify({
+                "error": "Package mismatch",
+                "message": "Package in payment order does not match request package."
+            }), 400
+        billing_cycle = noted_cycle if noted_cycle in ALLOWED_BILLING_CYCLES else "monthly"
+
+        package = Package.query.filter_by(code=package_code, active=True).first()
+        if not package:
+            return jsonify({"error": "Invalid package code"}), 404
+
+        expected_amount = get_package_price_for_cycle(package, billing_cycle)
+
         # Get payment details from Razorpay
         payment_details = get_payment_details(payment_id)
         amount_paid = payment_details['amount'] / 100  # Convert paise to rupees
@@ -239,13 +269,20 @@ def verify_and_activate(vendor_id):
                 "error": "Payment not completed",
                 "message": f"Payment status: {payment_status}"
             }), 400
+
+        if expected_amount > 0 and abs(float(amount_paid) - float(expected_amount)) > 1:
+            return jsonify({
+                "error": "Amount mismatch",
+                "message": f"Expected ₹{expected_amount:.2f} for {billing_cycle} plan but received ₹{float(amount_paid):.2f}"
+            }), 400
         
         # Create or renew subscription
         if action == 'renew':
             subscription = renew_subscription(
                 vendor_id=vendor_id,
                 payment_amount=amount_paid,
-                external_ref=payment_id
+                external_ref=payment_id,
+                billing_cycle=billing_cycle,
             )
             message = "Subscription renewed successfully!"
         else:
@@ -253,7 +290,8 @@ def verify_and_activate(vendor_id):
                 vendor_id=vendor_id,
                 package_code=package_code,
                 payment_amount=amount_paid,
-                external_ref=payment_id
+                external_ref=payment_id,
+                billing_cycle=billing_cycle,
             )
             message = "Subscription activated successfully!"
         
@@ -271,6 +309,7 @@ def verify_and_activate(vendor_id):
                 "period_start": subscription.current_period_start.isoformat(),
                 "period_end": subscription.current_period_end.isoformat(),
                 "amount_paid": float(subscription.unit_amount),
+                "billing_cycle": billing_cycle,
                 "payment_id": payment_id
             }
         }), 200
@@ -299,6 +338,7 @@ def verify_and_activate(vendor_id):
                     "period_start": existing.current_period_start.isoformat(),
                     "period_end": existing.current_period_end.isoformat(),
                     "amount_paid": float(existing.unit_amount),
+                    "billing_cycle": billing_cycle,
                     "payment_id": payment_id
                 }
             }), 200
