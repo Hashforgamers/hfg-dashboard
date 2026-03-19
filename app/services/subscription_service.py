@@ -8,15 +8,49 @@ from app.models.vendor import Vendor
 from app.extension.extensions import db
 
 
-def get_subscription_duration():
+BILLING_CYCLE_MONTHS = {
+    "monthly": 1,
+    "quarterly": 3,
+    "yearly": 12,
+}
+
+
+def normalize_billing_cycle(value):
+    cycle = str(value or "monthly").strip().lower()
+    if cycle not in BILLING_CYCLE_MONTHS:
+        return "monthly"
+    return cycle
+
+
+def get_subscription_duration(billing_cycle="monthly"):
     """
     Get subscription duration based on environment
     Returns: timedelta object
     """
+    cycle = normalize_billing_cycle(billing_cycle)
     if current_app.config.get('SUBSCRIPTION_DEV_MODE', False):
         days = current_app.config.get('SUBSCRIPTION_TEST_DURATION_DAYS', 1)
         return timedelta(days=days)
-    return relativedelta(months=1)
+    return relativedelta(months=BILLING_CYCLE_MONTHS[cycle])
+
+
+def get_package_price_for_cycle(package, billing_cycle="monthly"):
+    cycle = normalize_billing_cycle(billing_cycle)
+    features = package.features or {}
+    monthly_price = float(features.get('price_inr', 0) or 0)
+
+    # Free packages stay free for any cycle.
+    if monthly_price == 0:
+        return 0.0
+
+    if current_app.config.get('SUBSCRIPTION_DEV_MODE', False):
+        return float(current_app.config.get('SUBSCRIPTION_TEST_PRICE', 1))
+
+    if cycle == "quarterly":
+        return float(features.get('quarterly_price_inr', monthly_price * 3) or 0)
+    if cycle == "yearly":
+        return float(features.get('yearly_price_inr', monthly_price * 12) or 0)
+    return monthly_price
 
 
 def get_active_subscription(vendor_id, ts=None):
@@ -93,7 +127,7 @@ def provision_default_subscription(vendor_id):
     return sub
 
 
-def create_subscription(vendor_id, package_code, payment_amount, external_ref=None):
+def create_subscription(vendor_id, package_code, payment_amount, external_ref=None, billing_cycle="monthly"):
     """
     Create a new subscription after successful payment
     
@@ -107,7 +141,8 @@ def create_subscription(vendor_id, package_code, payment_amount, external_ref=No
         Subscription: New subscription object
     """
     now = datetime.now(timezone.utc)
-    duration = get_subscription_duration()
+    cycle = normalize_billing_cycle(billing_cycle)
+    duration = get_subscription_duration(cycle)
     
     package = Package.query.filter_by(code=package_code, active=True).first()
     if not package:
@@ -158,13 +193,13 @@ def create_subscription(vendor_id, package_code, payment_amount, external_ref=No
     current_app.logger.info(
         f"Vendor {vendor_id}: New subscription created "
         f"(package: {package.code}, amount: ₹{payment_amount}, "
-        f"period: {now} to {now + duration})"
+        f"cycle: {cycle}, period: {now} to {now + duration})"
     )
     
     return new_sub
 
 
-def renew_subscription(vendor_id, payment_amount, external_ref=None):
+def renew_subscription(vendor_id, payment_amount, external_ref=None, billing_cycle="monthly"):
     """
     Renew existing subscription (keeps same package)
     
@@ -177,7 +212,8 @@ def renew_subscription(vendor_id, payment_amount, external_ref=None):
         Subscription: Renewed subscription object
     """
     now = datetime.now(timezone.utc)
-    duration = get_subscription_duration()
+    cycle = normalize_billing_cycle(billing_cycle)
+    duration = get_subscription_duration(cycle)
     
     # Idempotency: if this payment was already applied for this vendor, return existing row.
     if external_ref:
@@ -232,7 +268,7 @@ def renew_subscription(vendor_id, payment_amount, external_ref=None):
     
     current_app.logger.info(
         f"Vendor {vendor_id}: Subscription renewed "
-        f"(package: {package.code}, amount: ₹{payment_amount})"
+        f"(package: {package.code}, amount: ₹{payment_amount}, cycle: {cycle})"
     )
     
     return renewed
@@ -350,15 +386,4 @@ def get_package_price(package_code):
     if not package:
         raise ValueError(f"Package {package_code} not found")
     
-    original_price = float(package.features.get('price_inr', 0))
-    
-    # ✅ Free packages stay free even in dev mode
-    if original_price == 0:
-        return 0.0
-    
-    # ✅ In dev mode, paid packages cost test price
-    if current_app.config.get('SUBSCRIPTION_DEV_MODE', False):
-        return float(current_app.config.get('SUBSCRIPTION_TEST_PRICE', 1))
-    
-    # Production: return actual price
-    return original_price
+    return get_package_price_for_cycle(package, "monthly")
