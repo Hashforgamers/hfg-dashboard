@@ -281,7 +281,12 @@ def change_subscription(vendor_id, package_code, immediate=True, unit_amount=0, 
     now = datetime.now(timezone.utc)
     duration = get_subscription_duration()
     
-    new_pkg = Package.query.filter_by(code=package_code, active=True).first_or_404()
+    normalized_code = str(package_code or "").strip().lower()
+    if normalized_code == "pro":
+        normalized_code = "grow"
+    new_pkg = Package.query.filter_by(code=normalized_code, active=True).first()
+    if not new_pkg:
+        raise ValueError(f"Package '{normalized_code}' not found or inactive")
     current = get_active_subscription(vendor_id, now)
     
     if immediate:
