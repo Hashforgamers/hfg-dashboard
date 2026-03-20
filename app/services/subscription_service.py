@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from dateutil.relativedelta import relativedelta
 from sqlalchemy import and_
+from sqlalchemy.exc import IntegrityError
 from flask import current_app
 from app.models.subscription import Subscription, SubscriptionStatus
 from app.models.package import Package
@@ -290,10 +291,20 @@ def change_subscription(vendor_id, package_code, immediate=True, unit_amount=0, 
     current = get_active_subscription(vendor_id, now)
     
     if immediate:
-        if current:
-            current.status = SubscriptionStatus.canceled if cancel_current else SubscriptionStatus.expired
-            current.canceled_at = now
-            current.current_period_end = now
+        # Expire all open rows (not just time-valid active row) to satisfy
+        # uq_subscription_open_vendor unique index.
+        open_statuses = [SubscriptionStatus.active, SubscriptionStatus.trialing, SubscriptionStatus.past_due]
+        existing_open = (
+            Subscription.query
+            .filter(Subscription.vendor_id == vendor_id)
+            .filter(Subscription.status.in_(open_statuses))
+            .all()
+        )
+        for sub in existing_open:
+            sub.status = SubscriptionStatus.canceled if cancel_current else SubscriptionStatus.expired
+            sub.canceled_at = now
+            if sub.current_period_end is None or sub.current_period_end > now:
+                sub.current_period_end = now
         
         new = Subscription(
             vendor_id=vendor_id, 
@@ -303,9 +314,13 @@ def change_subscription(vendor_id, package_code, immediate=True, unit_amount=0, 
             current_period_end=now + duration,
             unit_amount=unit_amount
         )
-        db.session.add(new)
-        db.session.commit()
-        return new
+        try:
+            db.session.add(new)
+            db.session.commit()
+            return new
+        except IntegrityError:
+            db.session.rollback()
+            raise ValueError("Failed to change subscription due to conflicting open subscription state. Please retry once.")
     else:
         # Schedule at period end
         start_at = current.current_period_end if current else now
@@ -317,9 +332,13 @@ def change_subscription(vendor_id, package_code, immediate=True, unit_amount=0, 
             current_period_end=start_at + duration,
             unit_amount=unit_amount
         )
-        db.session.add(new)
-        db.session.commit()
-        return new
+        try:
+            db.session.add(new)
+            db.session.commit()
+            return new
+        except IntegrityError:
+            db.session.rollback()
+            raise ValueError("Scheduled subscription change conflicts with existing open subscription.")
 
 
 def get_vendor_pc_limit(vendor_id):
