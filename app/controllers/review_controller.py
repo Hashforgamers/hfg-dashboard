@@ -1,7 +1,10 @@
+import os
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt
 from sqlalchemy import text
 from datetime import datetime, timezone
+import requests
+from typing import Optional
 
 from app.extension.extensions import db
 from app.models.cafeReview import CafeReview
@@ -21,6 +24,54 @@ def _staff_name():
     return staff.get("name") or "Owner"
 
 
+def _user_onboard_base_url() -> str:
+    return (os.getenv("USER_ONBOARD_URL") or "https://hfg-user-onboard.onrender.com").rstrip("/")
+
+
+def _sync_key() -> str:
+    return (os.getenv("REVIEW_SYNC_KEY") or "").strip()
+
+
+def _proxy_headers() -> dict:
+    headers = {"Content-Type": "application/json"}
+    key = _sync_key()
+    if key:
+        headers["x-review-sync-key"] = key
+    return headers
+
+
+def _proxy_get(path: str, params: Optional[dict] = None):
+    key = _sync_key()
+    if not key:
+        return False, {"error": "REVIEW_SYNC_KEY not configured"}, 503
+    url = f"{_user_onboard_base_url()}{path}"
+    try:
+        response = requests.get(url, headers=_proxy_headers(), params=params or {}, timeout=8)
+    except requests.RequestException as exc:
+        return False, {"error": f"user-onboard unreachable: {exc}"}, 502
+    try:
+        body = response.json()
+    except Exception:
+        body = {"error": response.text}
+    return response.ok, body, response.status_code
+
+
+def _proxy_patch(path: str, payload: dict):
+    key = _sync_key()
+    if not key:
+        return False, {"error": "REVIEW_SYNC_KEY not configured"}, 503
+    url = f"{_user_onboard_base_url()}{path}"
+    try:
+        response = requests.patch(url, headers=_proxy_headers(), json=payload, timeout=8)
+    except requests.RequestException as exc:
+        return False, {"error": f"user-onboard unreachable: {exc}"}, 502
+    try:
+        body = response.json()
+    except Exception:
+        body = {"error": response.text}
+    return response.ok, body, response.status_code
+
+
 @bp_reviews.get("/")
 @jwt_required()
 def list_reviews():
@@ -30,6 +81,19 @@ def list_reviews():
     search = (request.args.get("search") or "").strip().lower()
     limit = min(int(request.args.get("limit", 20)), 100)
     offset = max(int(request.args.get("offset", 0)), 0)
+
+    ok, body, status_code = _proxy_get(
+        f"/api/internal/vendors/{vid}/reviews",
+        params={
+            "status": status,
+            "rating": rating,
+            "search": search,
+            "limit": limit,
+            "offset": offset,
+        },
+    )
+    if ok:
+        return jsonify(body), 200
 
     query = (
         db.session.query(CafeReview, User)
@@ -80,6 +144,9 @@ def list_reviews():
         "limit": limit,
         "offset": offset,
         "count": len(payload),
+        "source": "dashboard_db_fallback",
+        "proxy_error": body,
+        "proxy_status": status_code,
     }), 200
 
 
@@ -87,6 +154,11 @@ def list_reviews():
 @jwt_required()
 def reviews_summary():
     vid = _vendor_id()
+
+    ok, body, status_code = _proxy_get(f"/api/internal/vendors/{vid}/reviews/summary")
+    if ok:
+        return jsonify(body), 200
+
     row = db.session.execute(text("""
         SELECT
             COUNT(*)::int AS total,
@@ -108,6 +180,9 @@ def reviews_summary():
         "r3": int(row["r3"] or 0) if row else 0,
         "r4": int(row["r4"] or 0) if row else 0,
         "r5": int(row["r5"] or 0) if row else 0,
+        "source": "dashboard_db_fallback",
+        "proxy_error": body,
+        "proxy_status": status_code,
     }), 200
 
 
@@ -120,9 +195,24 @@ def respond_review(review_id):
     if not response_text:
         return jsonify({"error": "response_text is required"}), 400
 
+    ok, body, status_code = _proxy_patch(
+        f"/api/internal/reviews/{review_id}/response",
+        {
+            "vendor_id": vid,
+            "response_text": response_text,
+            "responded_by": _staff_name(),
+        },
+    )
+    if ok:
+        try:
+            socketio.emit("reviews_updated", {"vendor_id": vid}, room=f"vendor_{vid}")
+        except Exception:
+            pass
+        return jsonify({"ok": True}), 200
+
     review = CafeReview.query.filter_by(id=review_id, vendor_id=vid).first()
     if not review:
-        return jsonify({"error": "Review not found"}), 404
+        return jsonify({"error": "Review not found", "proxy_error": body, "proxy_status": status_code}), 404
 
     review.response_text = response_text
     review.responded_at = datetime.now(timezone.utc)
@@ -144,9 +234,23 @@ def update_review_status(review_id):
     if status not in {"published", "hidden"}:
         return jsonify({"error": "status must be published or hidden"}), 400
 
+    ok, body, status_code = _proxy_patch(
+        f"/api/internal/reviews/{review_id}/status",
+        {
+            "vendor_id": vid,
+            "status": status,
+        },
+    )
+    if ok:
+        try:
+            socketio.emit("reviews_updated", {"vendor_id": vid}, room=f"vendor_{vid}")
+        except Exception:
+            pass
+        return jsonify({"ok": True}), 200
+
     review = CafeReview.query.filter_by(id=review_id, vendor_id=vid).first()
     if not review:
-        return jsonify({"error": "Review not found"}), 404
+        return jsonify({"error": "Review not found", "proxy_error": body, "proxy_status": status_code}), 404
 
     review.status = status
     db.session.commit()
