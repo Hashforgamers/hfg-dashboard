@@ -98,19 +98,31 @@ def check_subscription_status(vendor_id):
 @bp_subs.post('/provision-default')
 def provision_default(vendor_id):
     """Provision default subscription for new vendor"""
-    provision_default_subscription(vendor_id)
-    return jsonify({"ok": True}), 201
+    try:
+        provision_default_subscription(vendor_id)
+        return jsonify({"ok": True}), 201
+    except Exception as exc:
+        current_app.logger.error("Provision default subscription failed for vendor %s: %s", vendor_id, exc, exc_info=True)
+        return jsonify({"ok": False, "error": "Failed to provision default subscription", "details": str(exc)}), 500
 
 
 @bp_subs.post('/change')
 def change(vendor_id):
     """Change subscription package (admin use)"""
-    data = request.get_json()
-    pkg = data['package_code']
-    immediate = data.get('immediate', True)
-    unit_amount = data.get('unit_amount', 0)
-    res = change_subscription(vendor_id, pkg, immediate=immediate, unit_amount=unit_amount)
-    return jsonify({"ok": True, "new_package": res.package.code}), 200
+    try:
+        data = request.get_json(silent=True) or {}
+        pkg = (data.get('package_code') or '').strip().lower()
+        if not pkg:
+            return jsonify({"ok": False, "error": "package_code is required"}), 400
+        immediate = data.get('immediate', True)
+        unit_amount = data.get('unit_amount', 0)
+        res = change_subscription(vendor_id, pkg, immediate=immediate, unit_amount=unit_amount)
+        return jsonify({"ok": True, "new_package": res.package.code}), 200
+    except ValueError as ve:
+        return jsonify({"ok": False, "error": str(ve)}), 400
+    except Exception as exc:
+        current_app.logger.error("Subscription change failed for vendor %s: %s", vendor_id, exc, exc_info=True)
+        return jsonify({"ok": False, "error": "Failed to change subscription", "details": str(exc)}), 500
 
 
 @bp_subs.get('/limit')
