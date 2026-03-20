@@ -15,8 +15,25 @@ bp_reviews = Blueprint("reviews", __name__, url_prefix="/api/vendor/reviews")
 
 
 def _vendor_id():
-    vendor = get_jwt().get("vendor") or {}
-    return int(vendor.get("id"))
+    claims = get_jwt() or {}
+    vendor_claim = claims.get("vendor") or {}
+
+    candidate = (
+        vendor_claim.get("id")
+        or claims.get("vendor_id")
+        or claims.get("vendorId")
+        or request.args.get("vendor_id")
+    )
+    if candidate is None:
+        payload = request.get_json(silent=True) or {}
+        candidate = payload.get("vendor_id")
+
+    if candidate is None:
+        raise ValueError("vendor_id missing in token and request")
+    try:
+        return int(candidate)
+    except (TypeError, ValueError):
+        raise ValueError("vendor_id is invalid")
 
 
 def _staff_name():
@@ -75,7 +92,10 @@ def _proxy_patch(path: str, payload: dict):
 @bp_reviews.get("/")
 @jwt_required()
 def list_reviews():
-    vid = _vendor_id()
+    try:
+        vid = _vendor_id()
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     status = (request.args.get("status") or "all").lower()
     rating = request.args.get("rating")
     search = (request.args.get("search") or "").strip().lower()
@@ -153,7 +173,10 @@ def list_reviews():
 @bp_reviews.get("/summary")
 @jwt_required()
 def reviews_summary():
-    vid = _vendor_id()
+    try:
+        vid = _vendor_id()
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
 
     ok, body, status_code = _proxy_get(f"/api/internal/vendors/{vid}/reviews/summary")
     if ok:
@@ -189,7 +212,10 @@ def reviews_summary():
 @bp_reviews.patch("/<uuid:review_id>/response")
 @jwt_required()
 def respond_review(review_id):
-    vid = _vendor_id()
+    try:
+        vid = _vendor_id()
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     data = request.get_json(silent=True) or {}
     response_text = (data.get("response_text") or "").strip()
     if not response_text:
@@ -228,7 +254,10 @@ def respond_review(review_id):
 @bp_reviews.patch("/<uuid:review_id>/status")
 @jwt_required()
 def update_review_status(review_id):
-    vid = _vendor_id()
+    try:
+        vid = _vendor_id()
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     data = request.get_json(silent=True) or {}
     status = (data.get("status") or "").strip().lower()
     if status not in {"published", "hidden"}:
