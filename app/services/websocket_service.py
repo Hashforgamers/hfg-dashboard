@@ -187,12 +187,29 @@ def _handle_upstream_booking(data: Dict[str, Any]):
                 {
                     "vendor_id": vendor_id,
                     "booking_id": booking_id,
+                    "slot_id": data.get("slotId") or data.get("slot_id"),
+                    "booked_date": data.get("date"),
                     "status": data.get("status"),
                     "event": "booking",
                 },
             )
         except Exception:
             _log_warn("Failed emitting booking_updated vendor=%s bookingId=%s", vendor_id, booking_id)
+        try:
+            _emit_downstream_to_vendor(
+                vendor_id,
+                "booking_slots_updated",
+                {
+                    "vendor_id": vendor_id,
+                    "booking_id": booking_id,
+                    "slot_id": data.get("slotId") or data.get("slot_id"),
+                    "booked_date": data.get("date"),
+                    "status": data.get("status"),
+                    "event": "booking",
+                },
+            )
+        except Exception:
+            _log_warn("Failed emitting booking_slots_updated vendor=%s bookingId=%s", vendor_id, booking_id)
 
         # Emit upcoming for confirmed bookings
         upcoming_payload = format_upcoming_booking_from_upstream(data)
@@ -208,6 +225,21 @@ def _handle_upstream_current_slot(data: Dict[str, Any]):
         _mark_pong()
         vendor_id = data.get("vendorId") or data.get("vendor_id")
         _emit_downstream_to_vendor(vendor_id, "current_slot", data)
+        try:
+            _emit_downstream_to_vendor(
+                vendor_id,
+                "booking_slots_updated",
+                {
+                    "vendor_id": vendor_id,
+                    "booking_id": data.get("bookingId") or data.get("booking_id") or data.get("bookId") or data.get("book_id"),
+                    "slot_id": data.get("slotId") or data.get("slot_id"),
+                    "booked_date": data.get("date"),
+                    "status": data.get("status"),
+                    "event": "current_slot",
+                },
+            )
+        except Exception:
+            _log_warn("Failed emitting booking_slots_updated for current_slot vendor=%s", vendor_id)
         _log_info("Relayed current_slot vendor=%s bookingId=%s", vendor_id, data.get("bookingId") or data.get("book_id"))
     except Exception:
         _log_err("Error handling upstream current_slot payload")
