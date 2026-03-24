@@ -47,6 +47,9 @@ RBAC_ROUTE_RULES = [
     ("POST", r"^/api/vendor/(?P<vendor_id>\d+)/bank-details$", "account.manage"),
     ("PUT", r"^/api/vendor/(?P<vendor_id>\d+)/bank-details$", "account.manage"),
     ("PATCH", r"^/api/vendor/(?P<vendor_id>\d+)/business-details$", "account.manage"),
+    ("GET", r"^/api/vendor/(?P<vendor_id>\d+)/notification-preferences$", "account.manage"),
+    ("PUT", r"^/api/vendor/(?P<vendor_id>\d+)/notification-preferences$", "account.manage"),
+    ("GET", r"^/api/vendor/(?P<vendor_id>\d+)/settlements/summary$", "transactions.view"),
 ]
 
 

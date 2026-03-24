@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, Response, request, jsonify, current_app
 from flask_jwt_extended import jwt_required
 from datetime import datetime
 
@@ -29,6 +29,10 @@ from sqlalchemy.exc import IntegrityError
 bp_subs = Blueprint('subscriptions', __name__)
 
 ALLOWED_BILLING_CYCLES = {"monthly", "quarterly", "yearly"}
+
+
+def _invoice_number(subscription_id: int) -> str:
+    return f"HFG-SUB-{int(subscription_id):06d}"
 
 
 @bp_subs.get('/')
@@ -396,11 +400,86 @@ def get_subscription_history(vendor_id):
                 "period_end": sub.current_period_end.isoformat(),
                 "amount_paid": float(sub.unit_amount),
                 "payment_ref": sub.external_ref,
-                "created_at": sub.created_at.isoformat()
+                "created_at": sub.created_at.isoformat(),
+                "invoice_number": _invoice_number(sub.id),
+                "invoice_url": f"/api/vendors/{vendor_id}/subscription/history/{sub.id}/invoice",
             }
             for sub in subscriptions
         ]
     }), 200
+
+
+@bp_subs.get('/history/<int:subscription_id>/invoice')
+def get_subscription_invoice(vendor_id: int, subscription_id: int):
+    """Render a print-ready invoice for a subscription purchase."""
+    from app.models.subscription import Subscription
+
+    sub = (
+        Subscription.query
+        .filter(Subscription.vendor_id == vendor_id, Subscription.id == subscription_id)
+        .first()
+    )
+    if not sub:
+        return jsonify({"error": "Invoice not found"}), 404
+
+    billing_cycle = (sub.package.features or {}).get("billing_cycle", "custom")
+    invoice_number = _invoice_number(sub.id)
+    invoice_date = sub.created_at.strftime("%d %b %Y") if sub.created_at else "-"
+    period_start = sub.current_period_start.strftime("%d %b %Y") if sub.current_period_start else "-"
+    period_end = sub.current_period_end.strftime("%d %b %Y") if sub.current_period_end else "-"
+    amount_paid = float(sub.unit_amount or 0)
+    payment_ref = sub.external_ref or "N/A"
+
+    html = f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Invoice {invoice_number}</title>
+  <style>
+    body {{ font-family: Arial, sans-serif; margin: 0; background: #f3f4f6; color: #111827; }}
+    .wrap {{ max-width: 860px; margin: 24px auto; background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; }}
+    .head {{ background: #0f172a; color: #fff; padding: 20px 24px; }}
+    .head h1 {{ margin: 0; font-size: 22px; }}
+    .head p {{ margin: 6px 0 0 0; font-size: 13px; color: #cbd5e1; }}
+    .grid {{ display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; padding: 20px 24px; }}
+    .card {{ border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 14px; }}
+    .label {{ font-size: 12px; color: #6b7280; text-transform: uppercase; letter-spacing: .05em; }}
+    .value {{ margin-top: 4px; font-size: 14px; color: #111827; font-weight: 600; }}
+    .total {{ margin: 0 24px 20px; border: 1px solid #d1fae5; background: #ecfdf5; border-radius: 10px; padding: 14px; }}
+    .total strong {{ font-size: 24px; }}
+    .foot {{ margin: 0 24px 24px; font-size: 12px; color: #6b7280; }}
+    @media print {{ body {{ background: #fff; }} .wrap {{ margin: 0; border: 0; border-radius: 0; }} }}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="head">
+      <h1>Hash For Gamers - Subscription Invoice</h1>
+      <p>Invoice #{invoice_number}</p>
+    </div>
+    <div class="grid">
+      <div class="card"><div class="label">Vendor ID</div><div class="value">{vendor_id}</div></div>
+      <div class="card"><div class="label">Invoice Date</div><div class="value">{invoice_date}</div></div>
+      <div class="card"><div class="label">Plan</div><div class="value">{sub.package.name}</div></div>
+      <div class="card"><div class="label">Status</div><div class="value">{sub.status.value}</div></div>
+      <div class="card"><div class="label">Billing Cycle</div><div class="value">{billing_cycle}</div></div>
+      <div class="card"><div class="label">Payment Reference</div><div class="value">{payment_ref}</div></div>
+      <div class="card"><div class="label">Period Start</div><div class="value">{period_start}</div></div>
+      <div class="card"><div class="label">Period End</div><div class="value">{period_end}</div></div>
+    </div>
+    <div class="total">
+      <div class="label">Total Paid</div>
+      <strong>₹{amount_paid:.2f}</strong>
+    </div>
+    <div class="foot">
+      This is a system-generated invoice for record keeping. For disputes contact support@hashforgamers.co.in.
+    </div>
+  </div>
+</body>
+</html>"""
+
+    return Response(html, mimetype="text/html")
 
 
 # 🔥 TEMPORARY DEBUG ENDPOINT - REMOVE IN PRODUCTION!

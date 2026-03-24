@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify, current_app
 from datetime import datetime,timedelta
-from typing import Dict
+from typing import Dict, Any
 import re
 import time
 import threading
@@ -83,6 +83,45 @@ def _invalidate_vendor_caches(vendor_id: int):
         _landing_page_cache.pop(key, None)
     with _vendor_consoles_cache_lock:
         _vendor_consoles_cache.pop(key, None)
+
+
+def _ensure_vendor_notification_preferences_table() -> None:
+    db.session.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS vendor_notification_preferences (
+                vendor_id INTEGER PRIMARY KEY REFERENCES vendors(id) ON DELETE CASCADE,
+                app_booking_notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                pay_at_cafe_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                hash_wallet_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                payment_gateway_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                pass_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            );
+            """
+        )
+    )
+
+
+def _default_vendor_notification_preferences(vendor_id: int) -> Dict[str, Any]:
+    return {
+        "vendor_id": int(vendor_id),
+        "app_booking_notifications_enabled": True,
+        "pay_at_cafe_enabled": True,
+        "hash_wallet_enabled": True,
+        "payment_gateway_enabled": True,
+        "pass_enabled": True,
+    }
+
+
+def _coerce_bool(raw: Any, default: bool = False) -> bool:
+    if raw is None:
+        return default
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, (int, float)):
+        return raw != 0
+    return str(raw).strip().lower() in {"1", "true", "yes", "y", "on"}
 
 dashboard_service = Blueprint("dashboard_service", __name__)
 IST = ZoneInfo("Asia/Kolkata")
@@ -4226,6 +4265,249 @@ def get_payout_history(vendor_id):
             "success": False,
             "message": "Failed to fetch payout history"
         }), 500
+
+
+@dashboard_service.route('/vendor/<int:vendor_id>/notification-preferences', methods=['GET'])
+def get_vendor_notification_preferences(vendor_id: int):
+    try:
+        vendor = Vendor.query.get(vendor_id)
+        if not vendor:
+            return jsonify({"success": False, "message": "Vendor not found"}), 404
+
+        _ensure_vendor_notification_preferences_table()
+        row = db.session.execute(
+            text(
+                """
+                SELECT vendor_id,
+                       app_booking_notifications_enabled,
+                       pay_at_cafe_enabled,
+                       hash_wallet_enabled,
+                       payment_gateway_enabled,
+                       pass_enabled
+                FROM vendor_notification_preferences
+                WHERE vendor_id = :vendor_id
+                """
+            ),
+            {"vendor_id": int(vendor_id)},
+        ).mappings().first()
+
+        if not row:
+            prefs = _default_vendor_notification_preferences(vendor_id)
+            db.session.execute(
+                text(
+                    """
+                    INSERT INTO vendor_notification_preferences (
+                        vendor_id,
+                        app_booking_notifications_enabled,
+                        pay_at_cafe_enabled,
+                        hash_wallet_enabled,
+                        payment_gateway_enabled,
+                        pass_enabled
+                    ) VALUES (
+                        :vendor_id,
+                        :app_booking_notifications_enabled,
+                        :pay_at_cafe_enabled,
+                        :hash_wallet_enabled,
+                        :payment_gateway_enabled,
+                        :pass_enabled
+                    )
+                    """
+                ),
+                prefs,
+            )
+            db.session.commit()
+            row = prefs
+
+        return jsonify({"success": True, "preferences": dict(row)}), 200
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.error("Failed to fetch notification preferences vendor=%s error=%s", vendor_id, exc)
+        return jsonify({"success": False, "message": "Failed to fetch notification preferences"}), 500
+
+
+@dashboard_service.route('/vendor/<int:vendor_id>/notification-preferences', methods=['PUT'])
+def upsert_vendor_notification_preferences(vendor_id: int):
+    payload = request.get_json(silent=True) or {}
+    try:
+        vendor = Vendor.query.get(vendor_id)
+        if not vendor:
+            return jsonify({"success": False, "message": "Vendor not found"}), 404
+
+        _ensure_vendor_notification_preferences_table()
+
+        app_enabled = _coerce_bool(payload.get("app_booking_notifications_enabled"), True)
+        pay_at_cafe_enabled = _coerce_bool(payload.get("pay_at_cafe_enabled"), app_enabled)
+        hash_wallet_enabled = _coerce_bool(payload.get("hash_wallet_enabled"), app_enabled)
+        payment_gateway_enabled = _coerce_bool(payload.get("payment_gateway_enabled"), app_enabled)
+        pass_enabled = _coerce_bool(payload.get("pass_enabled"), app_enabled)
+
+        db.session.execute(
+            text(
+                """
+                INSERT INTO vendor_notification_preferences (
+                    vendor_id,
+                    app_booking_notifications_enabled,
+                    pay_at_cafe_enabled,
+                    hash_wallet_enabled,
+                    payment_gateway_enabled,
+                    pass_enabled,
+                    updated_at
+                ) VALUES (
+                    :vendor_id,
+                    :app_booking_notifications_enabled,
+                    :pay_at_cafe_enabled,
+                    :hash_wallet_enabled,
+                    :payment_gateway_enabled,
+                    :pass_enabled,
+                    now()
+                )
+                ON CONFLICT (vendor_id) DO UPDATE SET
+                    app_booking_notifications_enabled = EXCLUDED.app_booking_notifications_enabled,
+                    pay_at_cafe_enabled = EXCLUDED.pay_at_cafe_enabled,
+                    hash_wallet_enabled = EXCLUDED.hash_wallet_enabled,
+                    payment_gateway_enabled = EXCLUDED.payment_gateway_enabled,
+                    pass_enabled = EXCLUDED.pass_enabled,
+                    updated_at = now()
+                """
+            ),
+            {
+                "vendor_id": int(vendor_id),
+                "app_booking_notifications_enabled": app_enabled,
+                "pay_at_cafe_enabled": pay_at_cafe_enabled,
+                "hash_wallet_enabled": hash_wallet_enabled,
+                "payment_gateway_enabled": payment_gateway_enabled,
+                "pass_enabled": pass_enabled,
+            },
+        )
+        db.session.commit()
+
+        return jsonify({
+            "success": True,
+            "message": "Notification preferences updated",
+            "preferences": {
+                "vendor_id": int(vendor_id),
+                "app_booking_notifications_enabled": app_enabled,
+                "pay_at_cafe_enabled": pay_at_cafe_enabled,
+                "hash_wallet_enabled": hash_wallet_enabled,
+                "payment_gateway_enabled": payment_gateway_enabled,
+                "pass_enabled": pass_enabled,
+            },
+        }), 200
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.error("Failed to save notification preferences vendor=%s error=%s", vendor_id, exc)
+        return jsonify({"success": False, "message": "Failed to save notification preferences"}), 500
+
+
+@dashboard_service.route('/vendor/<int:vendor_id>/settlements/summary', methods=['GET'])
+def get_vendor_settlement_summary(vendor_id: int):
+    try:
+        vendor = Vendor.query.get(vendor_id)
+        if not vendor:
+            return jsonify({"success": False, "message": "Vendor not found"}), 404
+
+        from_date_raw = (request.args.get("from") or "").strip()
+        to_date_raw = (request.args.get("to") or "").strip()
+
+        def _parse_or_default(raw: str, default_date: date) -> date:
+            if not raw:
+                return default_date
+            return datetime.fromisoformat(raw).date()
+
+        today = datetime.utcnow().date()
+        default_from = today.replace(day=1)
+        from_date = _parse_or_default(from_date_raw, default_from)
+        to_date = _parse_or_default(to_date_raw, today)
+        if from_date > to_date:
+            return jsonify({"success": False, "message": "from date cannot be after to date"}), 400
+
+        tx_rows = (
+            Transaction.query
+            .filter(
+                Transaction.vendor_id == vendor_id,
+                Transaction.booking_date >= from_date,
+                Transaction.booking_date <= to_date,
+            )
+            .order_by(Transaction.booking_date.asc(), Transaction.id.asc())
+            .all()
+        )
+
+        done_statuses = {"done", "settled", "completed", "paid_to_vendor"}
+        pending_statuses = {"pending", "due", "unpaid"}
+
+        daily_map: Dict[str, Dict[str, Any]] = {}
+        for tx in tx_rows:
+            day_key = tx.booking_date.isoformat() if tx.booking_date else "unknown"
+            bucket = daily_map.setdefault(
+                day_key,
+                {
+                    "date": day_key,
+                    "bookings_count": 0,
+                    "gross_amount": 0.0,
+                    "app_fee_amount": 0.0,
+                    "net_amount": 0.0,
+                    "paid_by_hash_amount": 0.0,
+                    "pending_amount": 0.0,
+                    "done_count": 0,
+                    "pending_count": 0,
+                },
+            )
+
+            gross_amount = float(tx.amount or 0)
+            app_fee_amount = float(tx.app_fee_amount or 0)
+            net_amount = max(gross_amount - app_fee_amount, 0.0)
+            status = str(tx.settlement_status or "").strip().lower()
+
+            bucket["bookings_count"] += 1
+            bucket["gross_amount"] += gross_amount
+            bucket["app_fee_amount"] += app_fee_amount
+            bucket["net_amount"] += net_amount
+
+            if status in done_statuses:
+                bucket["done_count"] += 1
+                bucket["paid_by_hash_amount"] += net_amount
+            elif status in pending_statuses:
+                bucket["pending_count"] += 1
+                bucket["pending_amount"] += net_amount
+            else:
+                bucket["pending_amount"] += net_amount
+
+        daily_rows = [
+            {
+                **row,
+                "gross_amount": round(row["gross_amount"], 2),
+                "app_fee_amount": round(row["app_fee_amount"], 2),
+                "net_amount": round(row["net_amount"], 2),
+                "paid_by_hash_amount": round(row["paid_by_hash_amount"], 2),
+                "pending_amount": round(row["pending_amount"], 2),
+            }
+            for row in sorted(daily_map.values(), key=lambda x: x["date"], reverse=True)
+        ]
+
+        totals = {
+            "bookings_count": sum(r["bookings_count"] for r in daily_rows),
+            "gross_amount": round(sum(r["gross_amount"] for r in daily_rows), 2),
+            "app_fee_amount": round(sum(r["app_fee_amount"] for r in daily_rows), 2),
+            "net_amount": round(sum(r["net_amount"] for r in daily_rows), 2),
+            "paid_by_hash_amount": round(sum(r["paid_by_hash_amount"] for r in daily_rows), 2),
+            "pending_amount": round(sum(r["pending_amount"] for r in daily_rows), 2),
+            "done_count": sum(r["done_count"] for r in daily_rows),
+            "pending_count": sum(r["pending_count"] for r in daily_rows),
+        }
+
+        return jsonify({
+            "success": True,
+            "vendor_id": int(vendor_id),
+            "from": from_date.isoformat(),
+            "to": to_date.isoformat(),
+            "totals": totals,
+            "rows": daily_rows,
+        }), 200
+    except ValueError:
+        return jsonify({"success": False, "message": "Invalid date format. Use YYYY-MM-DD"}), 400
+    except Exception as exc:
+        current_app.logger.error("Failed to build settlement summary vendor=%s error=%s", vendor_id, exc)
+        return jsonify({"success": False, "message": "Failed to fetch settlement summary"}), 500
 
 # Create a new payout (for testing or admin use)
 @dashboard_service.route('/vendor/<int:vendor_id>/payouts', methods=['POST'])
