@@ -123,6 +123,54 @@ def _coerce_bool(raw: Any, default: bool = False) -> bool:
         return raw != 0
     return str(raw).strip().lower() in {"1", "true", "yes", "y", "on"}
 
+
+def _ensure_bank_details_audit_table() -> None:
+    db.session.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS bank_details_audit (
+                id BIGSERIAL PRIMARY KEY,
+                vendor_id INTEGER NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+                bank_details_id INTEGER NULL REFERENCES bank_transfer_details(id) ON DELETE SET NULL,
+                change_type VARCHAR(20) NOT NULL DEFAULT 'updated',
+                payment_mode VARCHAR(20) NULL,
+                account_holder_name VARCHAR(120) NULL,
+                bank_name VARCHAR(120) NULL,
+                account_number_masked VARCHAR(64) NULL,
+                ifsc_code VARCHAR(20) NULL,
+                upi_id_masked VARCHAR(120) NULL,
+                verification_status VARCHAR(20) NULL,
+                is_verified BOOLEAN NULL,
+                changed_by_staff_id VARCHAR(64) NULL,
+                changed_by_name VARCHAR(120) NULL,
+                changed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                verified_by_name VARCHAR(120) NULL,
+                verified_at TIMESTAMPTZ NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_bank_details_audit_vendor_changed_at
+            ON bank_details_audit(vendor_id, changed_at DESC);
+            """
+        )
+    )
+
+
+def _mask_upi_id(upi_id):
+    if not upi_id:
+        return None
+    upi_id = str(upi_id)
+    if len(upi_id) <= 4:
+        return '****'
+    return '****' + upi_id[4:]
+
+
+def _mask_account_number(account_number):
+    if not account_number:
+        return None
+    account_number = str(account_number)
+    if len(account_number) <= 4:
+        return account_number
+    return 'X' * (len(account_number) - 4) + account_number[-4:]
+
 dashboard_service = Blueprint("dashboard_service", __name__)
 IST = ZoneInfo("Asia/Kolkata")
 LIFECYCLE_ORDER = {
@@ -4076,27 +4124,16 @@ def get_bank_details(vendor_id):
                 "message": "No bank details found"
             }), 404
         
-        # Helper functions for masking
-        def mask_upi_id(upi_id):
-            if not upi_id or len(upi_id) <= 4:
-                return '****'
-            return '****' + upi_id[4:]
-        
-        def mask_account_number(account_number):
-            if not account_number or len(account_number) <= 4:
-                return account_number
-            return 'X' * (len(account_number) - 4) + account_number[-4:]
-        
         return jsonify({
             "success": True,
             "bankDetails": {
                 "id": bank_details.id,
                 "accountHolderName": bank_details.account_holder_name,
                 "bankName": bank_details.bank_name,
-                "accountNumber": mask_account_number(bank_details.account_number) if bank_details.account_number else None,
+                "accountNumber": _mask_account_number(bank_details.account_number),
                 "fullAccountNumber": bank_details.account_number,
                 "ifscCode": bank_details.ifsc_code,
-                "upiId": mask_upi_id(bank_details.upi_id) if bank_details.upi_id else None,
+                "upiId": _mask_upi_id(bank_details.upi_id),
                 "fullUpiId": bank_details.upi_id,
                 "isVerified": bank_details.is_verified,
                 "verificationStatus": bank_details.verification_status,
@@ -4111,6 +4148,70 @@ def get_bank_details(vendor_id):
             "success": False,
             "message": "Failed to fetch bank details"
         }), 500
+
+
+@dashboard_service.route('/vendor/<int:vendor_id>/bank-details/history', methods=['GET'])
+def get_bank_details_history(vendor_id):
+    """Get historized changes for vendor bank/UPI details."""
+    try:
+        _ensure_bank_details_audit_table()
+        db.session.commit()
+
+        limit = max(1, min(100, int(request.args.get("limit", 25))))
+        rows = db.session.execute(
+            text(
+                """
+                SELECT
+                    id,
+                    vendor_id,
+                    bank_details_id,
+                    change_type,
+                    payment_mode,
+                    account_holder_name,
+                    bank_name,
+                    account_number_masked,
+                    ifsc_code,
+                    upi_id_masked,
+                    verification_status,
+                    is_verified,
+                    changed_by_staff_id,
+                    changed_by_name,
+                    changed_at,
+                    verified_by_name,
+                    verified_at
+                FROM bank_details_audit
+                WHERE vendor_id = :vendor_id
+                ORDER BY changed_at DESC, id DESC
+                LIMIT :limit
+                """
+            ),
+            {"vendor_id": int(vendor_id), "limit": int(limit)},
+        ).mappings().all()
+
+        history = []
+        for row in rows:
+            history.append({
+                "id": row["id"],
+                "change_type": row["change_type"],
+                "payment_mode": row["payment_mode"],
+                "account_holder_name": row["account_holder_name"],
+                "bank_name": row["bank_name"],
+                "account_number_masked": row["account_number_masked"],
+                "ifsc_code": row["ifsc_code"],
+                "upi_id_masked": row["upi_id_masked"],
+                "verification_status": row["verification_status"],
+                "is_verified": bool(row["is_verified"]) if row["is_verified"] is not None else None,
+                "changed_by_staff_id": row["changed_by_staff_id"],
+                "changed_by_name": row["changed_by_name"],
+                "changed_at": row["changed_at"].isoformat() if row["changed_at"] else None,
+                "verified_by_name": row["verified_by_name"],
+                "verified_at": row["verified_at"].isoformat() if row["verified_at"] else None,
+            })
+
+        return jsonify({"success": True, "history": history}), 200
+    except Exception as e:
+        current_app.logger.error(f"Error fetching bank details history for vendor {vendor_id}: {str(e)}")
+        return jsonify({"success": False, "message": "Failed to fetch bank detail history"}), 500
 
 # Add or update bank details
 @dashboard_service.route('/vendor/<int:vendor_id>/bank-details', methods=['POST', 'PUT'])
@@ -4150,9 +4251,24 @@ def add_or_update_bank_details(vendor_id):
         else:
             return jsonify({"error": "Please provide either bank account details or UPI ID"}), 400
         
+        _ensure_bank_details_audit_table()
+
+        changed_by_name = (
+            str(data.get("changed_by_name") or request.headers.get("X-Staff-Name") or "").strip() or None
+        )
+        changed_by_staff_id = (
+            str(data.get("changed_by_staff_id") or request.headers.get("X-Staff-Id") or "").strip() or None
+        )
+        verified_by_name = (
+            str(data.get("verified_by_name") or request.headers.get("X-Verified-By") or "").strip() or None
+        )
+
         # Get or create bank details
         bank_details = BankTransferDetails.query.filter_by(vendor_id=vendor_id).first()
         
+        was_verified = bool(bank_details.is_verified) if bank_details else False
+        was_verification_status = str(bank_details.verification_status) if bank_details and bank_details.verification_status else None
+
         if bank_details:
             # Update existing record
             if is_bank_account:
@@ -4197,6 +4313,81 @@ def add_or_update_bank_details(vendor_id):
             db.session.add(bank_details)
             action = "added"
         
+        db.session.flush()
+        verified_at = datetime.utcnow() if bank_details.is_verified and bank_details.verification_status == "VERIFIED" else None
+        if was_verification_status != "VERIFIED" and bank_details.verification_status == "VERIFIED":
+            verified_at = datetime.utcnow()
+        if was_verified and bank_details.verification_status != "VERIFIED":
+            verified_at = None
+
+        db.session.execute(
+            text(
+                """
+                INSERT INTO bank_details_audit (
+                    vendor_id,
+                    bank_details_id,
+                    change_type,
+                    payment_mode,
+                    account_holder_name,
+                    bank_name,
+                    account_number_masked,
+                    ifsc_code,
+                    upi_id_masked,
+                    verification_status,
+                    is_verified,
+                    changed_by_staff_id,
+                    changed_by_name,
+                    changed_at,
+                    verified_by_name,
+                    verified_at
+                )
+                VALUES (
+                    :vendor_id,
+                    :bank_details_id,
+                    :change_type,
+                    :payment_mode,
+                    :account_holder_name,
+                    :bank_name,
+                    :account_number_masked,
+                    :ifsc_code,
+                    :upi_id_masked,
+                    :verification_status,
+                    :is_verified,
+                    :changed_by_staff_id,
+                    :changed_by_name,
+                    now(),
+                    :verified_by_name,
+                    :verified_at
+                )
+                """
+            ),
+            {
+                "vendor_id": int(vendor_id),
+                "bank_details_id": int(bank_details.id),
+                "change_type": action,
+                "payment_mode": (
+                    "upi"
+                    if bank_details.upi_id and not bank_details.account_number
+                    else "bank+upi"
+                    if bank_details.upi_id and bank_details.account_number
+                    else "bank"
+                    if bank_details.account_number
+                    else None
+                ),
+                "account_holder_name": bank_details.account_holder_name,
+                "bank_name": bank_details.bank_name,
+                "account_number_masked": _mask_account_number(bank_details.account_number),
+                "ifsc_code": bank_details.ifsc_code,
+                "upi_id_masked": _mask_upi_id(bank_details.upi_id),
+                "verification_status": bank_details.verification_status,
+                "is_verified": bool(bank_details.is_verified),
+                "changed_by_staff_id": changed_by_staff_id,
+                "changed_by_name": changed_by_name,
+                "verified_by_name": verified_by_name if bank_details.verification_status == "VERIFIED" else None,
+                "verified_at": verified_at,
+            },
+        )
+
         db.session.commit()
         
         return jsonify({
