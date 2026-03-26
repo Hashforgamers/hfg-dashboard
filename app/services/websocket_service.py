@@ -3,6 +3,7 @@ import json
 import logging
 import threading
 import time
+import requests
 from typing import Dict, Any, Optional, Set
 
 from flask import current_app
@@ -31,6 +32,7 @@ socketio = SocketIO(
 # Upstream booking service client (single persistent connection)
 # -----------------------------------------------------------------------------
 BOOKING_SOCKET_URL = os.getenv("BOOKING_SOCKET_URL", "wss://hfg-booking-hmnx.onrender.com")
+BOOKING_HTTP_URL = os.getenv("BOOKING_HTTP_URL", "https://hfg-booking.onrender.com").rstrip("/")
 BOOKING_NAMESPACE = os.getenv("BOOKING_BRIDGE_NAMESPACE")  # unset or "/" => default namespace
 BOOKING_AUTH_TOKEN = os.getenv("BOOKING_AUTH_TOKEN")       # optional bearer token
 DEBUG_UPSTREAM_SIO = os.getenv("DEBUG_UPSTREAM_SIO", "1") == "1"
@@ -590,7 +592,6 @@ def register_dashboard_events():
     @socketio.on("next_slot_check")
     def _on_next_slot_check(data: Any):
         try:
-            # --- Handle both JSON string and dict ---
             if isinstance(data, str):
                 try:
                     data = json.loads(data)
@@ -602,70 +603,44 @@ def register_dashboard_events():
                 emit("next_slot_reply", {"type": "next_slot_reply", "ok": False, "reason": "invalid_format"})
                 return
 
-            # --- Extract and validate required fields ---
-            vendor_id = int(data.get("vendor_id", 0))
-            console_id = int(data.get("console_id", 0))
-            game_id = int(data.get("game_id", 0))
-            current_end = data.get("current_end_time")
-
-            if not all([vendor_id, console_id, game_id, current_end]):
+            vendor_id = int(data.get("vendor_id", 0) or 0)
+            console_id = int(data.get("console_id", 0) or 0)
+            if not vendor_id or not console_id:
                 emit("next_slot_reply", {"type": "next_slot_reply", "ok": False, "reason": "missing_fields"})
                 return
 
-            # --- Parse time (handle both UTC and IST formats) ---
-            try:
-                end_dt = datetime.fromisoformat(current_end.replace("Z", "+00:00"))
-            except Exception:
-                emit("next_slot_reply", {"type": "next_slot_reply", "ok": False, "reason": "invalid_time"})
-                return
+            payload = {
+                "current_booking_id": data.get("current_booking_id") or data.get("currentBookingId") or data.get("booking_id"),
+                "console_id": console_id,
+                "game_id": data.get("game_id") or data.get("gameId"),
+                "user_id": data.get("user_id") or data.get("userId"),
+            }
+            if data.get("access_code") or data.get("accessCode"):
+                payload["access_code"] = data.get("access_code") or data.get("accessCode")
 
-            today = end_dt.date()
-
-            # --- Get next slot ---
-            next_slot = _get_next_slot_for_today(game_id, end_dt)
-            if not next_slot:
-                emit("next_slot_reply", {"type": "next_slot_reply", "ok": False, "reason": "no_next_slot"})
-                return
-
-            # --- Check vendor slot availability ---
-            is_avail, avail_count = _vendor_slot_availability(vendor_id, next_slot.id, today)
-            if is_avail is None:
-                emit("next_slot_reply", {"type": "next_slot_reply", "ok": False, "reason": "slot_row_missing"})
-                return
-
-            # --- Get price ---
-            price_row = db.session.execute(
-                text("SELECT single_slot_price FROM available_games WHERE id = :gid"),
-                {"gid": game_id}
-            ).fetchone()
-            price = int(price_row.single_slot_price) if price_row and price_row.single_slot_price is not None else None
-
-            # --- Build candidate slot info ---
-            candidate_start = end_dt
-            candidate_end = end_dt.replace(
-                hour=next_slot.end_time.hour,
-                minute=next_slot.end_time.minute,
-                second=0,
-                microsecond=0,
+            resp = requests.post(
+                f"{BOOKING_HTTP_URL}/api/kiosk/next-slot/check/vendor/{vendor_id}",
+                json=payload,
+                timeout=4,
             )
+            try:
+                body = resp.json()
+            except Exception:
+                body = {"success": False, "message": resp.text}
 
-            # --- Send response ---
+            can_extend = bool(body.get("can_extend"))
             emit("next_slot_reply", {
                 "type": "next_slot_reply",
-                "ok": bool(is_avail and avail_count > 0),
-                "reason": None if (is_avail and avail_count > 0) else "unavailable",
+                "ok": bool(body.get("success") and can_extend),
                 "vendor_id": vendor_id,
                 "console_id": console_id,
-                "game_id": game_id,
-                "current_booking_id": int(data.get("current_booking_id")) if data.get("current_booking_id") else None,
-                "candidate": {
-                    "slot_id": next_slot.id,
-                    "start_time": _iso(candidate_start),
-                    "end_time": _iso(candidate_end),
-                    "available": bool(is_avail),
-                    "available_count": avail_count,
-                    "price": price
-                }
+                "game_id": int(payload["game_id"]) if payload.get("game_id") else None,
+                "current_booking_id": int(payload["current_booking_id"]) if payload.get("current_booking_id") else None,
+                "can_extend": can_extend,
+                "candidate": body.get("candidate"),
+                "message": body.get("message"),
+                "reason": None if can_extend else (body.get("message") or "unavailable"),
+                "upstream_status": int(resp.status_code),
             })
 
         except Exception as e:
@@ -680,98 +655,94 @@ def register_dashboard_events():
     @socketio.on("next_slot_book")
     def _on_next_slot_book(data: Dict[str, Any]):
         try:
-            vendor_id = int(data["vendor_id"]); console_id = int(data["console_id"])
-            game_id = int(data["game_id"]); curr_booking_id = int(data["current_booking_id"])
-            start_dt = datetime.fromisoformat(data["start_time"].replace("Z","+00:00"))
-            end_dt = datetime.fromisoformat(data["end_time"].replace("Z","+00:00"))
-            slot_id = int(data.get("slot_id")) if data.get("slot_id") else None
+            if isinstance(data, str):
+                data = json.loads(data)
+            if not isinstance(data, dict):
+                emit("next_slot_error", {"type": "next_slot_error", "reason": "invalid_format"})
+                return
 
-            # Validate schedule and resolve slot_id if not provided
-            next_slot = _get_next_slot_for_today(game_id, start_dt)
-            if not next_slot or next_slot.end_time != end_dt.time():
-                emit("next_slot_error", {"type":"next_slot_error","reason":"invalid_candidate"}); return
-            if slot_id is None:
-                slot_id = next_slot.id
+            vendor_id = int(data.get("vendor_id", 0) or 0)
+            console_id = int(data.get("console_id", 0) or 0)
+            if not vendor_id or not console_id:
+                emit("next_slot_error", {"type": "next_slot_error", "reason": "missing_fields"})
+                return
 
-            vendor_slot_table = f"VENDOR_{vendor_id}_SLOT"
-            today = start_dt.date()
+            payload = {
+                "current_booking_id": data.get("current_booking_id") or data.get("currentBookingId") or data.get("booking_id"),
+                "console_id": console_id,
+                "game_id": data.get("game_id") or data.get("gameId"),
+                "user_id": data.get("user_id") or data.get("userId"),
+                "slot_id": data.get("slot_id") or data.get("slotId"),
+                "paymentType": data.get("paymentType") or "pending",
+                "autoStart": bool(data.get("autoStart", True)),
+                "kioskId": data.get("kioskId") or data.get("kiosk_id"),
+            }
+            if data.get("access_code") or data.get("accessCode"):
+                payload["access_code"] = data.get("access_code") or data.get("accessCode")
 
-            # 1) Lock vendor slot row and ensure availability
-            row = db.session.execute(text(f"""
-                SELECT is_available, available_slot
-                FROM {vendor_slot_table}
-                WHERE vendor_id=:vid AND date=:dt AND slot_id=:sid
-                FOR UPDATE
-            """), {"vid": vendor_id, "dt": today, "sid": slot_id}).mappings().first()
-            if not row:
-                emit("next_slot_error", {"type":"next_slot_error","reason":"slot_row_missing"}); db.session.rollback(); return
-            if not row["is_available"] or int(row["available_slot"]) <= 0:
-                emit("next_slot_error", {"type":"next_slot_error","reason":"unavailable"}); db.session.rollback(); return
+            resp = requests.post(
+                f"{BOOKING_HTTP_URL}/api/kiosk/next-slot/vendor/{vendor_id}",
+                json=payload,
+                timeout=6,
+            )
+            try:
+                body = resp.json()
+            except Exception:
+                body = {"success": False, "message": resp.text}
 
-            # 2) Decrement available_slot
-            db.session.execute(text(f"""
-                UPDATE {vendor_slot_table}
-                SET available_slot = available_slot - 1,
-                    is_available = CASE WHEN available_slot - 1 > 0 THEN TRUE ELSE FALSE END
-                WHERE vendor_id=:vid AND date=:dt AND slot_id=:sid
-            """), {"vid": vendor_id, "dt": today, "sid": slot_id})
+            if resp.status_code >= 400 or not body.get("success"):
+                emit("next_slot_error", {
+                    "type": "next_slot_error",
+                    "reason": "upstream_failed",
+                    "message": body.get("message"),
+                    "detail": body.get("error"),
+                    "status_code": int(resp.status_code),
+                })
+                return
 
-            # 3) Lock console row and ensure it can be occupied for next hour (optional)
-            console_table = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
-            row2 = db.session.execute(text(f"""
-                SELECT is_available FROM {console_table}
-                WHERE console_id=:cid AND game_id=:gid
-                FOR UPDATE
-            """), {"cid": console_id, "gid": game_id}).first()
-            # Not strictly needed if availability table reflects only current hour
+            booking_id = int(body.get("booking_id"))
+            slot_id = int(body.get("slot_id")) if body.get("slot_id") is not None else None
+            end_time_ist = body.get("end_time_ist")
+            book_status = body.get("book_status")
 
-            # 4) Create provisional booking and dashboard record (pending payment)
-            session_id = f"sess-{curr_booking_id}"
-            seg = str(uuid.uuid4())
-            booking = Booking(user_id=None, vendor_id=vendor_id, game_id=game_id, slot_id=slot_id)
-            db.session.add(booking)
-            db.session.flush()
-            new_book_id = booking.id
-
-            booking_table = f"VENDOR_{vendor_id}_DASHBOARD"
-            db.session.execute(text(f"""
-                INSERT INTO {booking_table}
-                    (book_id, game_id, date, start_time, end_time, book_status, console_id, payment_status, session_id, segment_id)
-                VALUES
-                    (:bid, :gid, :dt, :st, :et, 'upcoming', NULL, 'pending', :sid, :seg)
-            """), {"bid": new_book_id, "gid": game_id, "dt": today, "st": start_dt, "et": end_dt, "sid": session_id, "seg": seg})
-
-            # 5) Occupy console and flip to current
-            db.session.execute(text(f"""
-                UPDATE {console_table} SET is_available = FALSE
-                WHERE console_id=:cid AND game_id=:gid
-            """), {"cid": console_id, "gid": game_id})
-
-            db.session.execute(text(f"""
-                UPDATE {booking_table}
-                SET book_status='current', console_id=:cid
-                WHERE book_id=:bid AND game_id=:gid AND start_time=:st AND end_time=:et
-            """), {"cid": console_id, "bid": new_book_id, "gid": game_id, "st": start_dt, "et": end_dt})
-
-            db.session.commit()
-
-            # 6) Notify kiosk and vendor
             socketio.emit("message", {
-                "type":"extend_confirm","console_id": console_id,
-                "data":{"booking_id": new_book_id, "new_end_time": _iso(end_dt), "provisional": True}
+                "type": "extend_confirm",
+                "console_id": console_id,
+                "data": {
+                    "booking_id": booking_id,
+                    "new_end_time_ist": end_time_ist,
+                    "slot_id": slot_id,
+                    "book_status": book_status,
+                    "settlement_status": body.get("settlement_status"),
+                    "amount_due": body.get("amount_due"),
+                    "auto_started": body.get("auto_started"),
+                },
             }, room=f"console:{console_id}")
 
             socketio.emit("extend_confirm", {
-                "vendorId": vendor_id, "console_id": console_id,
-                "booking_id": new_book_id, "new_end_time": _iso(end_dt), "provisional": True
+                "vendorId": vendor_id,
+                "console_id": console_id,
+                "booking_id": booking_id,
+                "new_end_time_ist": end_time_ist,
+                "slot_id": slot_id,
+                "book_status": book_status,
+                "settlement_status": body.get("settlement_status"),
+                "amount_due": body.get("amount_due"),
+                "auto_started": body.get("auto_started"),
             }, room=f"vendor_{vendor_id}")
 
             emit("next_slot_confirm", {
-                "type":"next_slot_confirm","booking_id": new_book_id,
-                "console_id": console_id,"new_end_time": _iso(end_dt),
-                "provisional": True, "slot_id": slot_id
+                "type": "next_slot_confirm",
+                "success": True,
+                "booking_id": booking_id,
+                "console_id": console_id,
+                "slot_id": slot_id,
+                "new_end_time_ist": end_time_ist,
+                "book_status": book_status,
+                "settlement_status": body.get("settlement_status"),
+                "amount_due": body.get("amount_due"),
+                "auto_started": body.get("auto_started"),
             })
         except Exception:
-            db.session.rollback()
             current_app.logger.exception("next_slot_book error")
             emit("next_slot_error", {"type":"next_slot_error","reason":"server_error"})

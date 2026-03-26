@@ -1911,6 +1911,52 @@ def kiosk_start_session():
                 current_app.logger.exception("Failed emitting current_slot from kiosk_start_session")
 
         if any(str(r.book_status).lower() == "current" for r in chosen_group):
+            # If part of the same contiguous group has crossed its own start_time,
+            # promote it to current so continuation stays consistent everywhere.
+            promoted_ids = []
+            for row in chosen_group:
+                if str(row.book_status).lower() != "upcoming":
+                    continue
+                row_start_dt = _to_dt(row.date, row.start_time)
+                if now_ist < (row_start_dt - timedelta(seconds=15)):
+                    continue
+                update_res = db.session.execute(
+                    text(f"""
+                        UPDATE {booking_table_name}
+                        SET book_status = 'current', console_id = :console_id
+                        WHERE book_id = :booking_id
+                          AND game_id = :game_id
+                          AND book_status = 'upcoming'
+                    """),
+                    {
+                        "console_id": int(console_id),
+                        "booking_id": int(row.book_id),
+                        "game_id": int(game_id),
+                    }
+                )
+                if int(update_res.rowcount or 0) > 0:
+                    promoted_ids.append(int(row.book_id))
+                    db.session.execute(
+                        text("""
+                            UPDATE bookings
+                            SET status = 'checked_in'
+                            WHERE id = :booking_id
+                              AND status IN ('pending', 'confirmed')
+                        """),
+                        {"booking_id": int(row.book_id)}
+                    )
+            if promoted_ids:
+                db.session.execute(
+                    text(f"""
+                        UPDATE {console_table_name}
+                        SET is_available = FALSE
+                        WHERE console_id = :console_id
+                          AND game_id = :game_id
+                    """),
+                    {"console_id": int(console_id), "game_id": int(game_id)}
+                )
+                db.session.commit()
+
             # Idempotent: already started, just re-emit unlock
             _emit_to_kiosk(
                 kiosk_id=int(console_id),
@@ -1926,7 +1972,11 @@ def kiosk_start_session():
                 },
             )
             _emit_current_for_bookings(chosen_ids, [int(console_id)])
-            return jsonify({"message": "Session already started; unlock re-sent", "booking_ids": chosen_ids}), 200
+            return jsonify({
+                "message": "Session already started; unlock re-sent",
+                "booking_ids": chosen_ids,
+                "promoted_booking_ids": promoted_ids,
+            }), 200
 
         payload, status = _assign_console_to_multiple_bookings_core(
             console_id=console_id,
