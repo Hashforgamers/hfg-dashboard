@@ -77,6 +77,12 @@ LANDING_UPCOMING_DAYS_AHEAD = 7
 CONSOLES_CACHE_TTL_SEC = 10
 _vendor_consoles_cache = {}
 _vendor_consoles_cache_lock = threading.Lock()
+REQUIRED_VENDOR_DOCUMENT_TYPES = [
+    "business_registration",
+    "owner_identification_proof",
+    "tax_identification_number",
+    "bank_acc_details",
+]
 
 
 def _invalidate_vendor_caches(vendor_id: int):
@@ -3086,6 +3092,54 @@ def get_vendor_dashboard(vendor_id):
         })
 
     # 6) Construct response
+    existing_docs_by_type = {}
+    for doc in (vendor.documents or []):
+        doc_type = str(doc.document_type or "").strip().lower()
+        if doc_type and doc_type not in existing_docs_by_type:
+            existing_docs_by_type[doc_type] = doc
+
+    normalized_docs = []
+    for doc_type in REQUIRED_VENDOR_DOCUMENT_TYPES:
+        doc = existing_docs_by_type.get(doc_type)
+        if doc:
+            normalized_docs.append({
+                "id": doc.id,
+                "name": doc_type.replace("_", " ").title(),
+                "document_type": doc_type,
+                "status": (doc.status or "unverified"),
+                "expiry": None,
+                "uploadedAt": doc.uploaded_at.isoformat() if doc.uploaded_at else None,
+                "documentUrl": doc.document_url,
+                "publicId": doc.public_id,
+            })
+        else:
+            normalized_docs.append({
+                "id": None,
+                "name": doc_type.replace("_", " ").title(),
+                "document_type": doc_type,
+                "status": "missing",
+                "expiry": None,
+                "uploadedAt": None,
+                "documentUrl": None,
+                "publicId": None,
+            })
+
+    document_alerts = []
+    for doc in normalized_docs:
+        doc_status = str(doc.get("status") or "").lower()
+        if doc_status == "rejected":
+            document_alerts.append({
+                "type": "rejected",
+                "title": "Document Rejected",
+                "message": f"{doc['name']} was rejected by Hash verification team. Please upload again.",
+            })
+        elif doc_status == "verified":
+            document_alerts.append({
+                "type": "verified",
+                "title": "Document Verified",
+                "message": f"{doc['name']} was verified by Hash verification team.",
+            })
+
     payload = {
         "navigation": [
             {"icon": "User", "label": "Profile"},
@@ -3125,27 +3179,8 @@ def get_vendor_dashboard(vendor_id):
             },
             "paymentMethod": "•••• •••• •••• 4242"
         },
-        "verifiedDocuments": [
-            {
-                "id": doc.id,
-                "name": (doc.document_type or "").replace("_", " ").title(),
-                "document_type": doc.document_type,
-                "status": doc.status,
-                "expiry": None,
-                "uploadedAt": doc.uploaded_at.isoformat() if doc.uploaded_at else None,
-                "documentUrl": doc.document_url,
-                "publicId": doc.public_id,
-            } for doc in (vendor.documents or [])
-        ],
-        "documentAlerts": [
-            {
-                "type": "rejected",
-                "title": "Document Rejected",
-                "message": f"{(doc.document_type or '').replace('_', ' ').title()} was rejected by Hash verification team. Please upload again."
-            }
-            for doc in (vendor.documents or [])
-            if str(doc.status or "").lower() == "rejected"
-        ],
+        "verifiedDocuments": normalized_docs,
+        "documentAlerts": document_alerts,
     }
 
     return jsonify(payload), 200
