@@ -5,6 +5,8 @@ import re
 import time
 import threading
 import hashlib
+import os
+import requests
 from .models.transaction import Transaction
 from app.extension.extensions import db
 from sqlalchemy import cast, Date, text, func
@@ -469,16 +471,33 @@ def get_console(console_id):
 @dashboard_service.route("/vendor/<int:vendor_id>/console-pricing", methods=["GET"])
 def get_console_pricing(vendor_id):
     try:
+        def _normalize_console_key(raw_name):
+            value = str(raw_name or "").strip().lower()
+            if not value:
+                return None
+            if "ps" in value or "playstation" in value or "sony" in value:
+                return "ps5"
+            if "xbox" in value or "series" in value or "microsoft" in value:
+                return "xbox"
+            if "vr" in value or "virtual" in value or "reality" in value:
+                return "vr"
+            if "pc" in value or "gaming" in value or "computer" in value:
+                return "pc"
+            return None
+
         available_games = AvailableGame.query.filter_by(vendor_id=vendor_id).all()
 
         if not available_games:
             return jsonify({"message": "No games found for this vendor"}), 404
 
-        pricing_data = {}
+        pricing_data = {"pc": 0, "ps5": 0, "xbox": 0, "vr": 0}
         for game in available_games:
-            pricing_data[game.game_name] = game.single_slot_price  # Use correct field name and just value
+            normalized_key = _normalize_console_key(game.game_name)
+            if not normalized_key:
+                continue
+            pricing_data[normalized_key] = float(game.single_slot_price or 0)
 
-        return jsonify(pricing_data), 200  # return dict directly (matches frontend expectation)
+        return jsonify(pricing_data), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -486,19 +505,43 @@ def get_console_pricing(vendor_id):
 @dashboard_service.route("/vendor/<int:vendor_id>/console-pricing", methods=["POST"])
 def update_console_pricing(vendor_id):
     try:
+        def _normalize_console_key(raw_name):
+            value = str(raw_name or "").strip().lower()
+            if not value:
+                return None
+            if "ps" in value or "playstation" in value or "sony" in value:
+                return "ps5"
+            if "xbox" in value or "series" in value or "microsoft" in value:
+                return "xbox"
+            if "vr" in value or "virtual" in value or "reality" in value:
+                return "vr"
+            if "pc" in value or "gaming" in value or "computer" in value:
+                return "pc"
+            return None
+
         data = request.get_json()
-        if not data:
+        if not isinstance(data, dict) or not data:
             return jsonify({"error": "No data provided"}), 400
 
-        # Expecting data like: { "ps5": 20, "xbox": 15, "pc": 10 }
-        updated_prices = data
+        updated_prices = {}
+        for key, value in data.items():
+            normalized = _normalize_console_key(key)
+            if normalized is None:
+                continue
+            try:
+                updated_prices[normalized] = max(0.0, float(value))
+            except (TypeError, ValueError):
+                return jsonify({"error": f"Invalid price for {key}"}), 400
+
+        if not updated_prices:
+            return jsonify({"error": "No valid console pricing fields provided"}), 400
 
         updated_count = 0
-
-        for game_name, new_price in updated_prices.items():
-            game = AvailableGame.query.filter_by(vendor_id=vendor_id, game_name=game_name).first()
-            if game:
-                game.single_slot_price = new_price
+        games = AvailableGame.query.filter_by(vendor_id=vendor_id).all()
+        for game in games:
+            normalized_game = _normalize_console_key(game.game_name)
+            if normalized_game and normalized_game in updated_prices:
+                game.single_slot_price = updated_prices[normalized_game]
                 updated_count += 1
 
         db.session.commit()
@@ -3084,14 +3127,68 @@ def get_vendor_dashboard(vendor_id):
         },
         "verifiedDocuments": [
             {
-                "name": doc.document_type,
+                "id": doc.id,
+                "name": (doc.document_type or "").replace("_", " ").title(),
+                "document_type": doc.document_type,
                 "status": doc.status,
-                "expiry": None
+                "expiry": None,
+                "uploadedAt": doc.uploaded_at.isoformat() if doc.uploaded_at else None,
+                "documentUrl": doc.document_url,
+                "publicId": doc.public_id,
             } for doc in (vendor.documents or [])
-        ]
+        ],
+        "documentAlerts": [
+            {
+                "type": "rejected",
+                "title": "Document Rejected",
+                "message": f"{(doc.document_type or '').replace('_', ' ').title()} was rejected by Hash verification team. Please upload again."
+            }
+            for doc in (vendor.documents or [])
+            if str(doc.status or "").lower() == "rejected"
+        ],
     }
 
     return jsonify(payload), 200
+
+
+@dashboard_service.route('/vendor/<int:vendor_id>/documents/<int:document_id>', methods=['PUT'])
+def update_vendor_document(vendor_id, document_id):
+    """
+    Proxy document replacement to onboard service so dashboard frontend can use one API origin.
+    """
+    try:
+        file_obj = request.files.get("document")
+        if not file_obj or not file_obj.filename:
+            return jsonify({"success": False, "message": "document file is required"}), 400
+
+        onboard_base = os.getenv("VENDOR_ONBOARD_URL", "https://hfg-onboard.onrender.com").rstrip("/")
+        target_url = f"{onboard_base}/api/vendor/{int(vendor_id)}/documents/{int(document_id)}"
+
+        response = requests.put(
+            target_url,
+            files={
+                "document": (
+                    file_obj.filename,
+                    file_obj.stream,
+                    file_obj.mimetype or "application/octet-stream",
+                )
+            },
+            timeout=25,
+        )
+        try:
+            payload = response.json()
+        except Exception:
+            payload = {"success": False, "message": response.text}
+
+        return jsonify(payload), response.status_code
+    except Exception as exc:
+        current_app.logger.exception(
+            "update_vendor_document failed vendor_id=%s document_id=%s err=%s",
+            vendor_id,
+            document_id,
+            exc,
+        )
+        return jsonify({"success": False, "message": "Failed to update document"}), 500
 
 @dashboard_service.route('/vendor/<int:vendor_id>/knowYourGamer', methods=['GET'])
 def get_your_gamers(vendor_id):
@@ -3810,7 +3907,10 @@ def create_menu_item(vendor_id, category_id):
             data = {
                 'name': request.form.get('name'),
                 'price': request.form.get('price'),
-                'description': request.form.get('description', '')
+                'description': request.form.get('description', ''),
+                'stock_quantity': request.form.get('stock_quantity'),
+                'stock_unit': request.form.get('stock_unit'),
+                'low_stock_threshold': request.form.get('low_stock_threshold'),
             }
             image_file = request.files.get('image')
         else:
@@ -3839,6 +3939,17 @@ def delete_menu_item(vendor_id, category_id, menu_id):
         return jsonify(result), status_code
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@dashboard_service.route('/vendor/<int:vendor_id>/extra-services/category/<int:category_id>/menu/<int:menu_id>/inventory', methods=['PATCH'])
+def update_menu_inventory(vendor_id, category_id, menu_id):
+    """Set/increment/decrement stock for a menu item."""
+    try:
+        payload = request.get_json(silent=True) or {}
+        result, status_code = ExtraServiceService.update_menu_inventory(vendor_id, category_id, menu_id, payload)
+        return jsonify(result), status_code
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @dashboard_service.route('/admin/hash_pass', methods=['POST'])
