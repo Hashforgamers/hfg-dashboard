@@ -12,6 +12,15 @@ from sqlalchemy.orm import joinedload
 class ExtraServiceService:
 
     @staticmethod
+    def _to_int_or_default(value, default=0):
+        try:
+            if value is None or value == "":
+                return int(default)
+            return int(value)
+        except (TypeError, ValueError):
+            return int(default)
+
+    @staticmethod
     def _sync_food_amenity(vendor_id: int):
         """Enable Food amenity if any active menu item exists; disable otherwise."""
         active_item_exists = (
@@ -86,6 +95,13 @@ class ExtraServiceService:
                         'price': float(menu.price),  # Ensure float for JSON
                         'description': menu.description or '',
                         'is_active': menu.is_active,
+                        'stock_quantity': int(menu.stock_quantity) if menu.stock_quantity is not None else None,
+                        'stock_unit': menu.stock_unit or 'units',
+                        'low_stock_threshold': int(menu.low_stock_threshold or 0),
+                        'is_low_stock': bool(
+                            menu.stock_quantity is not None
+                            and int(menu.stock_quantity) <= int(menu.low_stock_threshold or 0)
+                        ),
                         'images': menu_images
                     }
                     menu_items.append(menu_item)
@@ -156,6 +172,9 @@ class ExtraServiceService:
                 'price': float(menu_item.price),
                 'description': menu_item.description or '',
                 'is_active': menu_item.is_active,
+                'stock_quantity': int(menu_item.stock_quantity) if menu_item.stock_quantity is not None else None,
+                'stock_unit': menu_item.stock_unit or 'units',
+                'low_stock_threshold': int(menu_item.low_stock_threshold or 0),
                 'category': {
                     'id': menu_item.category.id,
                     'name': menu_item.category.name,
@@ -266,6 +285,9 @@ class ExtraServiceService:
             name = data.get('name', '').strip()
             price = data.get('price')
             description = data.get('description', '').strip()
+            stock_quantity = data.get('stock_quantity')
+            stock_unit = str(data.get('stock_unit') or 'units').strip() or 'units'
+            low_stock_threshold = data.get('low_stock_threshold')
 
             if not name:
                return {'error': 'Menu item name is required'}, 400
@@ -276,6 +298,28 @@ class ExtraServiceService:
                     return {'error': 'Price must be non-negative'}, 400
             except (TypeError, ValueError):
                  return {'error': 'Invalid price format'}, 400
+
+            if stock_unit and len(stock_unit) > 32:
+                return {'error': 'stock_unit must be 32 characters or fewer'}, 400
+            if stock_quantity is not None and stock_quantity != "":
+                try:
+                    stock_quantity = int(stock_quantity)
+                except (TypeError, ValueError):
+                    return {'error': 'stock_quantity must be an integer'}, 400
+                if stock_quantity < 0:
+                    return {'error': 'stock_quantity cannot be negative'}, 400
+            else:
+                stock_quantity = None
+
+            if low_stock_threshold is not None and low_stock_threshold != "":
+                try:
+                    low_stock_threshold = int(low_stock_threshold)
+                except (TypeError, ValueError):
+                    return {'error': 'low_stock_threshold must be an integer'}, 400
+                if low_stock_threshold < 0:
+                    return {'error': 'low_stock_threshold cannot be negative'}, 400
+            else:
+                low_stock_threshold = 0
 
         # Check if menu item name already exists in this category
             existing = db.session.query(ExtraServiceMenu).filter(
@@ -291,7 +335,10 @@ class ExtraServiceService:
                  name=name,
                  price=price,
                  description=description,
-                 is_active=True
+                 is_active=True,
+                 stock_quantity=stock_quantity,
+                 stock_unit=stock_unit,
+                 low_stock_threshold=low_stock_threshold
             )
 
             db.session.add(menu_item)
@@ -352,6 +399,9 @@ class ExtraServiceService:
                  'description': menu_item.description,
                  'category_id': menu_item.category_id,
                   'is_active': menu_item.is_active,
+                  'stock_quantity': int(menu_item.stock_quantity) if menu_item.stock_quantity is not None else None,
+                  'stock_unit': menu_item.stock_unit or 'units',
+                  'low_stock_threshold': int(menu_item.low_stock_threshold or 0),
                   'images': menu_images  # CRITICAL: Include images array in response
             }
 
@@ -423,4 +473,90 @@ class ExtraServiceService:
         except Exception as e:
             db.session.rollback()
             return {'error': str(e)}, 500
+
+    @staticmethod
+    def update_menu_inventory(vendor_id, category_id, menu_id, payload):
+        """Set or increment stock quantity for a menu item."""
+        try:
+            menu_item = db.session.query(ExtraServiceMenu).join(
+                ExtraServiceCategory
+            ).filter(
+                ExtraServiceMenu.id == menu_id,
+                ExtraServiceMenu.category_id == category_id,
+                ExtraServiceCategory.vendor_id == vendor_id
+            ).first()
+
+            if not menu_item:
+                return {'success': False, 'error': 'Menu item not found'}, 404
+
+            mode = str(payload.get("mode") or "set").strip().lower()
+            if mode not in {"set", "increment", "decrement"}:
+                return {'success': False, 'error': 'mode must be set/increment/decrement'}, 400
+
+            quantity_value = payload.get("quantity")
+            if quantity_value is None:
+                return {'success': False, 'error': 'quantity is required'}, 400
+
+            try:
+                quantity_value = int(quantity_value)
+            except (TypeError, ValueError):
+                return {'success': False, 'error': 'quantity must be an integer'}, 400
+
+            if quantity_value < 0:
+                return {'success': False, 'error': 'quantity cannot be negative'}, 400
+
+            current_qty = menu_item.stock_quantity
+            if current_qty is None:
+                current_qty = 0
+
+            if mode == "set":
+                next_qty = quantity_value
+            elif mode == "increment":
+                next_qty = current_qty + quantity_value
+            else:
+                next_qty = current_qty - quantity_value
+
+            if next_qty < 0:
+                return {'success': False, 'error': 'Resulting stock cannot be negative'}, 400
+
+            stock_unit = payload.get("stock_unit")
+            if stock_unit is not None:
+                stock_unit = str(stock_unit).strip() or "units"
+                if len(stock_unit) > 32:
+                    return {'success': False, 'error': 'stock_unit must be 32 characters or fewer'}, 400
+                menu_item.stock_unit = stock_unit
+
+            if "low_stock_threshold" in payload:
+                threshold = payload.get("low_stock_threshold")
+                if threshold in (None, ""):
+                    threshold = 0
+                try:
+                    threshold = int(threshold)
+                except (TypeError, ValueError):
+                    return {'success': False, 'error': 'low_stock_threshold must be an integer'}, 400
+                if threshold < 0:
+                    return {'success': False, 'error': 'low_stock_threshold cannot be negative'}, 400
+                menu_item.low_stock_threshold = threshold
+
+            menu_item.stock_quantity = next_qty
+            db.session.commit()
+
+            return {
+                'success': True,
+                'message': 'Inventory updated successfully',
+                'menu_item': {
+                    'id': menu_item.id,
+                    'name': menu_item.name,
+                    'stock_quantity': int(menu_item.stock_quantity),
+                    'stock_unit': menu_item.stock_unit or 'units',
+                    'low_stock_threshold': int(menu_item.low_stock_threshold or 0),
+                    'is_low_stock': bool(
+                        menu_item.stock_quantity is not None
+                        and int(menu_item.stock_quantity) <= int(menu_item.low_stock_threshold or 0)
+                    ),
+                }
+            }, 200
+        except Exception as e:
+            db.session.rollback()
+            return {'success': False, 'error': str(e)}, 500
     
