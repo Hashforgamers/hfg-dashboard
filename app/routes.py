@@ -3225,6 +3225,50 @@ def update_vendor_document(vendor_id, document_id):
         )
         return jsonify({"success": False, "message": "Failed to update document"}), 500
 
+
+@dashboard_service.route('/vendor/<int:vendor_id>/documents', methods=['POST'])
+def upload_vendor_document_by_type(vendor_id):
+    """
+    Proxy missing-document upload to onboard service (by document_type).
+    """
+    try:
+        file_obj = request.files.get("document")
+        document_type = str(request.form.get("document_type") or "").strip().lower()
+
+        if not file_obj or not file_obj.filename:
+            return jsonify({"success": False, "message": "document file is required"}), 400
+        if not document_type:
+            return jsonify({"success": False, "message": "document_type is required"}), 400
+
+        onboard_base = os.getenv("VENDOR_ONBOARD_URL", "https://hfg-onboard.onrender.com").rstrip("/")
+        target_url = f"{onboard_base}/api/vendor/{int(vendor_id)}/documents"
+
+        response = requests.post(
+            target_url,
+            data={"document_type": document_type},
+            files={
+                "document": (
+                    file_obj.filename,
+                    file_obj.stream,
+                    file_obj.mimetype or "application/octet-stream",
+                )
+            },
+            timeout=25,
+        )
+        try:
+            payload = response.json()
+        except Exception:
+            payload = {"success": False, "message": response.text}
+
+        return jsonify(payload), response.status_code
+    except Exception as exc:
+        current_app.logger.exception(
+            "upload_vendor_document_by_type failed vendor_id=%s err=%s",
+            vendor_id,
+            exc,
+        )
+        return jsonify({"success": False, "message": "Failed to upload document"}), 500
+
 @dashboard_service.route('/vendor/<int:vendor_id>/knowYourGamer', methods=['GET'])
 def get_your_gamers(vendor_id):
     try:
