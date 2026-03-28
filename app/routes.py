@@ -186,6 +186,7 @@ LIFECYCLE_ORDER = {
     "current": 2,
     "completed": 3,
     "discarded": 3,
+    "no_show": 3,
     "cancelled": 3,
     "canceled": 3,
     "rejected": 3,
@@ -2461,6 +2462,7 @@ def get_landing_page_vendor(vendor_id):
             "canceled",
             "rejected",
             "discarded",
+            "no_show",
             "verification_failed",
         )
 
@@ -2496,6 +2498,20 @@ def get_landing_page_vendor(vendor_id):
                 )
                 db.session.commit()
 
+        # Keep dashboard lifecycle aligned with canonical bookings.status for no-show states.
+        db.session.execute(
+            text(f"""
+                UPDATE {table_name} b
+                SET book_status = 'discarded'
+                FROM bookings d
+                WHERE d.id = b.book_id
+                  AND LOWER(COALESCE(d.status, '')) IN ('discarded', 'no_show')
+                  AND b.book_status <> 'discarded'
+            """),
+            {},
+        )
+        db.session.commit()
+
         # Keep dashboard lifecycle aligned with canonical bookings.status for terminal states.
         db.session.execute(
             text(f"""
@@ -2504,7 +2520,7 @@ def get_landing_page_vendor(vendor_id):
                 FROM bookings d
                 WHERE d.id = b.book_id
                   AND LOWER(COALESCE(d.status, '')) IN (
-                      'completed', 'cancelled', 'canceled', 'rejected', 'discarded', 'verification_failed'
+                      'completed', 'cancelled', 'canceled', 'rejected', 'verification_failed'
                   )
                   AND b.book_status <> 'completed'
             """),
@@ -2536,10 +2552,10 @@ def get_landing_page_vendor(vendor_id):
                 db.session.execute(
                     text("""
                         UPDATE bookings
-                        SET status = 'discarded'
+                        SET status = 'no_show'
                         WHERE id = ANY(:booking_ids)
                           AND LOWER(COALESCE(status, '')) NOT IN
-                              ('completed', 'cancelled', 'canceled', 'rejected', 'discarded', 'verification_failed')
+                              ('completed', 'cancelled', 'canceled', 'rejected', 'discarded', 'no_show', 'verification_failed')
                     """),
                     {"booking_ids": discarded_ids},
                 )
@@ -2579,7 +2595,7 @@ def get_landing_page_vendor(vendor_id):
                         SET status = 'completed'
                         WHERE id = ANY(:booking_ids)
                           AND LOWER(COALESCE(status, '')) NOT IN
-                              ('completed', 'cancelled', 'canceled', 'rejected', 'discarded', 'verification_failed')
+                              ('completed', 'cancelled', 'canceled', 'rejected', 'discarded', 'no_show', 'verification_failed')
                     """),
                     {"booking_ids": completed_ids},
                 )
