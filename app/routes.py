@@ -65,6 +65,15 @@ from app.models.bookingExtraService import BookingExtraService
 from app.models.extraServiceMenu import ExtraServiceMenu
 from app.services.extra_service_service import ExtraServiceService
 from app.models.console_link_session import ConsoleLinkSession
+from app.services.console_catalog_service import (
+    get_merged_console_catalog,
+    get_vendor_console_overrides,
+    legacy_console_group,
+    normalize_console_slug,
+    resolve_console_capabilities,
+    set_vendor_console_override_active,
+    upsert_vendor_console_override,
+)
 
 WEEKDAY_ORDER = ["mon","tue","wed","thu","fri","sat","sun"]
 GSTIN_REGEX = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$")
@@ -195,17 +204,9 @@ LIFECYCLE_ORDER = {
 KIOSK_GRACE_MIN = 30
 
 
-def _resolve_console_group_from_name(console_name: str) -> str:
-    value = str(console_name or "").strip().lower()
-    if "pc" in value:
-        return "pc"
-    if "ps" in value:
-        return "ps"
-    if "xbox" in value:
-        return "xbox"
-    if "vr" in value:
-        return "vr"
-    return "unknown"
+def _resolve_console_group_from_name(console_name: str, vendor_id: int = None) -> str:
+    capabilities = resolve_console_capabilities(vendor_id=vendor_id, raw_console=console_name)
+    return legacy_console_group(capabilities.get("slug") or console_name, capabilities=capabilities)
 
 
 def _booking_start_eligibility(slot_date, start_time, end_time):
@@ -478,31 +479,31 @@ def get_console(console_id):
 @dashboard_service.route("/vendor/<int:vendor_id>/console-pricing", methods=["GET"])
 def get_console_pricing(vendor_id):
     try:
-        def _normalize_console_key(raw_name):
-            value = str(raw_name or "").strip().lower()
-            if not value:
-                return None
-            if "ps" in value or "playstation" in value or "sony" in value:
-                return "ps5"
-            if "xbox" in value or "series" in value or "microsoft" in value:
-                return "xbox"
-            if "vr" in value or "virtual" in value or "reality" in value:
-                return "vr"
-            if "pc" in value or "gaming" in value or "computer" in value:
-                return "pc"
-            return None
+        def _legacy_aliases(slug: str):
+            normalized = normalize_console_slug(slug)
+            if normalized == "playstation":
+                return {"playstation", "ps5", "ps"}
+            if normalized == "vr_headset":
+                return {"vr_headset", "vr"}
+            if normalized == "pc":
+                return {"pc"}
+            if normalized == "xbox":
+                return {"xbox"}
+            return {normalized}
 
         available_games = AvailableGame.query.filter_by(vendor_id=vendor_id).all()
 
         if not available_games:
             return jsonify({"message": "No games found for this vendor"}), 404
 
-        pricing_data = {"pc": 0, "ps5": 0, "xbox": 0, "vr": 0}
+        pricing_data = {}
         for game in available_games:
-            normalized_key = _normalize_console_key(game.game_name)
+            normalized_key = normalize_console_slug(game.game_name)
             if not normalized_key:
                 continue
-            pricing_data[normalized_key] = float(game.single_slot_price or 0)
+            price = float(game.single_slot_price or 0)
+            for key in _legacy_aliases(normalized_key):
+                pricing_data[key] = price
 
         return jsonify(pricing_data), 200
 
@@ -512,28 +513,14 @@ def get_console_pricing(vendor_id):
 @dashboard_service.route("/vendor/<int:vendor_id>/console-pricing", methods=["POST"])
 def update_console_pricing(vendor_id):
     try:
-        def _normalize_console_key(raw_name):
-            value = str(raw_name or "").strip().lower()
-            if not value:
-                return None
-            if "ps" in value or "playstation" in value or "sony" in value:
-                return "ps5"
-            if "xbox" in value or "series" in value or "microsoft" in value:
-                return "xbox"
-            if "vr" in value or "virtual" in value or "reality" in value:
-                return "vr"
-            if "pc" in value or "gaming" in value or "computer" in value:
-                return "pc"
-            return None
-
         data = request.get_json()
         if not isinstance(data, dict) or not data:
             return jsonify({"error": "No data provided"}), 400
 
         updated_prices = {}
         for key, value in data.items():
-            normalized = _normalize_console_key(key)
-            if normalized is None:
+            normalized = normalize_console_slug(key)
+            if not normalized:
                 continue
             try:
                 updated_prices[normalized] = max(0.0, float(value))
@@ -546,7 +533,7 @@ def update_console_pricing(vendor_id):
         updated_count = 0
         games = AvailableGame.query.filter_by(vendor_id=vendor_id).all()
         for game in games:
-            normalized_game = _normalize_console_key(game.game_name)
+            normalized_game = normalize_console_slug(game.game_name)
             if normalized_game and normalized_game in updated_prices:
                 game.single_slot_price = updated_prices[normalized_game]
                 updated_count += 1
@@ -683,8 +670,10 @@ def get_consoles(vendor_id):
         rows = db.session.execute(sql_query, {"vendor_id": vendor_id}).fetchall()
         payload = []
         for row in rows:
-            normalized_type = str(row.console_type or "pc").strip().lower()
-            is_pc = normalized_type == "pc"
+            capabilities = resolve_console_capabilities(vendor_id=vendor_id, raw_console=row.console_type)
+            normalized_slug = str(capabilities.get("slug") or normalize_console_slug(row.console_type) or "unknown")
+            console_group = legacy_console_group(normalized_slug, capabilities=capabilities)
+            is_pc = console_group == "pc"
             raw_maintenance = str(row.available_status or "").strip().lower()
             is_maintenance = raw_maintenance in {"under maintenance", "maintenance"}
             is_available = bool(int(row.is_available_int or 0) == 1) if row.is_available_int is not None else True
@@ -712,10 +701,17 @@ def get_consoles(vendor_id):
                         break
             payload.append({
                 "id": row.id,
-                "type": normalized_type,
+                "type": normalized_slug,
+                "console_slug": normalized_slug,
+                "console_display_name": capabilities.get("display_name") or row.console_type,
+                "console_family": capabilities.get("family") or "other",
+                "console_input_mode": capabilities.get("input_mode") or "controller",
+                "supports_multiplayer": bool(capabilities.get("supports_multiplayer")),
+                "default_capacity": int(capabilities.get("default_capacity") or 1),
+                "controller_policy": capabilities.get("controller_policy") or "none",
                 "name": row.model_number,
                 "number": row.console_number,
-                "icon": "Monitor" if normalized_type == "pc" else "Tv" if normalized_type == "ps5" else "Gamepad",
+                "icon": capabilities.get("icon") or "Monitor",
                 "brand": row.brand,
                 "processor": row.processor_type if is_pc and row.processor_type else None,
                 "gpu": row.graphics_card if is_pc and row.graphics_card else None,
@@ -752,6 +748,79 @@ def get_consoles(vendor_id):
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@dashboard_service.route('/console-types', methods=['GET'])
+@dashboard_service.route('/console-types/vendor/<int:vendor_id>', methods=['GET'])
+def get_console_types(vendor_id=None):
+    include_inactive = str(request.args.get("include_inactive", "false")).strip().lower() == "true"
+    query_vendor_id = request.args.get("vendor_id", type=int)
+    resolved_vendor_id = int(vendor_id or query_vendor_id) if (vendor_id or query_vendor_id) else None
+    return jsonify(
+        {
+            "vendor_id": resolved_vendor_id,
+            "console_types": get_merged_console_catalog(
+                vendor_id=resolved_vendor_id,
+                include_inactive=include_inactive,
+            ),
+        }
+    ), 200
+
+
+@dashboard_service.route('/console-types/vendor/<int:vendor_id>/overrides', methods=['GET'])
+def get_console_type_overrides(vendor_id):
+    include_inactive = str(request.args.get("include_inactive", "false")).strip().lower() == "true"
+    return jsonify(
+        {
+            "vendor_id": int(vendor_id),
+            "overrides": get_vendor_console_overrides(vendor_id=vendor_id, include_inactive=include_inactive),
+            "console_types": get_merged_console_catalog(vendor_id=vendor_id, include_inactive=include_inactive),
+        }
+    ), 200
+
+
+@dashboard_service.route('/console-types/vendor/<int:vendor_id>/overrides', methods=['POST'])
+def create_or_update_console_type_override(vendor_id):
+    payload = request.get_json(silent=True) or {}
+    try:
+        row = upsert_vendor_console_override(vendor_id=vendor_id, payload=payload)
+        db.session.commit()
+        _invalidate_vendor_caches(vendor_id)
+        return jsonify(
+            {
+                "success": True,
+                "vendor_id": int(vendor_id),
+                "override": row,
+                "console_types": get_merged_console_catalog(vendor_id=vendor_id),
+            }
+        ), 200
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({"success": False, "message": str(exc)}), 400
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify({"success": False, "message": f"Failed to save override: {exc}"}), 500
+
+
+@dashboard_service.route('/console-types/vendor/<int:vendor_id>/overrides/<string:slug>', methods=['DELETE'])
+def deactivate_console_type_override(vendor_id, slug):
+    try:
+        row = set_vendor_console_override_active(vendor_id=vendor_id, slug=slug, is_active=False)
+        if row is None:
+            return jsonify({"success": False, "message": "Override not found"}), 404
+        db.session.commit()
+        _invalidate_vendor_caches(vendor_id)
+        return jsonify(
+            {
+                "success": True,
+                "vendor_id": int(vendor_id),
+                "override": row,
+                "console_types": get_merged_console_catalog(vendor_id=vendor_id),
+            }
+        ), 200
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify({"success": False, "message": f"Failed to delete override: {exc}"}), 500
 
 @dashboard_service.route('/console/<int:vendor_id>/<int:console_id>', methods=['DELETE'])
 def delete_console(vendor_id, console_id):
@@ -1003,20 +1072,29 @@ def get_device_for_console_type(gameid, vendor_id):
         game_id_int = int(gameid)
 
         requested_game = AvailableGame.query.filter_by(id=game_id_int).first()
-        requested_group = _resolve_console_group_from_name(requested_game.game_name if requested_game else "")
+        requested_group = _resolve_console_group_from_name(
+            requested_game.game_name if requested_game else "",
+            vendor_id=vendor_id,
+        )
 
-        # For PC bookings, keep availability rows aligned with full PC inventory.
-        # This avoids modal showing fewer PCs than Console Control when some
-        # VENDOR_X_CONSOLE_AVAILABILITY rows are missing for given game_id.
-        if requested_group == "pc":
-            pc_console_rows = (
-                db.session.query(Console.id)
+        # Keep availability rows aligned with all consoles that belong to
+        # the requested capability group (not only legacy "pc").
+        if requested_group and requested_group != "unknown":
+            vendor_console_rows = (
+                db.session.query(Console.id, Console.console_type)
                 .filter(Console.vendor_id == vendor_id_int)
-                .filter(func.lower(func.coalesce(Console.console_type, "")) == "pc")
                 .all()
             )
-            pc_console_ids = [int(r.id) for r in pc_console_rows]
-            if pc_console_ids:
+            matched_console_ids = []
+            for row in vendor_console_rows:
+                group = _resolve_console_group_from_name(
+                    str(row.console_type or ""),
+                    vendor_id=vendor_id_int,
+                )
+                if group == requested_group:
+                    matched_console_ids.append(int(row.id))
+
+            if matched_console_ids:
                 existing_for_game = db.session.execute(
                     text(f"""
                         SELECT console_id
@@ -1024,10 +1102,10 @@ def get_device_for_console_type(gameid, vendor_id):
                         WHERE game_id = :game_id
                           AND console_id = ANY(:console_ids)
                     """),
-                    {"game_id": game_id_int, "console_ids": pc_console_ids},
+                    {"game_id": game_id_int, "console_ids": matched_console_ids},
                 ).fetchall()
                 existing_ids = {int(r.console_id) for r in existing_for_game if r and r.console_id is not None}
-                missing_ids = [cid for cid in pc_console_ids if cid not in existing_ids]
+                missing_ids = [cid for cid in matched_console_ids if cid not in existing_ids]
 
                 for cid in missing_ids:
                     any_busy_row = db.session.execute(
@@ -1165,7 +1243,10 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
         squad_details = booking_detail.squad_details if booking_detail and isinstance(booking_detail.squad_details, dict) else {}
 
         game = AvailableGame.query.filter_by(id=int(gameid)).first()
-        console_group = _resolve_console_group_from_name(game.game_name if game else "")
+        console_group = _resolve_console_group_from_name(
+            game.game_name if game else "",
+            vendor_id=vendor_id,
+        )
         is_pc_squad = bool(
             console_group == "pc"
             and bool(squad_details.get("enabled"))
@@ -1529,7 +1610,10 @@ def _assign_console_to_multiple_bookings_core(console_id, additional_console_ids
     first_booking = Booking.query.filter_by(id=int(booking_ids[0])).first()
     first_squad = first_booking.squad_details if first_booking and isinstance(first_booking.squad_details, dict) else {}
     game = AvailableGame.query.filter_by(id=int(game_id)).first()
-    console_group = _resolve_console_group_from_name(game.game_name if game else "")
+    console_group = _resolve_console_group_from_name(
+        game.game_name if game else "",
+        vendor_id=vendor_id,
+    )
     is_pc_squad = bool(
         console_group == "pc"
         and bool(first_squad.get("enabled"))
