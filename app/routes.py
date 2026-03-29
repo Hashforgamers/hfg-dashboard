@@ -3202,6 +3202,15 @@ def get_vendor_dashboard(vendor_id):
     for doc_type in REQUIRED_VENDOR_DOCUMENT_TYPES:
         doc = existing_docs_by_type.get(doc_type)
         if doc:
+            # Backward/forward compatible URL + public id resolution:
+            # - hfg-onboard usually stores document URLs in `file_path`
+            # - some services may expose `document_url`/`public_id`
+            doc_url = (
+                getattr(doc, "document_url", None)
+                or getattr(doc, "file_path", None)
+                or getattr(doc, "url", None)
+            )
+            doc_public_id = getattr(doc, "public_id", None)
             normalized_docs.append({
                 "id": doc.id,
                 "name": doc_type.replace("_", " ").title(),
@@ -3209,8 +3218,8 @@ def get_vendor_dashboard(vendor_id):
                 "status": (doc.status or "unverified"),
                 "expiry": None,
                 "uploadedAt": doc.uploaded_at.isoformat() if doc.uploaded_at else None,
-                "documentUrl": doc.document_url,
-                "publicId": doc.public_id,
+                "documentUrl": doc_url,
+                "publicId": doc_public_id,
             })
         else:
             normalized_docs.append({
