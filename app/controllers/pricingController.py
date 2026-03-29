@@ -12,13 +12,17 @@ from sqlalchemy import and_, or_
 from sqlalchemy.orm import joinedload
 import pytz
 from app.services.websocket_service import socketio
+from app.services.console_catalog_service import (
+    legacy_console_group,
+    normalize_console_slug,
+    resolve_console_capabilities,
+)
 
 pricing_blueprint = Blueprint('pricing', __name__)
 
 IST = pytz.timezone('Asia/Kolkata')
-SUPPORTED_CONTROLLER_TYPES = {"ps5", "xbox"}
-SUPPORTED_SQUAD_GROUPS = {"pc"}
-SQUAD_MAX_PLAYERS = {"pc": 10}
+SUPPORTED_CONTROLLER_POLICIES = {"per_player", "controller_pricing", "optional"}
+SQUAD_MAX_PLAYERS_FALLBACK = {"pc": 10}
 DEFAULT_SQUAD_POLICY = {
     "pc": {2: 0, 3: 3, 4: 5, 5: 8, 6: 10, 7: 12, 8: 15, 9: 18, 10: 20},
 }
@@ -29,12 +33,7 @@ def get_ist_now():
 
 
 def _normalize_console_type(value):
-    text = str(value or "").strip().lower()
-    if "ps" in text:
-        return "ps5"
-    if "xbox" in text:
-        return "xbox"
-    return text
+    return normalize_console_slug(value)
 
 
 def _calculate_controller_total(base_price, tiers, quantity):
@@ -67,38 +66,88 @@ def _serialize_controller_rule(rule, console_type, available_game_id):
     }
 
 
-def _serialize_squad_rules(rules):
+def _serialize_squad_rules(rules, supported_groups=None):
+    supported_groups = supported_groups or SQUAD_MAX_PLAYERS_FALLBACK
     payload = {}
-    for group in sorted(SUPPORTED_SQUAD_GROUPS):
+    for group in sorted(supported_groups.keys()):
         payload[group] = {}
 
     for row in rules:
         group = (row.console_group or "").strip().lower()
-        if group not in SUPPORTED_SQUAD_GROUPS:
+        if group not in supported_groups:
             continue
-        max_players = int(SQUAD_MAX_PLAYERS[group])
+        max_players = int(supported_groups[group])
         if int(row.player_count) < 2 or int(row.player_count) > max_players:
             continue
         payload[group][str(int(row.player_count))] = float(row.discount_percent or 0)
     return payload
 
 
-def _resolve_squad_group_for_game_name(value):
-    text = str(value or "").strip().lower()
-    if "pc" in text:
-        return "pc"
-    return None
+def _resolve_squad_group_for_game_name(value, vendor_id=None):
+    capabilities = resolve_console_capabilities(vendor_id=vendor_id, raw_console=value)
+    if not bool(capabilities.get("supports_multiplayer")):
+        return None
+    group = legacy_console_group(capabilities.get("slug") or value, capabilities=capabilities)
+    if group == "unknown":
+        return str(capabilities.get("slug") or "").strip().lower() or None
+    return group
 
 
 def _get_vendor_squad_base_prices(vendor_id: int):
     rows = AvailableGame.query.filter_by(vendor_id=vendor_id).all()
     result = {}
     for game in rows:
-        group = _resolve_squad_group_for_game_name(game.game_name)
+        group = _resolve_squad_group_for_game_name(game.game_name, vendor_id=vendor_id)
         if group is None or group in result:
             continue
         result[group] = float(game.single_slot_price or 0)
     return result
+
+
+def _default_squad_policy(max_players: int):
+    baseline = {2: 0, 3: 3, 4: 5, 5: 8, 6: 10, 7: 12, 8: 15, 9: 18, 10: 20}
+    max_players = max(2, int(max_players or 2))
+    policy = {}
+    for players in range(2, max_players + 1):
+        if players in baseline:
+            policy[str(players)] = float(baseline[players])
+        else:
+            previous = policy.get(str(players - 1), float(baseline[max(baseline.keys())]))
+            policy[str(players)] = float(min(50.0, previous + 2.0))
+    return policy
+
+
+def _get_vendor_controller_capability_map(vendor_id: int):
+    result = {}
+    for game in AvailableGame.query.filter_by(vendor_id=vendor_id).all():
+        slug = normalize_console_slug(game.game_name)
+        capabilities = resolve_console_capabilities(vendor_id=vendor_id, raw_console=slug)
+        policy = str(capabilities.get("controller_policy") or "").strip().lower()
+        if policy not in SUPPORTED_CONTROLLER_POLICIES:
+            continue
+        key = str(capabilities.get("slug") or slug or game.game_name).strip().lower()
+        if not key or key in result:
+            continue
+        result[key] = {
+            "game": game,
+            "capabilities": capabilities,
+        }
+    return result
+
+
+def _get_vendor_supported_squad_groups(vendor_id: int):
+    groups = {}
+    for game in AvailableGame.query.filter_by(vendor_id=vendor_id).all():
+        capabilities = resolve_console_capabilities(vendor_id=vendor_id, raw_console=game.game_name)
+        if not bool(capabilities.get("supports_multiplayer")):
+            continue
+        group = legacy_console_group(capabilities.get("slug") or game.game_name, capabilities=capabilities)
+        if group == "unknown":
+            group = str(capabilities.get("slug") or "").strip().lower()
+        if not group or group in groups:
+            continue
+        groups[group] = max(2, int(capabilities.get("default_capacity") or 4))
+    return groups or dict(SQUAD_MAX_PLAYERS_FALLBACK)
 
 
 # ================================
@@ -205,7 +254,8 @@ def get_active_pricing(vendor_id):
             current_offer = offers_by_game.get(game.id)
 
             if current_offer:
-                result[game.game_name.lower()] = {
+                pricing_key = _normalize_console_type(game.game_name) or str(game.game_name).strip().lower()
+                result[pricing_key] = {
                     'available_game_id': game.id,
                     'console_type': game.game_name,
                     'price': float(current_offer.offered_price),
@@ -218,7 +268,8 @@ def get_active_pricing(vendor_id):
                     'valid_until': f"{current_offer.end_date} {current_offer.end_time.strftime('%H:%M')}"
                 }
             else:
-                result[game.game_name.lower()] = {
+                pricing_key = _normalize_console_type(game.game_name) or str(game.game_name).strip().lower()
+                result[pricing_key] = {
                     'available_game_id': game.id,
                     'console_type': game.game_name,
                     'price': float(game.single_slot_price),
@@ -519,22 +570,11 @@ def get_controller_pricing(vendor_id):
         if not vendor:
             return jsonify({'success': False, 'message': 'Vendor not found'}), 404
 
-        available_games = AvailableGame.query.filter_by(vendor_id=vendor_id).all()
-        game_map = {_normalize_console_type(game.game_name): game for game in available_games}
+        capability_map = _get_vendor_controller_capability_map(vendor_id)
 
         pricing = {}
-        for console_type in sorted(SUPPORTED_CONTROLLER_TYPES):
-            game = game_map.get(console_type)
-            if not game:
-                pricing[console_type] = {
-                    "console_type": console_type,
-                    "available_game_id": None,
-                    "base_price": 0.0,
-                    "tiers": [],
-                    "is_active": False,
-                    "configured": False,
-                }
-                continue
+        for console_type in sorted(capability_map.keys()):
+            game = capability_map[console_type]["game"]
 
             rule = ControllerPricingRule.query.filter_by(
                 vendor_id=vendor_id,
@@ -591,15 +631,15 @@ def upsert_controller_pricing(vendor_id):
         if not payload_rules:
             return jsonify({'success': False, 'message': 'No controller pricing rules provided'}), 400
 
-        available_games = AvailableGame.query.filter_by(vendor_id=vendor_id).all()
-        game_map = {_normalize_console_type(game.game_name): game for game in available_games}
+        capability_map = _get_vendor_controller_capability_map(vendor_id)
+        game_map = {key: value["game"] for key, value in capability_map.items()}
 
         updated = []
         errors = []
 
         for entry in payload_rules:
             console_type = _normalize_console_type(entry.get("console_type"))
-            if console_type not in SUPPORTED_CONTROLLER_TYPES:
+            if console_type not in game_map:
                 # Ignore unsupported keys like pc/vr so mixed payloads don't fail.
                 continue
 
@@ -706,18 +746,17 @@ def calculate_controller_pricing(vendor_id):
         console_type = _normalize_console_type(request.args.get("console_type"))
         quantity = request.args.get("quantity", type=int)
 
-        if console_type not in SUPPORTED_CONTROLLER_TYPES:
-            return jsonify({'success': False, 'message': 'console_type must be ps5 or xbox'}), 400
+        capability_map = _get_vendor_controller_capability_map(vendor_id)
+        if console_type not in capability_map:
+            supported_types = sorted(capability_map.keys())
+            return jsonify({
+                'success': False,
+                'message': f'console_type must be one of: {", ".join(supported_types)}'
+            }), 400
         if quantity is None or quantity < 0:
             return jsonify({'success': False, 'message': 'quantity must be >= 0'}), 400
 
-        game = next(
-            (
-                g for g in AvailableGame.query.filter_by(vendor_id=vendor_id).all()
-                if _normalize_console_type(g.game_name) == console_type
-            ),
-            None
-        )
+        game = capability_map[console_type]["game"]
 
         if not game:
             return jsonify({'success': False, 'message': f'Console type "{console_type}" not configured'}), 404
@@ -762,6 +801,7 @@ def get_squad_pricing_rules(vendor_id):
         if not vendor:
             return jsonify({'success': False, 'message': 'Vendor not found'}), 404
 
+        supported_groups = _get_vendor_supported_squad_groups(vendor_id)
         rows = (
             SquadPricingRule.query
             .filter_by(vendor_id=vendor_id, is_active=True)
@@ -770,20 +810,23 @@ def get_squad_pricing_rules(vendor_id):
         )
         base_prices = _get_vendor_squad_base_prices(vendor_id)
 
-        pricing = _serialize_squad_rules(rows)
+        pricing = _serialize_squad_rules(rows, supported_groups=supported_groups)
         if not rows:
-            pricing = {
-                group: {str(k): float(v) for k, v in values.items()}
-                for group, values in DEFAULT_SQUAD_POLICY.items()
-            }
+            pricing = {}
+            for group, max_players in supported_groups.items():
+                defaults = DEFAULT_SQUAD_POLICY.get(group)
+                if defaults:
+                    pricing[group] = {str(k): float(v) for k, v in defaults.items() if int(k) <= int(max_players)}
+                else:
+                    pricing[group] = _default_squad_policy(max_players)
 
         return jsonify({
             'success': True,
             'pricing': pricing,
-            'max_players': SQUAD_MAX_PLAYERS,
+            'max_players': supported_groups,
             'base_prices': base_prices,
-            'rule_engine_scope': ['pc'],
-            'note': 'Squad discount rules apply only to PC. PS/Xbox squad pricing is handled by controller pricing.',
+            'rule_engine_scope': sorted(supported_groups.keys()),
+            'note': 'Squad discount rules are capability-driven (supports_multiplayer=true).',
         }), 200
     except Exception as e:
         current_app.logger.error(f"❌ Error fetching squad pricing rules: {str(e)}")
@@ -805,19 +848,20 @@ def upsert_squad_pricing_rules(vendor_id):
                 'message': 'Payload must include pricing object'
             }), 400
         base_prices = _get_vendor_squad_base_prices(vendor_id)
+        supported_groups = _get_vendor_supported_squad_groups(vendor_id)
 
         validated_rows = []
-        rows_by_group = {group: [] for group in SUPPORTED_SQUAD_GROUPS}
+        rows_by_group = {group: [] for group in supported_groups.keys()}
         errors = []
         for group, rules in pricing.items():
             normalized_group = str(group or "").strip().lower()
-            if normalized_group not in SUPPORTED_SQUAD_GROUPS:
+            if normalized_group not in supported_groups:
                 continue
             if not isinstance(rules, dict):
                 errors.append(f'Rules for "{normalized_group}" must be an object')
                 continue
 
-            max_players = int(SQUAD_MAX_PLAYERS[normalized_group])
+            max_players = int(supported_groups[normalized_group])
             for player_key, discount_value in rules.items():
                 try:
                     player_count = int(player_key)
@@ -898,8 +942,8 @@ def upsert_squad_pricing_rules(vendor_id):
         if not validated_rows:
             return jsonify({
                 'success': False,
-                'message': 'At least one PC squad rule is required',
-                'errors': ['Only "pc" console_group is supported for squad discount rules'],
+                'message': 'At least one squad rule is required',
+                'errors': [f'Supported groups: {", ".join(sorted(supported_groups.keys()))}'],
             }), 400
 
         if errors:

@@ -9,6 +9,7 @@ from app.models.additionalDetails import AdditionalDetails
 from app.models.availableGame import AvailableGame, available_game_console  # ✅ Import association table
 from app.models.slot import Slot
 from app.models.booking import Booking
+from app.services.console_catalog_service import normalize_console_slug, resolve_console_capabilities
 from sqlalchemy.sql import text
 from sqlalchemy import tuple_
 from sqlalchemy.exc import ProgrammingError
@@ -497,10 +498,14 @@ class ConsoleService:
         return value is None or str(value).strip() == ""
 
     @staticmethod
-    def validate_console_payload(console_data, hardware_data):
-        console_type = str(console_data.get("consoleType", "")).strip().lower()
-        if console_type not in {"pc", "ps5", "xbox", "vr"}:
-            return "Unsupported consoleType. Expected one of: pc, ps5, xbox, vr."
+    def validate_console_payload(console_data, hardware_data, vendor_id=None):
+        raw_console_type = console_data.get("consoleType")
+        normalized_console_type = normalize_console_slug(raw_console_type)
+        if not normalized_console_type:
+            return "Missing required field: consoleDetails.consoleType"
+        capabilities = resolve_console_capabilities(vendor_id=vendor_id, raw_console=normalized_console_type)
+        if str(capabilities.get("slug") or "unknown").lower() == "unknown":
+            return "Unsupported consoleType. Configure this type in console catalog first."
 
         console_name = console_data.get("modelNumber")
         if ConsoleService._is_blank(console_name):
@@ -519,7 +524,8 @@ class ConsoleService:
                     return "Missing required field: consoleDetails.name (or consoleDetails.modelNumber)"
                 return f"Missing required field: consoleDetails.{field}"
 
-        if console_type == "pc":
+        input_mode = str(capabilities.get("input_mode") or "").lower()
+        if input_mode in {"keyboard_mouse"}:
             pc_required = {
                 "processorType": hardware_data.get("processorType"),
                 "graphicsCard": hardware_data.get("graphicsCard"),
@@ -537,15 +543,19 @@ class ConsoleService:
             }
             for field, value in non_pc_required.items():
                 if ConsoleService._is_blank(value):
-                    return f"Missing required field for {console_type.upper()}: hardwareSpecifications.{field}"
+                    return (
+                        f"Missing required field for {str(capabilities.get('display_name') or normalized_console_type).upper()}: "
+                        f"hardwareSpecifications.{field}"
+                    )
 
         return None
 
     @staticmethod
-    def normalize_hardware_spec(console_type, hardware_data):
-        normalized_type = str(console_type or "").strip().lower()
+    def normalize_hardware_spec(console_type, hardware_data, vendor_id=None):
+        capabilities = resolve_console_capabilities(vendor_id=vendor_id, raw_console=console_type)
+        input_mode = str(capabilities.get("input_mode") or "").lower()
         source = hardware_data or {}
-        if normalized_type == "pc":
+        if input_mode in {"keyboard_mouse"}:
             return {
                 "processorType": source.get("processorType"),
                 "graphicsCard": source.get("graphicsCard"),
@@ -582,13 +592,11 @@ class ConsoleService:
             if vendor_id <= 0:
                 return {"error": "Invalid vendorId. Must be greater than 0."}, 400
 
-            available_game_type = (
+            available_game_type_raw = (
                 data.get("availablegametype")
                 or data.get("availableGameType")
                 or data.get("available_game_type")
             )
-            if not available_game_type:
-                return {"error": "Missing required field: availablegametype"}, 400
 
             console_data = data.get("consoleDetails", {})
             hardware_data = data.get("hardwareSpecifications", {})
@@ -596,7 +604,15 @@ class ConsoleService:
             price_data = data.get("priceAndCost", {})
             additional_data = data.get("additionalDetails", {})
 
-            validation_error = ConsoleService.validate_console_payload(console_data, hardware_data)
+            normalized_console_type = normalize_console_slug(
+                console_data.get("consoleType") or available_game_type_raw
+            )
+            if not normalized_console_type:
+                return {"error": "Missing required field: availablegametype or consoleDetails.consoleType"}, 400
+            capabilities = resolve_console_capabilities(vendor_id=vendor_id, raw_console=normalized_console_type)
+            available_game_type = str(capabilities.get("slug") or normalized_console_type).strip().lower()
+
+            validation_error = ConsoleService.validate_console_payload(console_data, hardware_data, vendor_id=vendor_id)
             if validation_error:
                 return {"error": validation_error}, 400
 
@@ -611,7 +627,7 @@ class ConsoleService:
                 model_number=console_name,
                 serial_number=console_data["serialNumber"],
                 brand=console_data["brand"],
-                console_type=console_data["consoleType"],
+                console_type=available_game_type,
                 release_date=datetime.strptime(console_data["releaseDate"], "%Y-%m-%d").date(),
                 description=console_data["description"],
             )
@@ -619,8 +635,9 @@ class ConsoleService:
             db.session.flush()  # ✅ Get console.id before commit
 
             normalized_hardware = ConsoleService.normalize_hardware_spec(
-                console_data.get("consoleType"),
+                available_game_type,
                 hardware_data,
+                vendor_id=vendor_id,
             )
 
             # ✅ Create Hardware Specifications
@@ -665,9 +682,14 @@ class ConsoleService:
             db.session.add(additional_details)
 
             # ✅ Find or Create AvailableGame
-            available_game = AvailableGame.query.filter_by(
-                vendor_id=vendor_id, game_name=available_game_type
-            ).first()
+            available_game = next(
+                (
+                    game
+                    for game in AvailableGame.query.filter_by(vendor_id=vendor_id).all()
+                    if normalize_console_slug(game.game_name) == available_game_type
+                ),
+                None,
+            )
 
             is_new_game = False
             had_existing_console_mapping = False
