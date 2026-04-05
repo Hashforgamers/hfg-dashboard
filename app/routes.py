@@ -5109,178 +5109,281 @@ def create_payout(vendor_id):
         
         
         
-        # Get vendor's current payment method preferences
-# Updated API routes in dashboard_service.py
+PAYMENT_METHOD_DEFINITIONS = {
+    "pay_at_cafe": {
+        "display_name": "Pay in Cafe",
+        "description": "Customers can pay directly at your cafe (cash/card/UPI).",
+        "aliases": {"pay_at_cafe", "pay at cafe", "pay in cafe", "pay_in_cafe"},
+    },
+    "hash_global_pass": {
+        "display_name": "Hash Global Pass",
+        "description": "Accept Hash global pass payments across partnered cafes.",
+        "aliases": {"hash_global_pass", "hash global pass", "hash", "hash pass"},
+    },
+    "cafe_specific_pass": {
+        "display_name": "Cafe Specific Pass",
+        "description": "Auto-enabled when you add at least one active cafe pass.",
+        "aliases": {"cafe_specific_pass", "cafe specific pass", "vendor pass"},
+    },
+}
+
+
+def _normalize_payment_method_name(name):
+    if not name:
+        return None
+    cleaned = str(name).strip().lower().replace("-", " ").replace("_", " ")
+    for key, meta in PAYMENT_METHOD_DEFINITIONS.items():
+        if cleaned == key.replace("_", " ") or cleaned in meta["aliases"]:
+            return key
+    return None
+
+
+def _ensure_payment_method_catalog():
+    methods_by_name = {m.method_name: m for m in PaymentMethod.query.all()}
+    changed = False
+    for key in PAYMENT_METHOD_DEFINITIONS:
+        if key not in methods_by_name:
+            db.session.add(PaymentMethod(method_name=key))
+            changed = True
+    if changed:
+        db.session.flush()
+
+
+def _method_ids_for_canonical(canonical_name):
+    methods = PaymentMethod.query.all()
+    return [
+        method.pay_method_id
+        for method in methods
+        if _normalize_payment_method_name(method.method_name) == canonical_name
+    ]
+
+
+def _set_vendor_payment_method_state(vendor_id, canonical_name, enabled):
+    method_ids = _method_ids_for_canonical(canonical_name)
+    if not method_ids:
+        return False
+
+    existing_rows = PaymentVendorMap.query.filter(
+        PaymentVendorMap.vendor_id == vendor_id,
+        PaymentVendorMap.pay_method_id.in_(method_ids),
+    ).all()
+    changed = False
+
+    for row in existing_rows:
+        db.session.delete(row)
+        changed = True
+
+    if enabled:
+        canonical_method = PaymentMethod.query.filter_by(method_name=canonical_name).first()
+        if canonical_method is None:
+            canonical_method = PaymentMethod(method_name=canonical_name)
+            db.session.add(canonical_method)
+            db.session.flush()
+
+        db.session.add(
+            PaymentVendorMap(vendor_id=vendor_id, pay_method_id=canonical_method.pay_method_id)
+        )
+        changed = True
+
+    return changed
+
+
+def _sync_cafe_specific_pass_payment_method(vendor_id):
+    active_pass_count = CafePass.query.filter_by(vendor_id=vendor_id, is_active=True).count()
+    should_enable = active_pass_count > 0
+    return _set_vendor_payment_method_state(vendor_id, "cafe_specific_pass", should_enable)
+
+
+def _build_payment_method_response(vendor_id):
+    _ensure_payment_method_catalog()
+    methods = PaymentMethod.query.all()
+    enabled_ids = {
+        row.pay_method_id
+        for row in PaymentVendorMap.query.filter_by(vendor_id=vendor_id).all()
+    }
+
+    rows = []
+    for method in methods:
+        canonical = _normalize_payment_method_name(method.method_name)
+        if canonical not in PAYMENT_METHOD_DEFINITIONS:
+            continue
+        rows.append(
+            {
+                "pay_method_id": method.pay_method_id,
+                "canonical_name": canonical,
+                "is_enabled": method.pay_method_id in enabled_ids,
+            }
+        )
+
+    by_canonical = {}
+    for row in rows:
+        canonical = row["canonical_name"]
+        existing = by_canonical.get(canonical)
+        if existing is None or (
+            row["is_enabled"] and not existing["is_enabled"]
+        ) or row["pay_method_id"] < existing["pay_method_id"]:
+            by_canonical[canonical] = row
+
+    response_rows = []
+    for canonical_name in ["pay_at_cafe", "hash_global_pass", "cafe_specific_pass"]:
+        row = by_canonical.get(canonical_name)
+        if row is None:
+            canonical_method = PaymentMethod.query.filter_by(method_name=canonical_name).first()
+            if canonical_method is None:
+                continue
+            row = {
+                "pay_method_id": canonical_method.pay_method_id,
+                "canonical_name": canonical_name,
+                "is_enabled": False,
+            }
+        meta = PAYMENT_METHOD_DEFINITIONS[canonical_name]
+        response_rows.append(
+            {
+                "pay_method_id": row["pay_method_id"],
+                "method_name": canonical_name,
+                "display_name": meta["display_name"],
+                "description": meta["description"],
+                "is_enabled": row["is_enabled"],
+                "is_auto_managed": canonical_name == "cafe_specific_pass",
+            }
+        )
+    return response_rows
+
 
 @dashboard_service.route('/vendor/<int:vendor_id>/paymentMethods', methods=['GET'])
 def get_all_payment_methods_for_vendor(vendor_id):
-    """Get ALL available payment methods from payment_method table and show vendor's selections"""
+    """Get supported payment methods and vendor enablement state."""
     try:
-        # Check if vendor exists
         vendor = Vendor.query.get(vendor_id)
         if not vendor:
-            return jsonify({'error': 'Vendor not found'}), 404
-        
-        # Get ALL payment methods from payment_method table (available for all vendors)
-        all_methods = PaymentMethod.query.all()
-        
-        if not all_methods:
-            return jsonify({
-                'success': False,
-                'message': 'No payment methods available in system',
-                'payment_methods': []
-            }), 200
-        
-        # Get vendor's currently enabled payment methods
-        vendor_selected_methods = db.session.query(PaymentVendorMap.pay_method_id).filter_by(vendor_id=vendor_id).all()
-        enabled_method_ids = {method[0] for method in vendor_selected_methods}
-        
-        # Prepare response with all available methods
-        methods_data = []
-        for method in all_methods:
-            display_name = 'Pay at Cafe' if method.method_name == 'Pay at Cafe' else 'Hash'
-            description = (
-                'Customers pay directly at your cafe using cash or card' 
-                if method.method_name == 'pay_at_cafe' 
-                else 'Customers can use Hash Pass for seamless digital payments'
-            )
-            
-            methods_data.append({
-                'pay_method_id': method.pay_method_id,
-                'method_name': method.method_name,
-                'display_name': display_name,
-                'description': description,
-                'is_enabled': method.pay_method_id in enabled_method_ids  # true if vendor has enabled this method
-            })
-        
+            return jsonify({'success': False, 'error': 'Vendor not found'}), 404
+
+        changed = _sync_cafe_specific_pass_payment_method(vendor_id)
+        if changed:
+            db.session.commit()
+
+        methods_data = _build_payment_method_response(vendor_id)
+        enabled_count = sum(1 for method in methods_data if method.get("is_enabled"))
+
         return jsonify({
             'success': True,
             'vendor_id': vendor_id,
             'payment_methods': methods_data,
             'total_available_methods': len(methods_data),
-            'vendor_enabled_methods': len(enabled_method_ids)
+            'vendor_enabled_methods': enabled_count,
         }), 200
-        
     except Exception as e:
         current_app.logger.error(f"Error fetching payment methods for vendor {vendor_id}: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+
 @dashboard_service.route('/vendor/<int:vendor_id>/paymentMethods/toggle', methods=['POST'])
 def toggle_payment_method_for_vendor(vendor_id):
-    """Toggle payment method for vendor - registers/unregisters vendor in payment_vendor_map"""
+    """Toggle manually managed payment methods for vendor."""
     try:
-        data = request.get_json()
-        
-        if not data or 'pay_method_id' not in data:
+        data = request.get_json() or {}
+        pay_method_id = data.get('pay_method_id')
+        if pay_method_id is None:
             return jsonify({'success': False, 'error': 'pay_method_id is required'}), 400
-        
-        pay_method_id = data['pay_method_id']
-        
-        # Validate vendor exists
+
         vendor = Vendor.query.get(vendor_id)
         if not vendor:
             return jsonify({'success': False, 'error': 'Vendor not found'}), 404
-        
-        # Validate payment method exists
+
         payment_method = PaymentMethod.query.get(pay_method_id)
         if not payment_method:
             return jsonify({'success': False, 'error': 'Payment method not found'}), 404
-        
-        # Check if vendor is already registered for this payment method
-        existing_registration = PaymentVendorMap.query.filter_by(
-            vendor_id=vendor_id, 
-            pay_method_id=pay_method_id
-        ).first()
-        
-        if existing_registration:
-            # Vendor is registered - unregister (disable)
-            db.session.delete(existing_registration)
-            action = 'disabled'
-            is_enabled = False
-        else:
-            # Vendor is not registered - register (enable)
-            new_registration = PaymentVendorMap(
-                vendor_id=vendor_id,
-                pay_method_id=pay_method_id
-            )
-            db.session.add(new_registration)
-            action = 'enabled'
-            is_enabled = True
-        
+
+        canonical_name = _normalize_payment_method_name(payment_method.method_name)
+        if canonical_name not in PAYMENT_METHOD_DEFINITIONS:
+            return jsonify({'success': False, 'error': 'Unsupported payment method'}), 400
+        if canonical_name == "cafe_specific_pass":
+            return jsonify({
+                'success': False,
+                'error': 'Cafe Specific Pass is auto-managed by vendor passes',
+            }), 400
+
+        _ensure_payment_method_catalog()
+        selected_ids = _method_ids_for_canonical(canonical_name)
+        current_enabled = PaymentVendorMap.query.filter(
+            PaymentVendorMap.vendor_id == vendor_id,
+            PaymentVendorMap.pay_method_id.in_(selected_ids),
+        ).first() is not None
+
+        next_enabled = not current_enabled
+        _set_vendor_payment_method_state(vendor_id, canonical_name, next_enabled)
+        _sync_cafe_specific_pass_payment_method(vendor_id)
         db.session.commit()
-        
-        display_name = 'Pay at Cafe' if payment_method.method_name == 'pay_at_cafe' else 'Hash'
-        
+
+        meta = PAYMENT_METHOD_DEFINITIONS[canonical_name]
+        action = 'enabled' if next_enabled else 'disabled'
+        canonical_method = PaymentMethod.query.filter_by(method_name=canonical_name).first()
+
         return jsonify({
             'success': True,
-            'message': f'{display_name} {action} successfully',
+            'message': f'{meta["display_name"]} {action} successfully',
             'data': {
                 'vendor_id': vendor_id,
-                'pay_method_id': pay_method_id,
-                'method_name': payment_method.method_name,
-                'display_name': display_name,
-                'is_enabled': is_enabled,
+                'pay_method_id': canonical_method.pay_method_id if canonical_method else pay_method_id,
+                'method_name': canonical_name,
+                'display_name': meta["display_name"],
+                'is_enabled': next_enabled,
                 'action': action
             }
         }), 200
-        
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error toggling payment method for vendor {vendor_id}: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-# Get payment methods statistics for vendor
+
 @dashboard_service.route('/vendor/<int:vendor_id>/payment-methods/stats', methods=['GET'])
 def get_payment_method_stats(vendor_id):
-    """Get payment method usage statistics for vendor"""
+    """Get payment method usage statistics for vendor."""
     try:
-        # Get vendor's enabled payment methods
-        enabled_methods = db.session.query(
-            PaymentMethod.method_name,
-            PaymentMethod.pay_method_id
-        ).join(
-            PaymentVendorMap, PaymentMethod.pay_method_id == PaymentVendorMap.pay_method_id
-        ).filter(PaymentVendorMap.vendor_id == vendor_id).all()
-        
-        # Get transaction counts by payment method for this vendor
-        transaction_stats = db.session.query(
+        methods = _build_payment_method_response(vendor_id)
+        tx_rows = db.session.query(
             Transaction.mode_of_payment,
             func.count(Transaction.id).label('count'),
             func.sum(Transaction.amount).label('total_amount')
-        ).filter(
-            Transaction.vendor_id == vendor_id
-        ).group_by(Transaction.mode_of_payment).all()
-        
-        # Format response
-        method_stats = []
-        for method_name, method_id in enabled_methods:
-            display_name = 'Pay at Cafe' if method_name == 'pay_at_cafe' else 'Hash'
-            
-            # Find matching transaction stats
+        ).filter(Transaction.vendor_id == vendor_id).group_by(Transaction.mode_of_payment).all()
+
+        tx_count_by_mode = {str(row.mode_of_payment or '').lower(): int(row.count or 0) for row in tx_rows}
+        tx_amount_by_mode = {str(row.mode_of_payment or '').lower(): float(row.total_amount or 0) for row in tx_rows}
+
+        stats = []
+        for method in methods:
+            mode_key = method["method_name"]
             usage_count = 0
-            total_revenue = 0
-            for stat in transaction_stats:
-                if (method_name == 'pay_at_cafe' and stat.mode_of_payment in ['cash', 'card']) or \
-                   (method_name == 'hash' and stat.mode_of_payment == 'hash'):
-                    usage_count += stat.count
-                    total_revenue += float(stat.total_amount or 0)
-            
-            method_stats.append({
-                'pay_method_id': method_id,
-                'method_name': method_name,
-                'display_name': display_name,
+            total_revenue = 0.0
+            if mode_key == "pay_at_cafe":
+                for payment_mode in ("cash", "card", "upi", "pay_at_cafe"):
+                    usage_count += tx_count_by_mode.get(payment_mode, 0)
+                    total_revenue += tx_amount_by_mode.get(payment_mode, 0.0)
+            elif mode_key == "hash_global_pass":
+                for payment_mode in ("hash", "hash_global_pass"):
+                    usage_count += tx_count_by_mode.get(payment_mode, 0)
+                    total_revenue += tx_amount_by_mode.get(payment_mode, 0.0)
+            elif mode_key == "cafe_specific_pass":
+                for payment_mode in ("pass", "cafe_specific_pass", "vendor_pass"):
+                    usage_count += tx_count_by_mode.get(payment_mode, 0)
+                    total_revenue += tx_amount_by_mode.get(payment_mode, 0.0)
+
+            stats.append({
+                'pay_method_id': method["pay_method_id"],
+                'method_name': method["method_name"],
+                'display_name': method["display_name"],
                 'usage_count': usage_count,
                 'total_revenue': total_revenue,
-                'is_enabled': True
+                'is_enabled': method["is_enabled"],
             })
-        
+
         return jsonify({
             'success': True,
             'vendor_id': vendor_id,
-            'payment_method_stats': method_stats,
-            'total_enabled_methods': len(method_stats)
+            'payment_method_stats': stats,
+            'total_enabled_methods': sum(1 for method in stats if method.get("is_enabled")),
         }), 200
-        
     except Exception as e:
         current_app.logger.error(f"Error fetching payment method stats for vendor {vendor_id}: {str(e)}")
         return jsonify({'error': str(e)}), 500
@@ -5384,6 +5487,35 @@ def get_vendor_passes(vendor_id):
         return jsonify({'error': str(e)}), 500
 
 
+@dashboard_service.route('/vendor/<int:vendor_id>/passes/by-mode', methods=['GET'])
+def get_vendor_passes_by_mode(vendor_id):
+    """Get active vendor passes grouped by mode for frontend consumers."""
+    try:
+        vendor = Vendor.query.get(vendor_id)
+        if not vendor:
+            return jsonify({'success': False, 'error': 'Vendor not found'}), 404
+
+        passes = CafePass.query.filter_by(vendor_id=vendor_id, is_active=True).all()
+        hour_based_passes = [p.to_dict() for p in passes if p.pass_mode == 'hour_based']
+        date_based_passes = [p.to_dict() for p in passes if p.pass_mode == 'date_based']
+
+        return jsonify({
+            'success': True,
+            'vendor_id': vendor_id,
+            'hour_based_passes': hour_based_passes,
+            'date_based_passes': date_based_passes,
+            'all_passes': [p.to_dict() for p in passes],
+            'counts': {
+                'hour_based': len(hour_based_passes),
+                'date_based': len(date_based_passes),
+                'total': len(passes),
+            },
+        }), 200
+    except Exception as e:
+        current_app.logger.error(f"Error fetching pass-by-mode for vendor {vendor_id}: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @dashboard_service.route('/vendor/<int:vendor_id>/passes', methods=['POST'])  # ✅ FIXED: Removed /create
 def create_vendor_pass(vendor_id):
     """Create new pass (date-based or hour-based)"""
@@ -5430,6 +5562,8 @@ def create_vendor_pass(vendor_id):
         )
         
         db.session.add(new_pass)
+        db.session.flush()
+        _sync_cafe_specific_pass_payment_method(vendor_id)
         db.session.commit()
         try:
             socketio.emit("passes_updated", {"vendor_id": vendor_id}, room=f"vendor_{vendor_id}")
@@ -5489,6 +5623,8 @@ def update_vendor_pass(vendor_id, pass_id):
             if 'hours_per_slot' in data:
                 cafe_pass.hours_per_slot = float(data['hours_per_slot']) if data['hours_per_slot'] else None
         
+        db.session.flush()
+        _sync_cafe_specific_pass_payment_method(vendor_id)
         db.session.commit()
         try:
             socketio.emit("passes_updated", {"vendor_id": vendor_id}, room=f"vendor_{vendor_id}")
@@ -5522,6 +5658,8 @@ def delete_vendor_pass(vendor_id, pass_id):
             return jsonify({'error': 'Pass not found'}), 404
         
         cafe_pass.is_active = False
+        db.session.flush()
+        _sync_cafe_specific_pass_payment_method(vendor_id)
         db.session.commit()
         try:
             socketio.emit("passes_updated", {"vendor_id": vendor_id}, room=f"vendor_{vendor_id}")
