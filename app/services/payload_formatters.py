@@ -39,6 +39,8 @@ def format_current_slot_item(*, row: Dict[str, Any]) -> Dict[str, Any]:
         "consoleId": row.get("console_id"),
         "username": row.get("username"),
         "userId": row.get("user_id"),
+        "customer_email": row.get("customer_email"),
+        "customer_phone": row.get("customer_phone"),
         "game_id": row.get("game_id"),
         "date": _to_date_str(date_val),  # ensure string
         "slot_price": row.get("single_slot_price"),

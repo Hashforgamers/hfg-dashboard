@@ -1397,6 +1397,8 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
                 SELECT
                     COALESCE(b.username, u.name) AS username,
                     b.user_id,
+                    uc.email AS customer_email,
+                    uc.phone AS customer_phone,
                     b.start_time,
                     b.end_time,
                     b.date,
@@ -1415,6 +1417,9 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
                 JOIN available_games ag ON b.game_id = ag.id
                 JOIN bookings d ON b.book_id = d.id
                 LEFT JOIN users u ON b.user_id = u.id
+                LEFT JOIN contact_info uc
+                  ON uc.parent_id = b.user_id
+                 AND uc.parent_type = 'user'
                 LEFT JOIN consoles c ON c.id = b.console_id
                 WHERE b.book_id = :booking_id AND b.game_id = :game_id
             """)
@@ -1453,6 +1458,8 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
                     "console_id": b_row["console_id"],
                     "username": b_row["username"],
                     "user_id": b_row["user_id"],
+                    "customer_email": b_row.get("customer_email"),
+                    "customer_phone": b_row.get("customer_phone"),
                     "game_id": b_row["game_id"],
                     "date": b_row["date"],
                     "single_slot_price": b_row["single_slot_price"],
@@ -1952,6 +1959,8 @@ def kiosk_start_session():
                         SELECT
                             COALESCE(b.username, u.name) AS username,
                             b.user_id,
+                            uc.email AS customer_email,
+                            uc.phone AS customer_phone,
                             b.start_time,
                             b.end_time,
                             b.date,
@@ -1970,6 +1979,9 @@ def kiosk_start_session():
                         JOIN available_games ag ON b.game_id = ag.id
                         JOIN bookings d ON b.book_id = d.id
                         LEFT JOIN users u ON b.user_id = u.id
+                        LEFT JOIN contact_info uc
+                          ON uc.parent_id = b.user_id
+                         AND uc.parent_type = 'user'
                         LEFT JOIN consoles c ON c.id = b.console_id
                         WHERE b.book_id = :booking_id AND b.game_id = :game_id
                     """)
@@ -2009,6 +2021,8 @@ def kiosk_start_session():
                         "console_id": b_row["console_id"],
                         "username": b_row["username"],
                         "user_id": b_row["user_id"],
+                        "customer_email": b_row.get("customer_email"),
+                        "customer_phone": b_row.get("customer_phone"),
                         "game_id": b_row["game_id"],
                         "date": b_row["date"],
                         "single_slot_price": b_row["single_slot_price"],
@@ -2728,6 +2742,8 @@ def get_landing_page_vendor(vendor_id):
             SELECT 
                 COALESCE(b.username, u.name) AS username, 
                 b.user_id, 
+                uc.email AS customer_email,
+                uc.phone AS customer_phone,
                 b.start_time, 
                 b.end_time, 
                 b.date, 
@@ -2749,6 +2765,9 @@ def get_landing_page_vendor(vendor_id):
             JOIN available_games ag ON b.game_id = ag.id
             JOIN bookings d ON b.book_id = d.id
             LEFT JOIN users u ON b.user_id = u.id
+            LEFT JOIN contact_info uc
+              ON uc.parent_id = b.user_id
+             AND uc.parent_type = 'user'
             LEFT JOIN {availability_table} ca
               ON ca.vendor_id = :vendor_id
              AND ca.console_id = b.console_id
@@ -2868,6 +2887,8 @@ def get_landing_page_vendor(vendor_id):
                 "bookingId": row.book_id,
                 "username": row.username,
                 "userId":row.user_id,
+                "customer_email": row.customer_email,
+                "customer_phone": row.customer_phone,
                 "game": row.game_name,
                 "consoleType": row.console_name or f"Console-{row.console_id}",
                 "consoleId": row.console_id,
@@ -2907,6 +2928,8 @@ def get_landing_page_vendor(vendor_id):
                 "consoleCategory": row.console_type,
                 "username": row.username,
                 "userId":row.user_id,
+                "customer_email": row.customer_email,
+                "customer_phone": row.customer_phone,
                 "game_id":row.game_id,
                 "date":row.date,
                 "slot_price": row.single_slot_price,
