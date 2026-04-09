@@ -33,6 +33,7 @@ RBAC_ROUTE_RULES = [
     ("PATCH", r"^/api/vendor/(?P<vendor_id>\d+)/extra-services/category/\d+/menu/\d+/inventory$", "extras.manage"),
 
     ("GET", r"^/api/vendor/(?P<vendor_id>\d+)/passes$", "passes.manage"),
+    ("GET", r"^/api/vendor/(?P<vendor_id>\d+)/passes/by-mode$", "passes.manage"),
     ("POST", r"^/api/vendor/(?P<vendor_id>\d+)/passes$", "passes.manage"),
     ("PUT", r"^/api/vendor/(?P<vendor_id>\d+)/passes/\d+$", "passes.manage"),
     ("DELETE", r"^/api/vendor/(?P<vendor_id>\d+)/passes/\d+$", "passes.manage"),
