@@ -86,6 +86,11 @@ LANDING_UPCOMING_DAYS_AHEAD = 7
 CONSOLES_CACHE_TTL_SEC = 10
 _vendor_consoles_cache = {}
 _vendor_consoles_cache_lock = threading.Lock()
+VENDOR_PASSES_CACHE_TTL_SEC = int(os.getenv("VENDOR_PASSES_CACHE_TTL_SEC", "30"))
+_vendor_passes_cache = {}
+_vendor_passes_cache_lock = threading.Lock()
+_vendor_exists_cache = {}
+_vendor_exists_cache_lock = threading.Lock()
 REQUIRED_VENDOR_DOCUMENT_TYPES = [
     "business_registration",
     "owner_identification_proof",
@@ -100,6 +105,43 @@ def _invalidate_vendor_caches(vendor_id: int):
         _landing_page_cache.pop(key, None)
     with _vendor_consoles_cache_lock:
         _vendor_consoles_cache.pop(key, None)
+    with _vendor_passes_cache_lock:
+        _vendor_passes_cache.pop((int(vendor_id), False), None)
+        _vendor_passes_cache.pop((int(vendor_id), True), None)
+    with _vendor_exists_cache_lock:
+        _vendor_exists_cache.pop(int(vendor_id), None)
+
+
+def _parse_bool_flag(raw_value, default=False):
+    if raw_value is None:
+        return bool(default)
+    if isinstance(raw_value, bool):
+        return raw_value
+    if isinstance(raw_value, (int, float)):
+        return raw_value != 0
+    return str(raw_value).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _vendor_exists(vendor_id: int) -> bool:
+    vendor_id = int(vendor_id)
+    now_ts = time.time()
+    with _vendor_exists_cache_lock:
+        cached = _vendor_exists_cache.get(vendor_id)
+        if cached and cached.get("expires_at", 0) > now_ts:
+            return bool(cached.get("exists"))
+
+    exists_row = db.session.execute(
+        text("SELECT 1 AS ok FROM vendors WHERE id = :vendor_id LIMIT 1"),
+        {"vendor_id": vendor_id},
+    ).fetchone()
+    exists_flag = bool(exists_row)
+
+    with _vendor_exists_cache_lock:
+        _vendor_exists_cache[vendor_id] = {
+            "exists": exists_flag,
+            "expires_at": now_ts + 300,  # 5 min vendor existence cache
+        }
+    return exists_flag
 
 
 def _ensure_vendor_notification_preferences_table() -> None:
@@ -5496,47 +5538,100 @@ def get_booking_details(booking_id):
 
 @dashboard_service.route('/vendor/<int:vendor_id>/passes', methods=['GET'])
 def get_vendor_passes(vendor_id):
-    """Get all passes for a vendor (both date-based and hour-based)"""
+    """Get vendor passes grouped for frontend (hour/date based)."""
     try:
-        from app.models.passModels import CafePass
-        
-        passes = CafePass.query.filter_by(vendor_id=vendor_id, is_active=True).all()
-        
-        return jsonify({
-            'passes': [p.to_dict() for p in passes]
-        }), 200
+        include_inactive = _parse_bool_flag(request.args.get("include_inactive"), default=False)
+        cache_key = (int(vendor_id), bool(include_inactive))
+        now_ts = time.time()
+
+        with _vendor_passes_cache_lock:
+            cached = _vendor_passes_cache.get(cache_key)
+            if cached and cached.get("expires_at", 0) > now_ts:
+                return jsonify(cached["payload"]), 200
+
+        if not _vendor_exists(vendor_id):
+            return jsonify({'success': False, 'error': 'Vendor not found'}), 404
+
+        rows = db.session.execute(
+            text(
+                """
+                SELECT
+                    cp.id,
+                    cp.vendor_id,
+                    cp.pass_type_id,
+                    cp.name,
+                    cp.price,
+                    cp.description,
+                    cp.is_active,
+                    cp.pass_mode,
+                    cp.days_valid,
+                    cp.total_hours,
+                    cp.hour_calculation_mode,
+                    cp.hours_per_slot,
+                    pt.name AS pass_type
+                FROM cafe_passes cp
+                LEFT JOIN pass_types pt ON pt.id = cp.pass_type_id
+                WHERE cp.vendor_id = :vendor_id
+                  AND (:include_inactive = TRUE OR cp.is_active = TRUE)
+                ORDER BY cp.id DESC
+                """
+            ),
+            {"vendor_id": int(vendor_id), "include_inactive": bool(include_inactive)},
+        ).fetchall()
+
+        serialized_passes = []
+        for row in rows:
+            m = getattr(row, "_mapping", row)
+            serialized_passes.append({
+                "id": int(m["id"]),
+                "vendor_id": int(m["vendor_id"]) if m["vendor_id"] is not None else None,
+                "pass_type_id": int(m["pass_type_id"]) if m["pass_type_id"] is not None else None,
+                "name": m["name"],
+                "price": float(m["price"]) if m["price"] is not None else None,
+                "description": m["description"],
+                "is_active": bool(m["is_active"]),
+                "pass_mode": m["pass_mode"],
+                "days_valid": int(m["days_valid"]) if m["days_valid"] is not None else None,
+                "total_hours": float(m["total_hours"]) if m["total_hours"] is not None else None,
+                "hour_calculation_mode": m["hour_calculation_mode"],
+                "hours_per_slot": float(m["hours_per_slot"]) if m["hours_per_slot"] is not None else None,
+                "pass_type": m["pass_type"],
+            })
+
+        hour_based_passes = [p for p in serialized_passes if str(p.get("pass_mode") or "").strip().lower() == "hour_based"]
+        date_based_passes = [p for p in serialized_passes if str(p.get("pass_mode") or "").strip().lower() != "hour_based"]
+
+        payload = {
+            'success': True,
+            'vendor_id': vendor_id,
+            'include_inactive': include_inactive,
+            'hour_based_passes': hour_based_passes,
+            'date_based_passes': date_based_passes,
+            'passes': serialized_passes,
+            'all_passes': serialized_passes,  # backward compatible alias
+            'counts': {
+                'hour_based': len(hour_based_passes),
+                'date_based': len(date_based_passes),
+                'total': len(serialized_passes),
+            },
+        }
+
+        with _vendor_passes_cache_lock:
+            _vendor_passes_cache[cache_key] = {
+                "payload": payload,
+                "expires_at": now_ts + max(VENDOR_PASSES_CACHE_TTL_SEC, 1),
+            }
+
+        return jsonify(payload), 200
     except Exception as e:
         current_app.logger.error(f"Error fetching passes for vendor {vendor_id}: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @dashboard_service.route('/vendor/<int:vendor_id>/passes/by-mode', methods=['GET'])
 def get_vendor_passes_by_mode(vendor_id):
-    """Get active vendor passes grouped by mode for frontend consumers."""
-    try:
-        vendor = Vendor.query.get(vendor_id)
-        if not vendor:
-            return jsonify({'success': False, 'error': 'Vendor not found'}), 404
-
-        passes = CafePass.query.filter_by(vendor_id=vendor_id, is_active=True).all()
-        hour_based_passes = [p.to_dict() for p in passes if p.pass_mode == 'hour_based']
-        date_based_passes = [p.to_dict() for p in passes if p.pass_mode == 'date_based']
-
-        return jsonify({
-            'success': True,
-            'vendor_id': vendor_id,
-            'hour_based_passes': hour_based_passes,
-            'date_based_passes': date_based_passes,
-            'all_passes': [p.to_dict() for p in passes],
-            'counts': {
-                'hour_based': len(hour_based_passes),
-                'date_based': len(date_based_passes),
-                'total': len(passes),
-            },
-        }), 200
-    except Exception as e:
-        current_app.logger.error(f"Error fetching pass-by-mode for vendor {vendor_id}: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+    """Backward-compatible alias of /vendor/<vendor_id>/passes."""
+    return get_vendor_passes(vendor_id)
 
 
 @dashboard_service.route('/vendor/<int:vendor_id>/passes', methods=['POST'])  # ✅ FIXED: Removed /create
@@ -5588,6 +5683,7 @@ def create_vendor_pass(vendor_id):
         db.session.flush()
         _sync_cafe_specific_pass_payment_method(vendor_id)
         db.session.commit()
+        _invalidate_vendor_caches(vendor_id)
         try:
             socketio.emit("passes_updated", {"vendor_id": vendor_id}, room=f"vendor_{vendor_id}")
         except Exception:
@@ -5649,6 +5745,7 @@ def update_vendor_pass(vendor_id, pass_id):
         db.session.flush()
         _sync_cafe_specific_pass_payment_method(vendor_id)
         db.session.commit()
+        _invalidate_vendor_caches(vendor_id)
         try:
             socketio.emit("passes_updated", {"vendor_id": vendor_id}, room=f"vendor_{vendor_id}")
         except Exception:
@@ -5684,6 +5781,7 @@ def delete_vendor_pass(vendor_id, pass_id):
         db.session.flush()
         _sync_cafe_specific_pass_payment_method(vendor_id)
         db.session.commit()
+        _invalidate_vendor_caches(vendor_id)
         try:
             socketio.emit("passes_updated", {"vendor_id": vendor_id}, room=f"vendor_{vendor_id}")
         except Exception:
