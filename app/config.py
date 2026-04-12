@@ -1,7 +1,9 @@
 import os
 
 class Config:
+    APP_ENV = os.getenv("APP_ENV", os.getenv("FLASK_ENV", "development")).lower()
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-change-me")
+    JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "Hash@2025")
     DEBUG = os.getenv("FLASK_DEBUG", "false").lower() == "true"
     RBAC_ENFORCEMENT = os.getenv("RBAC_ENFORCEMENT", "false").lower() == "true"
 
@@ -38,3 +40,9 @@ class Config:
     SUBSCRIPTION_TEST_PRICE = float(os.getenv("SUBSCRIPTION_TEST_PRICE", "1"))
     SUBSCRIPTION_TEST_DURATION_DAYS = int(os.getenv("SUBSCRIPTION_TEST_DURATION_DAYS", "1"))
     ENABLE_DEBUG_SUBSCRIPTION_ENDPOINTS = os.getenv("ENABLE_DEBUG_SUBSCRIPTION_ENDPOINTS", "false").lower() == "true"
+
+    CORS_ALLOWED_ORIGINS = os.getenv("CORS_ALLOWED_ORIGINS", "*")
+    TRUST_PROXY = os.getenv("TRUST_PROXY", "true").lower() in ("true", "1", "t", "yes", "y")
+    API_ENABLE_TIMING_HEADERS = os.getenv("API_ENABLE_TIMING_HEADERS", "true").lower() in ("true", "1", "t", "yes", "y")
+    API_SLOW_REQUEST_MS = int(os.getenv("API_SLOW_REQUEST_MS", "120") or 120)
+    API_DEFAULT_CACHE_CONTROL = os.getenv("API_DEFAULT_CACHE_CONTROL", "no-store")

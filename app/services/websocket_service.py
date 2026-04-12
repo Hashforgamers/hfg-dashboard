@@ -24,8 +24,11 @@ from app.models.booking import Booking
 # Dashboard Socket.IO server (clients connect here)
 # -----------------------------------------------------------------------------
 socketio = SocketIO(
-    cors_allowed_origins="*",
+    cors_allowed_origins=os.getenv("CORS_ALLOWED_ORIGINS", "*"),
     async_mode="eventlet",  # gevent/eventlet auto if patched; falls back to threading
+    ping_interval=int(os.getenv("SOCKETIO_PING_INTERVAL_SEC", "25") or 25),
+    ping_timeout=int(os.getenv("SOCKETIO_PING_TIMEOUT_SEC", "60") or 60),
+    max_http_buffer_size=int(os.getenv("SOCKETIO_MAX_HTTP_BUFFER_BYTES", str(1_000_000)) or 1_000_000),
 )
 
 # -----------------------------------------------------------------------------
