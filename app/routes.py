@@ -314,6 +314,42 @@ def _normalize_lifecycle(book_status: str, row_date, start_time=None, end_time=N
             return "completed"
     return status
 
+
+def _normalize_status_key(value):
+    return str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+
+
+def _derive_booking_outcome(lifecycle_status: str, booking_record_status: str):
+    normalized_lifecycle = _normalize_status_key(lifecycle_status)
+    normalized_record = _normalize_status_key(booking_record_status)
+    candidates = [normalized_record, normalized_lifecycle]
+
+    if any(
+        item in {"no_show", "noshow", "discarded", "absent", "missed"}
+        for item in candidates
+    ):
+        return "no_show", "No Show", "No Show"
+
+    not_played_reason_map = {
+        "cancelled": "Cancelled",
+        "canceled": "Cancelled",
+        "rejected": "Rejected",
+        "verification_failed": "Payment Failed",
+        "payment_failed": "Payment Failed",
+        "failed": "Failed",
+        "expired": "Expired",
+        "void": "Voided",
+        "declined": "Declined",
+        "refunded": "Refunded",
+        "not_played": "Not Played",
+    }
+    for item in candidates:
+        if item in not_played_reason_map:
+            return "not_played", "Not Played", not_played_reason_map[item]
+
+    # Default terminal outcome for historical sessions.
+    return "played", "Played", "Completed"
+
 @dashboard_service.route('/transactionReport/<int:vendor_id>/<string:to_date>/<string:from_date>', methods=['GET'])
 def get_transaction_report(to_date, from_date, vendor_id):
     try:
@@ -2900,6 +2936,11 @@ def get_landing_page_vendor(vendor_id):
                 lifecycle_status = "current"
             session_identifier = _build_session_identifier(row.book_id, row.date, row.start_time, row.end_time)
             lifecycle_step = LIFECYCLE_ORDER.get(lifecycle_status, 1)
+            booking_record_status = str(getattr(row, "status", "") or "").strip().lower()
+            outcome_key, outcome_label, outcome_reason = _derive_booking_outcome(
+                lifecycle_status=lifecycle_status,
+                booking_record_status=booking_record_status,
+            )
             squad_details = row.squad_details if isinstance(row.squad_details, dict) else {}
             squad_members = squad_members_by_booking.get(int(row.book_id), [])
             squad_enabled = bool(squad_details.get("enabled")) or len(squad_members) > 1
@@ -2947,7 +2988,10 @@ def get_landing_page_vendor(vendor_id):
                 "lifecycleStatus": lifecycle_status,
                 "lifecycleStep": lifecycle_step,
                 "sessionIdentifier": session_identifier,
-                "bookingRecordStatus": str(getattr(row, "status", "") or "").strip().lower(),
+                "bookingRecordStatus": booking_record_status,
+                "sessionOutcome": outcome_key,
+                "sessionOutcomeLabel": outcome_label,
+                "sessionOutcomeReason": outcome_reason,
                 "squadEnabled": squad_enabled,
                 "squadPlayerCount": max(1, squad_player_count),
                 "squadMembers": squad_members,
@@ -2979,7 +3023,10 @@ def get_landing_page_vendor(vendor_id):
                 "lifecycleStatus": lifecycle_status,
                 "lifecycleStep": lifecycle_step,
                 "sessionIdentifier": session_identifier,
-                "bookingRecordStatus": str(getattr(row, "status", "") or "").strip().lower(),
+                "bookingRecordStatus": booking_record_status,
+                "sessionOutcome": outcome_key,
+                "sessionOutcomeLabel": outcome_label,
+                "sessionOutcomeReason": outcome_reason,
                 "squadEnabled": squad_enabled,
                 "squadPlayerCount": max(1, squad_player_count),
                 "squadMembers": squad_members,
@@ -2987,7 +3034,6 @@ def get_landing_page_vendor(vendor_id):
                 "squadDetails": squad_details,
             }
 
-            booking_record_status = str(getattr(row, "status", "") or "").strip().lower()
             is_terminal = booking_record_status in terminal_booking_statuses
 
             if is_terminal:
