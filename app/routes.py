@@ -5686,7 +5686,7 @@ def create_vendor_pass(vendor_id):
     try:
         from app.models.passModels import CafePass, PassType
         
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
         
         # Validate required fields for BOTH types
         required = ['name', 'price', 'pass_mode', 'days_valid']  # ✅ days_valid required for both
@@ -5698,16 +5698,17 @@ def create_vendor_pass(vendor_id):
             return jsonify({'error': 'Invalid pass_mode. Must be date_based or hour_based'}), 400
         
         # Validate hour-based specific fields
+        hour_calculation_mode = None
         if pass_mode == 'hour_based':
-            required_hour = ['total_hours', 'hour_calculation_mode']
-            if not all(k in data for k in required_hour):
-                return jsonify({'error': 'total_hours and hour_calculation_mode required for hour_based pass'}), 400
-            
-            # Validate calculation mode
-            if data['hour_calculation_mode'] not in ['actual_duration', 'vendor_config']:
+            # Keep backward compatibility: if frontend/client does not send mode, default to actual_duration.
+            if 'total_hours' not in data:
+                return jsonify({'error': 'total_hours required for hour_based pass'}), 400
+
+            hour_calculation_mode = data.get('hour_calculation_mode') or 'actual_duration'
+            if hour_calculation_mode not in ['actual_duration', 'vendor_config']:
                 return jsonify({'error': 'hour_calculation_mode must be actual_duration or vendor_config'}), 400
-            
-            if data['hour_calculation_mode'] == 'vendor_config' and 'hours_per_slot' not in data:
+
+            if hour_calculation_mode == 'vendor_config' and 'hours_per_slot' not in data:
                 return jsonify({'error': 'hours_per_slot required when hour_calculation_mode is vendor_config'}), 400
         
         # Create pass
@@ -5720,7 +5721,7 @@ def create_vendor_pass(vendor_id):
             pass_mode=pass_mode,
             days_valid=int(data['days_valid']),  # ✅ Always required
             total_hours=float(data['total_hours']) if data.get('total_hours') else None,
-            hour_calculation_mode=data.get('hour_calculation_mode'),
+            hour_calculation_mode=hour_calculation_mode,
             hours_per_slot=float(data['hours_per_slot']) if data.get('hours_per_slot') else None,
             is_active=True
         )
@@ -5779,6 +5780,9 @@ def update_vendor_pass(vendor_id, pass_id):
         
         # Mode-specific updates
         if cafe_pass.pass_mode == 'hour_based':
+            # Backfill for older records that were created before hour_calculation_mode enforcement.
+            if not cafe_pass.hour_calculation_mode:
+                cafe_pass.hour_calculation_mode = 'actual_duration'
             if 'total_hours' in data:
                 cafe_pass.total_hours = float(data['total_hours'])
             if 'hour_calculation_mode' in data:
