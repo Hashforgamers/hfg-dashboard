@@ -3360,6 +3360,14 @@ def get_vendor_dashboard(vendor_id):
                 "message": f"{doc['name']} was verified by Hash verification team.",
             })
 
+    low_stock_alerts = []
+    try:
+        low_stock_result, _ = ExtraServiceService.get_low_stock_alerts(vendor_id)
+        if low_stock_result.get("success"):
+            low_stock_alerts = low_stock_result.get("alerts", [])
+    except Exception:
+        low_stock_alerts = []
+
     payload = {
         "navigation": [
             {"icon": "User", "label": "Profile"},
@@ -3401,6 +3409,7 @@ def get_vendor_dashboard(vendor_id):
         },
         "verifiedDocuments": normalized_docs,
         "documentAlerts": document_alerts,
+        "lowStockAlerts": low_stock_alerts,
     }
 
     return jsonify(payload), 200
@@ -4246,6 +4255,31 @@ def update_menu_inventory(vendor_id, category_id, menu_id):
     try:
         payload = request.get_json(silent=True) or {}
         result, status_code = ExtraServiceService.update_menu_inventory(vendor_id, category_id, menu_id, payload)
+        return jsonify(result), status_code
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@dashboard_service.route('/vendor/<int:vendor_id>/extra-services/category/<int:category_id>/menu/<int:menu_id>/status', methods=['PATCH'])
+def update_menu_item_status(vendor_id, category_id, menu_id):
+    """Activate/deactivate extra service menu item."""
+    try:
+        payload = request.get_json(silent=True) or {}
+        if "is_active" not in payload:
+            return jsonify({"success": False, "error": "is_active is required"}), 400
+        result, status_code = ExtraServiceService.update_menu_item_status(
+            vendor_id, category_id, menu_id, bool(payload.get("is_active"))
+        )
+        return jsonify(result), status_code
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@dashboard_service.route('/vendor/<int:vendor_id>/extra-services/low-stock-alerts', methods=['GET'])
+def get_extra_services_low_stock_alerts(vendor_id):
+    """Return low-stock alerts for extra service menu items."""
+    try:
+        result, status_code = ExtraServiceService.get_low_stock_alerts(vendor_id)
         return jsonify(result), status_code
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
