@@ -559,4 +559,75 @@ class ExtraServiceService:
         except Exception as e:
             db.session.rollback()
             return {'success': False, 'error': str(e)}, 500
+
+    @staticmethod
+    def update_menu_item_status(vendor_id, category_id, menu_id, is_active):
+        """Activate/deactivate a menu item."""
+        try:
+            menu_item = db.session.query(ExtraServiceMenu).join(
+                ExtraServiceCategory
+            ).filter(
+                ExtraServiceMenu.id == menu_id,
+                ExtraServiceMenu.category_id == category_id,
+                ExtraServiceCategory.vendor_id == vendor_id,
+                ExtraServiceCategory.is_active == True
+            ).first()
+
+            if not menu_item:
+                return {'success': False, 'error': 'Menu item not found'}, 404
+
+            menu_item.is_active = bool(is_active)
+            ExtraServiceService._sync_food_amenity(vendor_id)
+            db.session.commit()
+
+            return {
+                'success': True,
+                'message': 'Menu item status updated successfully',
+                'menu_item': {
+                    'id': menu_item.id,
+                    'name': menu_item.name,
+                    'is_active': bool(menu_item.is_active),
+                }
+            }, 200
+        except Exception as e:
+            db.session.rollback()
+            return {'success': False, 'error': str(e)}, 500
+
+    @staticmethod
+    def get_low_stock_alerts(vendor_id):
+        """Return low-stock menu items for notification surfaces."""
+        try:
+            rows = db.session.query(ExtraServiceMenu, ExtraServiceCategory).join(
+                ExtraServiceCategory, ExtraServiceMenu.category_id == ExtraServiceCategory.id
+            ).filter(
+                ExtraServiceCategory.vendor_id == vendor_id,
+                ExtraServiceCategory.is_active == True,
+                ExtraServiceMenu.is_active == True,
+                ExtraServiceMenu.stock_quantity.isnot(None),
+                ExtraServiceMenu.low_stock_threshold.isnot(None),
+                ExtraServiceMenu.low_stock_threshold > 0,
+                ExtraServiceMenu.stock_quantity <= ExtraServiceMenu.low_stock_threshold
+            ).order_by(ExtraServiceMenu.stock_quantity.asc(), ExtraServiceMenu.name.asc()).all()
+
+            alerts = []
+            for menu_item, category in rows:
+                alerts.append({
+                    "menu_id": int(menu_item.id),
+                    "menu_name": menu_item.name,
+                    "category_id": int(category.id),
+                    "category_name": category.name,
+                    "stock_quantity": int(menu_item.stock_quantity or 0),
+                    "stock_unit": menu_item.stock_unit or "units",
+                    "low_stock_threshold": int(menu_item.low_stock_threshold or 0),
+                    "is_low_stock": True,
+                    "severity": "critical" if int(menu_item.stock_quantity or 0) <= 0 else "warning",
+                })
+
+            return {
+                "success": True,
+                "alerts": alerts,
+                "count": len(alerts)
+            }, 200
+        except Exception as e:
+            return {'success': False, 'error': str(e)}, 500
     
