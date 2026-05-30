@@ -36,6 +36,8 @@ def list_registrations(event_id):
         "waiver_signed": bool(r.waiver_signed),
         "payment_status": r.payment_status,
         "status": r.status,
+        "checked_in_at": r.checked_in_at.isoformat() if r.checked_in_at else None,
+        "seed_number": r.seed_number,
         "notes": r.notes,
         "created_at": r.created_at.isoformat() if r.created_at else None,
     } for r, team_name in rows]), 200
