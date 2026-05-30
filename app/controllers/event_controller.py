@@ -6,12 +6,48 @@ from app.services.event_service import create_event, list_events, update_event
 from app.services.cloudinary_event_service import CloudinaryEventImageService
 from app.services.websocket_service import socketio
 from app.extension.extensions import db
+from app.models.event import Event
 
 bp_events = Blueprint('events', __name__, url_prefix='/api/vendor/events')
 
 def _vendor_id():
     vendor = get_jwt().get("vendor") or {}
     return int(vendor.get("id"))
+
+
+def _event_payload(e):
+    return {
+        "id": str(e.id),
+        "title": e.title,
+        "description": e.description,
+        "status": e.status,
+        "start_at": e.start_at.isoformat(),
+        "end_at": e.end_at.isoformat(),
+        "registration_deadline": e.registration_deadline.isoformat() if e.registration_deadline else None,
+        "registration_fee": float(e.registration_fee or 0),
+        "currency": e.currency,
+        "game": e.game,
+        "format": e.format,
+        "prize_pool": float(e.prize_pool or 0),
+        "team_size": e.team_size,
+        "match_rules": e.match_rules,
+        "region": e.region,
+        "server": e.server,
+        "check_in_starts_at": e.check_in_starts_at.isoformat() if e.check_in_starts_at else None,
+        "check_in_ends_at": e.check_in_ends_at.isoformat() if e.check_in_ends_at else None,
+        "map_pool": e.map_pool or [],
+        "veto_mode": e.veto_mode,
+        "capacity_team": e.capacity_team,
+        "capacity_player": e.capacity_player,
+        "min_team_size": e.min_team_size,
+        "max_team_size": e.max_team_size,
+        "allow_solo": e.allow_solo,
+        "allow_individual": e.allow_individual,
+        "visibility": e.visibility,
+        "banner_image_url": e.banner_image_url,
+        "banner_public_id": e.banner_public_id,
+        "qr_code_url": e.qr_code_url,
+    }
 
 @bp_events.post('/getJwt')
 def issue_jwt():   # ✅ renamed function to avoid shadowing
@@ -87,11 +123,15 @@ def get_events():
     vid = _vendor_id()
     status = request.args.get("status")
     items = list_events(vid, status)
-    return jsonify([{
-        "id": str(e.id), "title": e.title, "status": e.status,
-        "start_at": e.start_at.isoformat(), "end_at": e.end_at.isoformat() ,
-        "banner_image_url":  e.banner_image_url, "banner_public_id":  e.banner_public_id,
-    } for e in items]), 200
+    return jsonify([_event_payload(e) for e in items]), 200
+
+
+@bp_events.get('/<uuid:event_id>')
+@jwt_required()
+def get_event(event_id):
+    vid = _vendor_id()
+    event = Event.query.filter_by(id=event_id, vendor_id=vid).first_or_404()
+    return jsonify(_event_payload(event)), 200
 
 @bp_events.patch('/<uuid:event_id>')
 @jwt_required()
