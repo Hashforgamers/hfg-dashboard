@@ -4,9 +4,14 @@ import jwt  # PyJWT
 from flask_jwt_extended import jwt_required, get_jwt
 from app.services.event_service import create_event, list_events, update_event
 from app.services.cloudinary_event_service import CloudinaryEventImageService
+from app.services.tournament_engine_service import list_matches
 from app.services.websocket_service import socketio
 from app.extension.extensions import db
 from app.models.event import Event
+from app.models.registration import Registration
+from app.models.team import Team
+from app.models.teamMember import TeamMember
+from sqlalchemy import func
 
 bp_events = Blueprint('events', __name__, url_prefix='/api/vendor/events')
 
@@ -48,6 +53,53 @@ def _event_payload(e):
         "banner_public_id": e.banner_public_id,
         "qr_code_url": e.qr_code_url,
     }
+
+
+def _registration_payloads(event_id):
+    rows = (
+        db.session.query(Registration, Team.team_name)
+        .join(Team, Team.id == Registration.team_id)
+        .filter(Registration.event_id == event_id)
+        .order_by(Registration.created_at.desc())
+        .all()
+    )
+    return [{
+        "id": str(r.id),
+        "event_id": str(r.event_id),
+        "team_id": str(r.team_id),
+        "team_name": team_name,
+        "contact_name": r.contact_name,
+        "contact_phone": r.contact_phone,
+        "contact_email": r.contact_email,
+        "waiver_signed": bool(r.waiver_signed),
+        "payment_status": r.payment_status,
+        "status": r.status,
+        "checked_in_at": r.checked_in_at.isoformat() if r.checked_in_at else None,
+        "seed_number": r.seed_number,
+        "notes": r.notes,
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+    } for r, team_name in rows]
+
+
+def _team_payloads(event_id):
+    teams = Team.query.filter_by(event_id=event_id).order_by(Team.created_at.asc()).all()
+    team_ids = [t.id for t in teams]
+    counts = {}
+    if team_ids:
+        counts = dict(
+            db.session.query(TeamMember.team_id, func.count(TeamMember.user_id))
+            .filter(TeamMember.team_id.in_(team_ids))
+            .group_by(TeamMember.team_id)
+            .all()
+        )
+    return [{
+        "id": str(t.id),
+        "name": t.team_name,
+        "created_by_user": t.created_by_user,
+        "created_at": t.created_at.isoformat(),
+        "is_individual": t.is_individual,
+        "member_count": int(counts.get(t.id, 0))
+    } for t in teams]
 
 @bp_events.post('/getJwt')
 def issue_jwt():   # ✅ renamed function to avoid shadowing
@@ -132,6 +184,19 @@ def get_event(event_id):
     vid = _vendor_id()
     event = Event.query.filter_by(id=event_id, vendor_id=vid).first_or_404()
     return jsonify(_event_payload(event)), 200
+
+
+@bp_events.get('/<uuid:event_id>/detail')
+@jwt_required()
+def get_event_detail(event_id):
+    vid = _vendor_id()
+    event = Event.query.filter_by(id=event_id, vendor_id=vid).first_or_404()
+    return jsonify({
+        "event": _event_payload(event),
+        "registrations": _registration_payloads(event_id),
+        "teams": _team_payloads(event_id),
+        "matches": list_matches(event_id),
+    }), 200
 
 @bp_events.patch('/<uuid:event_id>')
 @jwt_required()
