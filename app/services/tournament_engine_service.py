@@ -33,9 +33,9 @@ def _team_name_map(team_ids):
     return {str(team.id): team.team_name for team in teams}
 
 
-def _match_payload(match):
-    team_ids = [tid for tid in [match.team_a_id, match.team_b_id, match.winner_team_id] if tid]
-    names = _team_name_map(team_ids)
+def _match_payload(match, names=None):
+    if names is None:
+        names = _team_name_map([tid for tid in [match.team_a_id, match.team_b_id, match.winner_team_id] if tid])
     return {
         "id": str(match.id),
         "event_id": str(match.event_id),
@@ -72,7 +72,14 @@ def list_matches(event_id):
         .order_by(TournamentMatch.round_number.asc(), TournamentMatch.match_number.asc())
         .all()
     )
-    return [_match_payload(match) for match in matches]
+    team_ids = {
+        team_id
+        for match in matches
+        for team_id in (match.team_a_id, match.team_b_id, match.winner_team_id)
+        if team_id
+    }
+    names = _team_name_map(list(team_ids))
+    return [_match_payload(match, names) for match in matches]
 
 
 def get_bracket(event_id):
