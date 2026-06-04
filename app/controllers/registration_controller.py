@@ -49,10 +49,14 @@ def update_payment_status(event_id, registration_id):
     Event.query.filter_by(id=event_id, vendor_id=vid).first_or_404()
     payload = request.get_json() or {}
     status = payload.get("payment_status")
-    if status not in {"pending", "paid", "failed"}:
+    if status not in {"pending", "paid", "failed", "refunded"}:
         return jsonify({"error": "Invalid payment_status"}), 400
     reg = Registration.query.filter_by(id=registration_id, event_id=event_id).first_or_404()
     reg.payment_status = status
+    if status == "paid":
+        reg.status = "confirmed"
+    elif status in {"failed", "refunded"} and reg.status == "confirmed":
+        reg.status = "pending"
     db.session.commit()
     try:
         socketio.emit("tournaments_updated", {"vendor_id": vid}, room=f"vendor_{vid}")
