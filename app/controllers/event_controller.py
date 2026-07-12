@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify, current_app
 import time, datetime
 import jwt  # PyJWT
 from flask_jwt_extended import jwt_required, get_jwt
-from app.services.event_service import create_event, list_events, update_event
+from app.services.event_service import create_event, list_events, update_event, sync_event_status
 from app.services.cloudinary_event_service import CloudinaryEventImageService
 from app.services.tournament_engine_service import list_matches
 from app.services.websocket_service import socketio
@@ -21,6 +21,7 @@ def _vendor_id():
 
 
 def _event_payload(e):
+    sync_event_status(e)
     return {
         "id": str(e.id),
         "title": e.title,
@@ -183,6 +184,8 @@ def get_events():
 def get_event(event_id):
     vid = _vendor_id()
     event = Event.query.filter_by(id=event_id, vendor_id=vid).first_or_404()
+    if sync_event_status(event):
+        db.session.commit()
     return jsonify(_event_payload(event)), 200
 
 
@@ -191,6 +194,8 @@ def get_event(event_id):
 def get_event_detail(event_id):
     vid = _vendor_id()
     event = Event.query.filter_by(id=event_id, vendor_id=vid).first_or_404()
+    if sync_event_status(event):
+        db.session.commit()
     return jsonify({
         "event": _event_payload(event),
         "registrations": _registration_payloads(event_id),
