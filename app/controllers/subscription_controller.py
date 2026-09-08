@@ -137,6 +137,8 @@ def change(vendor_id):
         if not pkg:
             return jsonify({"ok": False, "error": "package_code is required"}), 400
         immediate = data.get('immediate', True)
+        if isinstance(immediate, str):
+            immediate = immediate.strip().lower() not in {"0", "false", "no", "off"}
         unit_amount = data.get('unit_amount', 0)
         period_start = _parse_period_datetime(data.get('period_start'))
         period_end = _parse_period_datetime(data.get('period_end'), end_of_day=True)
@@ -150,12 +152,22 @@ def change(vendor_id):
             period_end=period_end,
             external_ref=str(external_ref).strip()[:64],
         )
+        is_active, active_sub = is_subscription_active(vendor_id)
         return jsonify({
             "ok": True,
             "new_package": res.package.code,
             "period_start": res.current_period_start.isoformat(),
             "period_end": res.current_period_end.isoformat(),
             "external_ref": res.external_ref,
+            "is_active": is_active,
+            "locked": not is_active,
+            "active_subscription": {
+                "id": active_sub.id if active_sub else None,
+                "status": active_sub.status.value if active_sub else None,
+                "period_start": active_sub.current_period_start.isoformat() if active_sub and active_sub.current_period_start else None,
+                "period_end": active_sub.current_period_end.isoformat() if active_sub and active_sub.current_period_end else None,
+                "external_ref": active_sub.external_ref if active_sub else None,
+            },
         }), 200
     except ValueError as ve:
         return jsonify({"ok": False, "error": str(ve)}), 400
