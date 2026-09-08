@@ -53,6 +53,24 @@ def _invoice_number(subscription_id: int) -> str:
     return f"HFG-SUB-{int(subscription_id):06d}"
 
 
+def _subscription_status_snapshot(sub):
+    if not sub:
+        return None
+    return {
+        "id": sub.id,
+        "status": sub.status.value,
+        "period_start": sub.current_period_start.isoformat() if sub.current_period_start else None,
+        "period_end": sub.current_period_end.isoformat() if sub.current_period_end else None,
+        "external_ref": sub.external_ref,
+        "package": {
+            "id": sub.package.id if sub.package else None,
+            "code": sub.package.code if sub.package else None,
+            "name": sub.package.name if sub.package else None,
+            "pc_limit": sub.package.pc_limit if sub.package else None,
+        },
+    }
+
+
 @bp_subs.get('/')
 def get_subscription(vendor_id):
     """Get current subscription status for vendor"""
@@ -99,20 +117,8 @@ def check_subscription_status(vendor_id):
         "locked": not is_active,
         "message": "Subscription expired. Please renew to continue." if not is_active else "Active",
         "server_time_utc": now_utc.isoformat() + "Z",
-        "active_subscription": {
-            "id": sub.id if sub else None,
-            "status": sub.status.value if sub else None,
-            "period_start": sub.current_period_start.isoformat() if sub and sub.current_period_start else None,
-            "period_end": sub.current_period_end.isoformat() if sub and sub.current_period_end else None,
-            "external_ref": sub.external_ref if sub else None,
-        },
-        "latest_subscription": {
-            "id": latest_sub.id if latest_sub else None,
-            "status": latest_sub.status.value if latest_sub else None,
-            "period_start": latest_sub.current_period_start.isoformat() if latest_sub and latest_sub.current_period_start else None,
-            "period_end": latest_sub.current_period_end.isoformat() if latest_sub and latest_sub.current_period_end else None,
-            "external_ref": latest_sub.external_ref if latest_sub else None,
-        }
+        "active_subscription": _subscription_status_snapshot(sub),
+        "latest_subscription": _subscription_status_snapshot(latest_sub),
     }
     return jsonify(payload), 200
 
@@ -161,13 +167,7 @@ def change(vendor_id):
             "external_ref": res.external_ref,
             "is_active": is_active,
             "locked": not is_active,
-            "active_subscription": {
-                "id": active_sub.id if active_sub else None,
-                "status": active_sub.status.value if active_sub else None,
-                "period_start": active_sub.current_period_start.isoformat() if active_sub and active_sub.current_period_start else None,
-                "period_end": active_sub.current_period_end.isoformat() if active_sub and active_sub.current_period_end else None,
-                "external_ref": active_sub.external_ref if active_sub else None,
-            },
+            "active_subscription": _subscription_status_snapshot(active_sub),
         }), 200
     except ValueError as ve:
         return jsonify({"ok": False, "error": str(ve)}), 400
