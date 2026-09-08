@@ -1,6 +1,6 @@
 from flask import Blueprint, Response, request, jsonify, current_app
 from flask_jwt_extended import jwt_required
-from datetime import datetime
+from datetime import datetime, time, timezone
 
 from app.services.subscription_service import (
     get_active_subscription, 
@@ -29,6 +29,24 @@ from sqlalchemy.exc import IntegrityError
 bp_subs = Blueprint('subscriptions', __name__)
 
 ALLOWED_BILLING_CYCLES = {"monthly", "quarterly", "yearly"}
+
+
+def _parse_period_datetime(value, *, end_of_day=False):
+    if value in (None, ""):
+        return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+    try:
+        if len(raw) == 10:
+            parsed = datetime.combine(datetime.fromisoformat(raw).date(), time.max if end_of_day else time.min)
+        else:
+            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        raise ValueError("period_start and period_end must be valid ISO date or datetime values")
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 def _invoice_number(subscription_id: int) -> str:
@@ -120,8 +138,22 @@ def change(vendor_id):
             return jsonify({"ok": False, "error": "package_code is required"}), 400
         immediate = data.get('immediate', True)
         unit_amount = data.get('unit_amount', 0)
-        res = change_subscription(vendor_id, pkg, immediate=immediate, unit_amount=unit_amount)
-        return jsonify({"ok": True, "new_package": res.package.code}), 200
+        period_start = _parse_period_datetime(data.get('period_start'))
+        period_end = _parse_period_datetime(data.get('period_end'), end_of_day=True)
+        res = change_subscription(
+            vendor_id,
+            pkg,
+            immediate=immediate,
+            unit_amount=unit_amount,
+            period_start=period_start,
+            period_end=period_end,
+        )
+        return jsonify({
+            "ok": True,
+            "new_package": res.package.code,
+            "period_start": res.current_period_start.isoformat(),
+            "period_end": res.current_period_end.isoformat(),
+        }), 200
     except ValueError as ve:
         return jsonify({"ok": False, "error": str(ve)}), 400
     except Exception as exc:

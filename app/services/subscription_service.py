@@ -275,12 +275,24 @@ def renew_subscription(vendor_id, payment_amount, external_ref=None, billing_cyc
     return renewed
 
 
-def change_subscription(vendor_id, package_code, immediate=True, unit_amount=0, cancel_current=False):
+def change_subscription(
+    vendor_id,
+    package_code,
+    immediate=True,
+    unit_amount=0,
+    cancel_current=False,
+    period_start=None,
+    period_end=None,
+):
     """
     Change vendor's subscription package (Admin function)
     """
     now = datetime.now(timezone.utc)
+    start_at = period_start or now
     duration = get_subscription_duration()
+    end_at = period_end or (start_at + duration)
+    if end_at <= start_at:
+        raise ValueError("period_end must be after period_start")
     
     normalized_code = str(package_code or "").strip().lower()
     if normalized_code == "pro":
@@ -310,8 +322,8 @@ def change_subscription(vendor_id, package_code, immediate=True, unit_amount=0, 
             vendor_id=vendor_id, 
             package_id=new_pkg.id,
             status=SubscriptionStatus.active,
-            current_period_start=now,
-            current_period_end=now + duration,
+            current_period_start=start_at,
+            current_period_end=end_at,
             unit_amount=unit_amount
         )
         try:
@@ -323,13 +335,16 @@ def change_subscription(vendor_id, package_code, immediate=True, unit_amount=0, 
             raise ValueError("Failed to change subscription due to conflicting open subscription state. Please retry once.")
     else:
         # Schedule at period end
-        start_at = current.current_period_end if current else now
+        start_at = period_start or (current.current_period_end if current else now)
+        end_at = period_end or (start_at + duration)
+        if end_at <= start_at:
+            raise ValueError("period_end must be after period_start")
         new = Subscription(
             vendor_id=vendor_id, 
             package_id=new_pkg.id,
             status=SubscriptionStatus.active,
             current_period_start=start_at,
-            current_period_end=start_at + duration,
+            current_period_end=end_at,
             unit_amount=unit_amount
         )
         try:
