@@ -72,6 +72,14 @@ def get_active_subscription(vendor_id, ts=None):
         .first())
 
 
+def _as_utc(value):
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 def is_subscription_active(vendor_id):
     """
     Check if vendor has an active, non-expired subscription
@@ -87,11 +95,12 @@ def is_subscription_active(vendor_id):
         return False, None
     
     # Double-check period hasn't ended
-    if sub.current_period_end <= now:
-        current_app.logger.info(f"Vendor {vendor_id}: Subscription expired at {sub.current_period_end}")
+    period_end = _as_utc(sub.current_period_end)
+    if period_end <= now:
+        current_app.logger.info(f"Vendor {vendor_id}: Subscription expired at {period_end}")
         return False, sub
     
-    current_app.logger.info(f"Vendor {vendor_id}: Active subscription until {sub.current_period_end}")
+    current_app.logger.info(f"Vendor {vendor_id}: Active subscription until {period_end}")
     return True, sub
 
 
@@ -283,6 +292,7 @@ def change_subscription(
     cancel_current=False,
     period_start=None,
     period_end=None,
+    external_ref=None,
 ):
     """
     Change vendor's subscription package (Admin function)
@@ -324,7 +334,9 @@ def change_subscription(
             status=SubscriptionStatus.active,
             current_period_start=start_at,
             current_period_end=end_at,
-            unit_amount=unit_amount
+            unit_amount=unit_amount,
+            external_ref=external_ref,
+            currency='INR'
         )
         try:
             db.session.add(new)
@@ -345,7 +357,9 @@ def change_subscription(
             status=SubscriptionStatus.active,
             current_period_start=start_at,
             current_period_end=end_at,
-            unit_amount=unit_amount
+            unit_amount=unit_amount,
+            external_ref=external_ref,
+            currency='INR'
         )
         try:
             db.session.add(new)

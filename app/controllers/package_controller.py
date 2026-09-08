@@ -2,6 +2,7 @@ import os
 
 from flask import Blueprint, jsonify, current_app, request
 from app.models.package import Package
+from app.models.subscription import Subscription
 from app.services.subscription_service import get_package_price
 
 
@@ -24,19 +25,22 @@ def _admin_authorized() -> bool:
 
 def _serialize_package(pkg: Package) -> dict:
     features = pkg.features or {}
+    plan_features = features.get("plan_features") or []
     return {
         "id": pkg.id,
         "code": pkg.code,
         "name": pkg.name,
         "pc_limit": pkg.pc_limit,
         "active": bool(pkg.active),
+        "enabled": bool(pkg.active),
         "is_custom": bool(pkg.is_custom),
         "monthly": float(features.get("price_inr", 0) or 0),
         "quarterly": float(features.get("quarterly_price_inr", 0) or 0),
         "yearly": float(features.get("yearly_price_inr", 0) or 0),
         "onboarding_offer": features.get("onboarding_offer"),
-        "plan_features": features.get("plan_features") or [],
-        "features": features,
+        "plan_features": plan_features,
+        "features": plan_features,
+        "raw_features": features,
     }
 
 
@@ -136,7 +140,7 @@ def upsert_admin_catalog():
 
         package = Package.query.filter_by(code=code).first()
         if not package:
-            package = Package(code=code, name=name, pc_limit=0, is_custom=False, features={}, active=True)
+            package = Package(code=code, name=name, pc_limit=0, is_custom=True, features={}, active=True)
             from app.extension.extensions import db
             db.session.add(package)
 
@@ -162,3 +166,42 @@ def upsert_admin_catalog():
 
     packages = Package.query.order_by(Package.id.asc()).all()
     return jsonify({"success": True, "updated": changed, "models": [_serialize_package(pkg) for pkg in packages]}), 200
+
+
+@bp_packages.delete('/admin/catalog/<package_code>', strict_slashes=False)
+def delete_admin_catalog_item(package_code):
+    if not _admin_authorized():
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+
+    code = (package_code or "").strip().lower()
+    if not code:
+        return jsonify({"success": False, "message": "package code is required"}), 400
+
+    from app.extension.extensions import db
+
+    package = Package.query.filter_by(code=code).first()
+    if not package:
+        return jsonify({"success": False, "message": "Plan not found"}), 404
+
+    subscription_count = Subscription.query.filter_by(package_id=package.id).count()
+    if subscription_count:
+        package.active = False
+        db.session.commit()
+        packages = Package.query.order_by(Package.id.asc()).all()
+        return jsonify({
+            "success": True,
+            "deleted": False,
+            "deactivated": True,
+            "message": "Plan has subscription history, so it was marked inactive.",
+            "models": [_serialize_package(pkg) for pkg in packages],
+        }), 200
+
+    db.session.delete(package)
+    db.session.commit()
+    packages = Package.query.order_by(Package.id.asc()).all()
+    return jsonify({
+        "success": True,
+        "deleted": True,
+        "deactivated": False,
+        "models": [_serialize_package(pkg) for pkg in packages],
+    }), 200

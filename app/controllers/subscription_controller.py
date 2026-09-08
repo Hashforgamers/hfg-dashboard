@@ -140,6 +140,7 @@ def change(vendor_id):
         unit_amount = data.get('unit_amount', 0)
         period_start = _parse_period_datetime(data.get('period_start'))
         period_end = _parse_period_datetime(data.get('period_end'), end_of_day=True)
+        external_ref = (data.get('external_ref') or data.get('changed_by') or data.get('sent_by') or 'super_admin_dashboard')
         res = change_subscription(
             vendor_id,
             pkg,
@@ -147,12 +148,14 @@ def change(vendor_id):
             unit_amount=unit_amount,
             period_start=period_start,
             period_end=period_end,
+            external_ref=str(external_ref).strip()[:64],
         )
         return jsonify({
             "ok": True,
             "new_package": res.package.code,
             "period_start": res.current_period_start.isoformat(),
             "period_end": res.current_period_end.isoformat(),
+            "external_ref": res.external_ref,
         }), 200
     except ValueError as ve:
         return jsonify({"ok": False, "error": str(ve)}), 400
