@@ -45,9 +45,9 @@
     "semantic_hash": "b262d78d549b42ee79c9fcded5b9853e"
   },
   "app/controllers/package_controller.py": {
-    "mtime": 1773954531.8784723,
-    "ast_hash": "c5a164a842e1f418d8a6f517b234d48b",
-    "semantic_hash": "c5a164a842e1f418d8a6f517b234d48b"
+    "mtime": 1788887893.0723479,
+    "ast_hash": "1f1372e929ef800defaf535bda27eeb5",
+    "semantic_hash": ""
   },
   "app/controllers/pricingController.py": {
     "mtime": 1774735916.4487798,
@@ -70,9 +70,9 @@
     "semantic_hash": "74955e8ea3c56ff7d752854591057fff"
   },
   "app/controllers/subscription_controller.py": {
-    "mtime": 1774386178.1237226,
-    "ast_hash": "71ceb8d3b2011df22a2b8d5e7df6a085",
-    "semantic_hash": "71ceb8d3b2011df22a2b8d5e7df6a085"
+    "mtime": 1789702065.4088798,
+    "ast_hash": "1a78ae2f1b4e9147fa012ff3d2f839bf",
+    "semantic_hash": ""
   },
   "app/controllers/team_controller.py": {
     "mtime": 1773615289.8043287,
@@ -545,14 +545,14 @@
     "semantic_hash": "afaea437d544d510f3394f0a9fc6f2de"
   },
   "app/services/rbac_service.py": {
-    "mtime": 1773690278.8634746,
-    "ast_hash": "e1fabd967ebdce6eab27751bf0ebb303",
-    "semantic_hash": "e1fabd967ebdce6eab27751bf0ebb303"
+    "mtime": 1788969253.7712052,
+    "ast_hash": "6b482a489ebfe106277f60577114e94c",
+    "semantic_hash": ""
   },
   "app/services/subscription_service.py": {
-    "mtime": 1774036097.9401221,
-    "ast_hash": "8d24adda5f45cce38b45d92ecdb6596f",
-    "semantic_hash": "8d24adda5f45cce38b45d92ecdb6596f"
+    "mtime": 1788887562.8301034,
+    "ast_hash": "e7fdaca1d7a676c56bf7361c013501f7",
+    "semantic_hash": ""
   },
   "app/services/tournament_engine_service.py": {
     "mtime": 1780241128.5804482,
@@ -643,5 +643,30 @@
     "mtime": 1779911389.6560583,
     "ast_hash": "57448f319730b139093f4768b7589211",
     "semantic_hash": "57448f319730b139093f4768b7589211"
+  },
+  "tests/test_subscription_checkout.py": {
+    "mtime": 1789702324.3139362,
+    "ast_hash": "87cd85dc79d138532c766d3e2f865d24",
+    "semantic_hash": ""
+  },
+  "AGENTS.md": {
+    "mtime": 1785604349.701918,
+    "ast_hash": "6a47d64fcc136324ca395065a707ef76",
+    "semantic_hash": ""
+  },
+  "docker-compose.yml": {
+    "mtime": 1772649505.373753,
+    "ast_hash": "c4d2a995fbab7a06a7dc55f686b33385",
+    "semantic_hash": ""
+  },
+  "requirements.txt": {
+    "mtime": 1771765009.0051353,
+    "ast_hash": "955569977369eaa17fb35596239b9ec2",
+    "semantic_hash": ""
+  },
+  "todo.txt": {
+    "mtime": 1737888770.6385753,
+    "ast_hash": "a583e7bccaf217a68f0f78b8bd6cbe24",
+    "semantic_hash": ""
   }
 }

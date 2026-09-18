@@ -188,7 +188,7 @@ def get_limit(vendor_id):
 def create_payment_order(vendor_id):
     """Create Razorpay order for subscription purchase"""
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
         package_code = data.get('package_code')
         action = data.get('action', 'new')
         billing_cycle = normalize_billing_cycle(data.get('billing_cycle'))
@@ -267,7 +267,7 @@ def verify_and_activate(vendor_id):
     }
     """
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
         
         order_id = data.get('razorpay_order_id')
         payment_id = data.get('razorpay_payment_id')
@@ -300,9 +300,17 @@ def verify_and_activate(vendor_id):
         # Resolve billing-cycle + package from trusted order notes (source of truth).
         order_details = get_order_details(order_id)
         order_notes = order_details.get("notes", {}) if isinstance(order_details, dict) else {}
+        if not isinstance(order_notes, dict):
+            return jsonify({"error": "Invalid payment order metadata"}), 400
+        if str(order_notes.get("vendor_id") or "") != str(vendor_id):
+            return jsonify({"error": "Payment order belongs to another cafe"}), 400
+        noted_action = str(order_notes.get("action") or "new")
+        if noted_action not in {"new", "renew"}:
+            return jsonify({"error": "Invalid payment order action"}), 400
+        action = noted_action
         noted_package = str(order_notes.get("package_code") or "").strip().lower()
         noted_cycle = normalize_billing_cycle(order_notes.get("billing_cycle") or requested_cycle)
-        if noted_package and noted_package != str(package_code).strip().lower():
+        if not noted_package or noted_package != str(package_code).strip().lower():
             return jsonify({
                 "error": "Package mismatch",
                 "message": "Package in payment order does not match request package."
@@ -321,19 +329,22 @@ def verify_and_activate(vendor_id):
         payment_status = payment_details.get('status')
         payment_order_id = payment_details.get('order_id')
 
-        if payment_order_id and payment_order_id != order_id:
+        if payment_order_id != order_id:
             return jsonify({
                 "error": "Payment does not match order",
                 "message": "Order/payment mismatch detected"
             }), 400
         
+        if payment_details.get("currency") != "INR" or order_details.get("currency") != "INR":
+            return jsonify({"error": "Payment currency mismatch"}), 400
+
         if payment_status != 'captured':
             return jsonify({
                 "error": "Payment not completed",
                 "message": f"Payment status: {payment_status}"
             }), 400
 
-        if expected_amount > 0 and abs(float(amount_paid) - float(expected_amount)) > 1:
+        if int(payment_details["amount"]) != round(expected_amount * 100) or int(order_details.get("amount", -1)) != int(payment_details["amount"]):
             return jsonify({
                 "error": "Amount mismatch",
                 "message": f"Expected ₹{expected_amount:.2f} for {billing_cycle} plan but received ₹{float(amount_paid):.2f}"
@@ -561,7 +572,10 @@ def check_payment_status(vendor_id, order_id):
         
         # Get order details from Razorpay
         order = get_order_details(order_id)
-        
+        notes = order.get("notes") or {}
+        if not isinstance(notes, dict) or str(notes.get("vendor_id") or "") != str(vendor_id):
+            return jsonify({"error": "Payment order belongs to another cafe"}), 400
+
         current_app.logger.info(f"Order status: {order.get('status')}")
         
         # Check if order is paid
@@ -573,8 +587,6 @@ def check_payment_status(vendor_id, order_id):
                 if p.get("status") == "captured":
                     payment_id = p.get("id")
                     break
-            if not payment_id and payments:
-                payment_id = payments[0].get("id")
             
             if payment_id:
                 current_app.logger.info(f"Payment found: {payment_id}")
