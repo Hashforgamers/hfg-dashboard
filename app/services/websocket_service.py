@@ -7,7 +7,7 @@ import requests
 from typing import Dict, Any, Optional, Set
 
 from flask import current_app
-from flask_socketio import SocketIO, join_room, emit
+from flask_socketio import SocketIO, join_room, leave_room, emit
 import socketio as pwsio   # python-socketio client (aliased)
 from app.services.payload_formatters import format_upcoming_booking_from_upstream
 from datetime import datetime, timedelta, timezone as dt_timezone
@@ -38,7 +38,7 @@ BOOKING_SOCKET_URL = os.getenv("BOOKING_SOCKET_URL", "wss://hfg-booking-hmnx.onr
 BOOKING_HTTP_URL = os.getenv("BOOKING_HTTP_URL", "https://hfg-booking.onrender.com").rstrip("/")
 BOOKING_NAMESPACE = os.getenv("BOOKING_BRIDGE_NAMESPACE")  # unset or "/" => default namespace
 BOOKING_AUTH_TOKEN = os.getenv("BOOKING_AUTH_TOKEN")       # optional bearer token
-DEBUG_UPSTREAM_SIO = os.getenv("DEBUG_UPSTREAM_SIO", "1") == "1"
+DEBUG_UPSTREAM_SIO = os.getenv("DEBUG_UPSTREAM_SIO", "0") == "1"
 
 _upstream_sio = pwsio.Client(
     reconnection=True,
@@ -126,6 +126,14 @@ def _mark_pong():
 def _emit_downstream_to_vendor(vendor_id: Optional[int], event: str, data: Dict[str, Any]):
     try:
         if vendor_id is not None:
+            # The snapshot endpoints use short in-process caches. Invalidate before
+            # notifying clients so an immediate refresh cannot replay pre-event data.
+            if event in {"booking", "upcoming_booking", "current_slot", "console_availability", "booking_payment_update", "pay_at_cafe_accepted", "pay_at_cafe_rejected"}:
+                try:
+                    from app.routes import _invalidate_vendor_caches
+                    _invalidate_vendor_caches(int(vendor_id))
+                except Exception:
+                    _log_err("Cache invalidation failed vendor=%s", vendor_id)
             room = f"vendor_{int(vendor_id)}"
             _log_info("Emitting %s to %s", event, room)
             socketio.emit(event, data, room=room)
@@ -168,10 +176,8 @@ def _join_upstream_admin():
         ns = _ns()
         if ns:
             _upstream_sio.emit("connect_admin", {}, namespace=ns)
-            _upstream_sio.wait()
         else:
             _upstream_sio.emit("connect_admin", {})
-            _upstream_sio.wait()
         _log_info("Requested admin tap: dashboard_admin")
     except Exception:
         _log_err("Failed to request admin tap (connect_admin)")
@@ -321,7 +327,6 @@ def _connect_upstream():
         wait_timeout=10,
         transports=["websocket", "polling"],
     )
-    _upstream_sio.wait()
 
 # -----------------------------------------------------------------------------
 # Upstream event handlers
@@ -442,7 +447,6 @@ def _health_check_loop():
                 _log_warn("Health: upstream not connected; attempting connect...")
                 try:
                     _connect_upstream()
-                    _upstream_sio.wait()
                 except Exception as e:
                     _log_err("Health connect failed: %s", e)
             else:
@@ -464,18 +468,16 @@ def _health_check_loop():
                         _log_info("Health: ping_health payload=%s ns=%s", payload, ns)
                         # send with ack callback — server may choose to ack rather than emit pong_health
                         _upstream_sio.emit("ping_health", payload, callback=_on_ping_ack, namespace=ns)
-                        _upstream_sio.wait()
                         _log_info("Health: sent ping_health if-branch (ns=%s, nonce=%s)", ns, payload["nonce"])
                     else:
                         _log_info("Health: ping_health payload=%s ns=/", payload)
                         _upstream_sio.emit("ping_health", payload, callback=_on_ping_ack, namespace="/")
-                        _upstream_sio.wait()
                         _log_info("Health: sent ping_health else-branch (ns=/, nonce=%s)", payload["nonce"])
                 except Exception as e:
                     _log_warn("Health: ping_health emit failed: %s", e)
 
                 # If pong is overdue, force a reconnect to clear half-open sockets
-                if now - _last_pong > max(_UPSTREAM_PING_TIMEOUT, 2 * _upstream_sio.reconnection_delay):
+                if now - _last_pong > max(_UPSTREAM_PING_TIMEOUT, 3 * _HEALTH_INTERVAL):
                     # rate-limit forced reconnects to avoid flapping
                     global _last_forced_reconnect
                     if now - _last_forced_reconnect < _RECONNECT_BACKOFF:
@@ -508,16 +510,8 @@ def start_upstream_bridge(app):
 
     _register_upstream_handlers()
 
-    def _runner():
-        try:
-            _connect_upstream()
-            _upstream_sio.wait()
-        except Exception as e:
-            _log_err("Upstream bridge connection error: %s", e)
-
-    t = threading.Thread(target=_runner, name="booking-upstream-bridge", daemon=True)
-    t.start()
-
+    # One supervisor owns connection attempts. Socket.IO runs its own receive loop;
+    # wait() here or in an event callback blocks rejoin and heartbeat processing.
     hc = threading.Thread(target=_health_check_loop, name="booking-upstream-health", daemon=True)
     hc.start()
 
@@ -540,6 +534,12 @@ def register_dashboard_events():
             emit("pong_health", {"ok": True, "ts": time.time()})
         except Exception as e:
             _log_err("pong_health failed: %s", e)
+
+    @socketio.on("dashboard_leave_vendor")
+    def _on_dashboard_leave_vendor(data):
+        vendor_id = (data or {}).get("vendor_id")
+        if vendor_id:
+            leave_room(f"vendor_{int(vendor_id)}")
 
     @socketio.on("dashboard_join_vendor")
     def _on_dashboard_join_vendor(data: Dict[str, Any]):
