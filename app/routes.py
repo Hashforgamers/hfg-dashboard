@@ -1,4 +1,7 @@
-from flask import Blueprint, request, jsonify, current_app
+from datetime import timezone as dt_timezone
+from app.services.kiosk_security import transactional_device, vendor_assignment
+from app.services.kiosk_runtime import secure_start
+from flask import Blueprint, request, jsonify, current_app, g
 from datetime import datetime,timedelta
 from typing import Dict, Any
 import re
@@ -1282,6 +1285,7 @@ def get_device_for_console_type(gameid, vendor_id):
         return jsonify({"error": str(e)}), 500
 
 @dashboard_service.route('/updateDeviceStatus/consoleTypeId/<gameid>/console/<console_id>/bookingId/<booking_id>/vendor/<vendor_id>', methods=['POST'])
+@transactional_device
 def update_console_status(gameid, console_id, booking_id, vendor_id):
     try:
         body = request.get_json(silent=True) or {}
@@ -1465,7 +1469,7 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
             updated_squad_details["assigned_at"] = datetime.utcnow().isoformat()
             booking_detail.squad_details = updated_squad_details
 
-        db.session.commit()
+        db.session.flush()
         current_app.logger.debug("DB commit successful")
         _invalidate_vendor_caches(int(vendor_id))
 
@@ -1831,7 +1835,7 @@ def _assign_console_to_multiple_bookings_core(console_id, additional_console_ids
         updated_squad["assigned_at"] = datetime.utcnow().isoformat()
         booking_model.squad_details = updated_squad
 
-    db.session.commit()
+    db.session.flush()
     _invalidate_vendor_caches(int(vendor_id))
 
     return {
@@ -1844,6 +1848,7 @@ def _assign_console_to_multiple_bookings_core(console_id, additional_console_ids
 
 
 @dashboard_service.route('/assignConsoleToMultipleBookings', methods=['POST'])
+@vendor_assignment
 def assign_console_to_multiple_bookings():
     try:
         data = request.get_json() or {}
@@ -1876,6 +1881,7 @@ def assign_console_to_multiple_bookings():
 
 
 @dashboard_service.route('/kiosk/start-session', methods=['POST'])
+@secure_start
 def kiosk_start_session():
     """
     Start a session from kiosk using either booking_id (scan) or access_code.
@@ -1966,9 +1972,11 @@ def kiosk_start_session():
                   AND game_id = :game_id
                   AND date = :slot_date
                   AND book_status IN ('upcoming','current')
+                  AND (:code_id IS NULL OR book_id IN (SELECT id FROM bookings WHERE access_code_id=:code_id))
+                  AND (console_id IS NULL OR console_id=:console_id)
                 ORDER BY start_time ASC
             """),
-            {"user_id": user_id, "game_id": game_id, "slot_date": slot_date}
+            {"user_id": user_id, "game_id": game_id, "slot_date": slot_date, "code_id": g.kiosk_access_code_id, "console_id": int(console_id)}
         ).fetchall()
 
         if not booking_rows:
@@ -2181,7 +2189,7 @@ def kiosk_start_session():
                     """),
                     {"console_id": int(console_id), "game_id": int(game_id)}
                 )
-                db.session.commit()
+                db.session.flush()
 
             # Idempotent: already started, just re-emit unlock
             _emit_to_kiosk(
@@ -2192,12 +2200,12 @@ def kiosk_start_session():
                     "console_id": int(console_id),
                     "data": {
                         "booking_id": int(booking_id),
-                        "start_time": merged_start.astimezone(IST).isoformat(),
-                        "end_time": merged_end.astimezone(IST).isoformat(),
+                        "start_time": IST.localize(merged_start).astimezone(dt_timezone.utc).isoformat(),
+                        "end_time": IST.localize(merged_end).astimezone(dt_timezone.utc).isoformat(),
                     },
                 },
             )
-            _emit_current_for_bookings(chosen_ids, [int(console_id)])
+            g.kiosk_after_commit.append(lambda: _emit_current_for_bookings(chosen_ids, [int(console_id)]))
             return jsonify({
                 "message": "Session already started; unlock re-sent",
                 "booking_ids": chosen_ids,
@@ -2228,8 +2236,8 @@ def kiosk_start_session():
                 "console_id": int(console_id),
                 "data": {
                     "booking_id": int(booking_id),
-                    "start_time": merged_start.astimezone(IST).isoformat(),
-                    "end_time": merged_end.astimezone(IST).isoformat(),
+                    "start_time": IST.localize(merged_start).astimezone(dt_timezone.utc).isoformat(),
+                    "end_time": IST.localize(merged_end).astimezone(dt_timezone.utc).isoformat(),
                     "user_id": user.id if user else None,
                     "user_name": user.name if user else None,
                     "vendor_id": vendor.id if vendor else None,
@@ -2243,7 +2251,7 @@ def kiosk_start_session():
         selected_console_ids = payload.get("assigned_console_ids") if isinstance(payload, dict) else None
         if not selected_console_ids:
             selected_console_ids = [int(console_id)]
-        _emit_current_for_bookings(chosen_ids, selected_console_ids)
+        g.kiosk_after_commit.append(lambda: _emit_current_for_bookings(chosen_ids, selected_console_ids))
 
         return jsonify({
             "message": "Session started and kiosk unlocked",
@@ -2254,8 +2262,8 @@ def kiosk_start_session():
             "unlock": {
                 "booking_id": int(booking_id),
                 "console_id": int(console_id),
-                "start_time": merged_start.astimezone(IST).isoformat(),
-                "end_time": merged_end.astimezone(IST).isoformat(),
+                "start_time": IST.localize(merged_start).astimezone(dt_timezone.utc).isoformat(),
+                "end_time": IST.localize(merged_end).astimezone(dt_timezone.utc).isoformat(),
                 "user_id": user.id if user else None,
                 "user_name": user.name if user else None,
                 "vendor_id": vendor.id if vendor else None,
@@ -2272,56 +2280,22 @@ def kiosk_start_session():
 
 @dashboard_service.route('/kiosk/unlink', methods=['POST'])
 def kiosk_unlink():
-    """
-    Unlink a kiosk from a console. Accepts kiosk_id, session_token, or console_id.
-    """
-    try:
-        data = request.get_json(silent=True) or {}
-        kiosk_id = data.get("kiosk_id")
-        session_token = data.get("session_token")
-        console_id = data.get("console_id")
-        vendor_id = data.get("vendor_id")
+    from app.services.kiosk_security import linked_identity, KioskError, positive_id
+    data = request.get_json(silent=True) or {}
+    identity = linked_identity(data.get("session_token"))
+    for field in ("console_id", "vendor_id"):
+        if data.get(field) is not None and positive_id(data[field]) != identity[field]:
+            raise KioskError(field + "_mismatch", 403)
+    if data.get("kiosk_id") is not None and str(data["kiosk_id"]) != identity["kiosk_id"]:
+        raise KioskError("kiosk_id_mismatch", 403)
+    db.session.execute(text("UPDATE console_link_sessions SET status='closed', ended_at=now(), close_reason='kiosk' WHERE id=:id AND status='active'"), {"id": identity["id"]})
+    db.session.commit()
+    _invalidate_vendor_caches(identity["vendor_id"])
+    return jsonify({"status": "success", "closed": 1, "console_id": identity["console_id"]}), 200
 
-        if not kiosk_id and not session_token and not console_id:
-            return jsonify({"error": "kiosk_id, session_token, or console_id is required"}), 400
-
-        q = ConsoleLinkSession.query.filter_by(status="active")
-        if session_token:
-            q = q.filter_by(session_token=str(session_token))
-        if kiosk_id:
-            q = q.filter_by(kiosk_id=str(kiosk_id))
-        if console_id:
-            q = q.filter_by(console_id=int(console_id))
-        if vendor_id:
-            q = q.filter_by(vendor_id=int(vendor_id))
-
-        sess = q.first()
-        if not sess:
-            return jsonify({"closed": 0, "message": "No active link found"}), 200
-
-        sess.status = "closed"
-        sess.ended_at = datetime.utcnow()
-        sess.close_reason = "kiosk"
-        db.session.commit()
-
-        try:
-            _invalidate_vendor_caches(int(sess.vendor_id))
-        except Exception:
-            pass
-
-        return jsonify({
-            "closed": 1,
-            "console_id": sess.console_id,
-            "kiosk_id": sess.kiosk_id,
-            "session_id": sess.id,
-        }), 200
-
-    except Exception as e:
-        db.session.rollback()
-        current_app.logger.exception("kiosk_unlink failed")
-        return jsonify({"error": str(e)}), 500
 
 @dashboard_service.route('/releaseDevice/consoleTypeId/<gameid>/console/<console_id>/vendor/<vendor_id>', methods=['POST'])
+@transactional_device
 def release_console(gameid, console_id, vendor_id):
     try:
         # ✅ Define the dynamic console availability table name
@@ -2365,7 +2339,7 @@ def release_console(gameid, console_id, vendor_id):
                         text("UPDATE bookings SET status = 'completed' WHERE id = ANY(:booking_ids)"),
                         {"booking_ids": healed_ids}
                     )
-                    db.session.commit()
+                    db.session.flush()
                     _invalidate_vendor_caches(int(vendor_id))
                     return jsonify({"message": "Console already free; stale session link cleaned."}), 200
 
@@ -2484,7 +2458,7 @@ def release_console(gameid, console_id, vendor_id):
             if not upd_release:
                 # Console was occupied in availability but no current dashboard row matched.
                 # Keep console released and return a self-healed response instead of rolling back.
-                db.session.commit()
+                db.session.flush()
                 _invalidate_vendor_caches(int(vendor_id))
                 return jsonify({
                     "message": "Console released from stale occupied state; no active current session row found."
@@ -2502,7 +2476,7 @@ def release_console(gameid, console_id, vendor_id):
                 )
 
         # Commit the changes
-        db.session.commit()
+        db.session.flush()
         _invalidate_vendor_caches(int(vendor_id))
         # ADDED: Calculate remaining available consoles after release
         sql_remaining = text(f"""

@@ -29,11 +29,16 @@ ALL_PERMISSIONS: List[Permission] = [
     "staff.manage",
     "subscription.manage",
     "cafe.switch",
+    "wallet.topup",
+    "wallet.refund",
+    "wallet.adjust",
 ]
 
 DEFAULT_ROLE_PERMISSIONS: Dict[Role, List[Permission]] = {
     "owner": ALL_PERMISSIONS,
     "manager": [
+        "wallet.topup",
+        "wallet.refund",
         "dashboard.view",
         "gaming.manage",
         "booking.manage",
@@ -50,6 +55,7 @@ DEFAULT_ROLE_PERMISSIONS: Dict[Role, List[Permission]] = {
         "cafe.switch",
     ],
     "staff": [
+        "wallet.topup",
         "dashboard.view",
         "booking.manage",
         "gaming.manage",
@@ -200,6 +206,19 @@ def create_access_token_payload(vendor_id: int, staff_id: str, name: str, role: 
         },
     )
 
+    from datetime import datetime
+    from flask import request
+    from flask_jwt_extended import decode_token
+    from app.models.cafe_wallet import CafeStaffSession
+    from app.services.cafe_wallet_service import audit
+    claims = decode_token(token)
+    db.session.add(CafeStaffSession(jti=claims['jti'], vendor_id=vendor_id,
+        actor_id=str(staff_id), actor_name=name,
+        expires_at=datetime.utcfromtimestamp(claims['exp'])))
+    audit(vendor_id, {'id': str(staff_id), 'name': name}, 'session.login',
+          {'jti': claims['jti'], 'device': request.headers.get('User-Agent', '')[:300],
+           'expires_at': claims['exp']})
+    db.session.commit()
     return {
         "token": token,
         "vendor_id": vendor_id,

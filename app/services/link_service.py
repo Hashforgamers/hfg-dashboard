@@ -53,6 +53,15 @@ def close_link(session_id=None, console_id=None, vendor_id=None, reason=None):
     sess = q.first()
     if not sess:
         return 0
+    from app.models.vendor import Vendor
+    Vendor.query.filter_by(id=sess.vendor_id).with_for_update().one()
+    Console.query.filter_by(id=sess.console_id).with_for_update().one()
+    sess = q.populate_existing().with_for_update().first()
+    if not sess:
+        return 0
+    from app.models.cafe_wallet import CafePlaySession
+    if CafePlaySession.query.filter_by(link_id=sess.id).filter(CafePlaySession.state.in_(['reserved', 'active'])).first():
+        return 0
     sess.status = 'closed'
     sess.ended_at = datetime.utcnow()
     sess.close_reason = reason
