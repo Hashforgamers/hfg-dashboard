@@ -1,5 +1,5 @@
+from app.services.kiosk_security import vendor_required
 from flask import Blueprint, request, jsonify, current_app
-from flask_jwt_extended import jwt_required, get_jwt
 from sqlalchemy.exc import SQLAlchemyError
 from app.services.link_service import list_vendor_pcs, create_link, close_link
 from app.services.subscription_service import get_vendor_pc_limit
@@ -7,14 +7,11 @@ from app.models.console_link_session import ConsoleLinkSession
 
 bp_vendor_pc = Blueprint('vendor_pc', __name__, url_prefix='/api/vendors/<int:vendor_id>/pcs')
 
-def _auth_vendor(vendor_id):
-    # optional: check JWT claim vendor_id == path vendor_id
-    return True
-
-@bp_vendor_pc.get('/')
+@bp_vendor_pc.get('', strict_slashes=False)
+@bp_vendor_pc.get('/', strict_slashes=False)
+@vendor_required
 def get_pcs(vendor_id):
     try:
-        _auth_vendor(vendor_id)
         pcs = list_vendor_pcs(vendor_id)
 
         try:
@@ -66,9 +63,9 @@ def get_pcs(vendor_id):
         }), 500
 
 @bp_vendor_pc.post('/link')
+@vendor_required
 def link_pc(vendor_id):
     try:
-        _auth_vendor(vendor_id)
         data = request.get_json(silent=True) or {}
         console_id = data.get('console_id')
         if console_id is None:
@@ -79,7 +76,11 @@ def link_pc(vendor_id):
             return jsonify({"error": err}), 409
         return jsonify({
             "session_token": sess.session_token,
-            "ws_url": f"wss://your-host/ws?token={sess.session_token}"
+            "ws_url": current_app.config.get("KIOSK_WS_URL") or request.host_url.rstrip("/"),
+            "socket_path": "/socket.io",
+            "session_expires_in": None,
+            "console_id": sess.console_id,
+            "vendor_id": sess.vendor_id
         }), 201
     except SQLAlchemyError as e:
         current_app.logger.exception("Database error while linking PC for vendor_id=%s", vendor_id)
@@ -89,9 +90,9 @@ def link_pc(vendor_id):
         return jsonify({"error": "Failed to link PC", "details": str(e)}), 500
 
 @bp_vendor_pc.post('/unlink')
+@vendor_required
 def unlink_pc(vendor_id):
     try:
-        _auth_vendor(vendor_id)
         data = request.get_json(silent=True) or {}
         if data.get('session_id') is None and data.get('console_id') is None:
             return jsonify({"error": "Either session_id or console_id is required"}), 400

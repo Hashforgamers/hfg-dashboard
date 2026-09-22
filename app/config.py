@@ -5,6 +5,8 @@ class Config:
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-change-me")
     JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "Hash@2025")
     DEBUG = os.getenv("FLASK_DEBUG", "false").lower() == "true"
+    CAFE_CHECKOUT_URL = os.getenv("CAFE_CHECKOUT_URL", "")
+    CAFE_RECONCILER_ENABLED = os.getenv("CAFE_RECONCILER_ENABLED", "true").lower() == "true"
     RBAC_ENFORCEMENT = os.getenv("RBAC_ENFORCEMENT", "false").lower() == "true"
 
     SQLALCHEMY_DATABASE_URI = os.getenv(
@@ -27,6 +29,9 @@ class Config:
     CLOUDINARY_CLOUD_NAME = os.getenv('CLOUDINARY_CLOUD_NAME')
     CLOUDINARY_API_KEY = os.getenv('CLOUDINARY_API_KEY')
     CLOUDINARY_API_SECRET = os.getenv('CLOUDINARY_API_SECRET')
+
+    KIOSK_WS_URL = os.getenv("KIOSK_WS_URL", "")
+    KIOSK_EXPIRY_ENABLED = os.getenv("KIOSK_EXPIRY_ENABLED", "true").lower() == "true"
 
     # Booking bridge
     BOOKING_SOCKET_URL = os.getenv("BOOKING_SOCKET_URL", "wss://hfg-booking-hmnx.onrender.com")

@@ -1,3 +1,4 @@
+from app.services.kiosk_security import linked_identity, vendor_identity, KioskError
 import os
 import json
 import logging
@@ -6,8 +7,8 @@ import time
 import requests
 from typing import Dict, Any, Optional, Set
 
-from flask import current_app
-from flask_socketio import SocketIO, join_room, leave_room, emit
+from flask import current_app, session, g
+from flask_socketio import SocketIO, join_room, leave_room, emit, disconnect
 import socketio as pwsio   # python-socketio client (aliased)
 from app.services.payload_formatters import format_upcoming_booking_from_upstream
 from datetime import datetime, timedelta, timezone as dt_timezone
@@ -144,15 +145,45 @@ def _emit_downstream_to_vendor(vendor_id: Optional[int], event: str, data: Dict[
         _log_err("Downstream emit failed event=%s vendor=%s", event, vendor_id)
 
 def _emit_to_kiosk(kiosk_id: int, event: str, data: Dict[str, Any]):
+    # Starts publish once after commit; a revoked link never receives new events.
+    if getattr(g, "kiosk_transaction", False):
+        return
     try:
-        room = f"kiosk_{kiosk_id}"
-        _log_info("Emitting %s to kiosk room %s", event, room)
-        socketio.emit(event, data, room=room)
-        # Compatibility room for older kiosk clients
-        alt_room = f"console:{kiosk_id}"
-        socketio.emit(event, data, room=alt_room)
-    except Exception as e:
-        _log_err("Kiosk emit failed: %s", e)
+        rows = db.session.execute(text("SELECT id FROM console_link_sessions WHERE console_id=:cid AND status='active'"), {"cid": int(kiosk_id)}).fetchall()
+        for row in rows:
+            socketio.emit(event, data, room=f"kiosk_link_{row.id}")
+    except Exception:
+        _log_err("Kiosk emit failed console=%s", kiosk_id)
+
+
+def _socket_identity():
+    identity = session.get("socket_identity")
+    if not identity:
+        raise KioskError("token_required")
+    if identity["kind"] == "kiosk":
+        active = db.session.execute(text("SELECT 1 FROM console_link_sessions WHERE id=:id AND status='active'"), {"id": identity["id"]}).first()
+        if not active:
+            raise KioskError("invalid_session_token")
+    else:
+        identity = vendor_identity(session.get("socket_token"), permission="dashboard.view")
+    return identity
+
+
+def _socket_console_scope(data):
+    identity = _socket_identity()
+    if identity['kind'] != 'kiosk':
+        raise KioskError('kiosk_token_required', 403)
+    if int(data.get('console_id') or 0) != identity['console_id'] or int(data.get('vendor_id') or 0) != identity['vendor_id']:
+        raise KioskError('console_mismatch', 403)
+    # Bind continuation requests to a running booking belonging to this device.
+    from app.services.kiosk_runtime import booking_window
+    booking_id = data.get('current_booking_id') or data.get('currentBookingId') or data.get('booking_id')
+    window = booking_window(identity['vendor_id'], booking_id, identity['console_id'])
+    if window['status'] != 'active':
+        raise KioskError('session_ended', 409)
+    data['user_id'] = window['user_id']
+    data['game_id'] = window['game_id']
+    return identity
 
 
 # -----------------------------------------------------------------------------
@@ -520,8 +551,22 @@ def start_upstream_bridge(app):
 # -----------------------------------------------------------------------------
 def register_dashboard_events():
     @socketio.on("connect")
-    def _on_connect():
-        _log_info("Dashboard client connected")
+    def _on_connect(auth=None):
+        try:
+            if not isinstance(auth, dict):
+                return False
+            if auth.get("session_token"):
+                identity = linked_identity(auth["session_token"])
+                claimed = auth.get("console_id")
+                if claimed is not None and int(claimed) != identity["console_id"]:
+                    return False
+                join_room(f"kiosk_link_{identity['id']}")
+            else:
+                identity = vendor_identity(auth.get("token"), permission="dashboard.view")
+                session["socket_token"] = auth.get("token")
+            session["socket_identity"] = identity
+        except (KioskError, ValueError, TypeError):
+            return False
 
     @socketio.on("disconnect")
     def _on_disconnect():
@@ -531,6 +576,7 @@ def register_dashboard_events():
     @socketio.on("ping_health")
     def _on_ping_health(data=None):
         try:
+            _socket_identity()
             emit("pong_health", {"ok": True, "ts": time.time()})
         except Exception as e:
             _log_err("pong_health failed: %s", e)
@@ -544,7 +590,11 @@ def register_dashboard_events():
     @socketio.on("dashboard_join_vendor")
     def _on_dashboard_join_vendor(data: Dict[str, Any]):
         try:
+            identity = _socket_identity()
             vendor_id = data.get("vendor_id") or data.get("vendorId")
+            if identity["kind"] != "vendor" or int(vendor_id or 0) != identity["vendor_id"]:
+                disconnect()
+                return
             if not vendor_id:
                 _log_warn("dashboard_join_vendor missing vendor_id")
                 return
@@ -561,36 +611,19 @@ def register_dashboard_events():
         except Exception as e:
             _log_err("dashboard_join_vendor error: %s", e)
 
-    # Demo endpoints
-    @socketio.on("slot_booked_demo")
-    def handle_slot_booked(data):
-        try:
-            if isinstance(data, str):
-                data = json.loads(data)
-            current_app.logger.info("slot_booked_demo: %s", data)
-            socketio.emit("slot_booked", {"slot_id": data.get("slot_id"), "status": "booked"})
-        except Exception as e:
-            _log_err("slot_booked_demo error: %s", e)
-
-    @socketio.on("booking_updated_demo")
-    def handle_booking_updated(data):
-        try:
-            current_app.logger.info("booking_updated_demo: %s", data)
-            socketio.emit("booking_updated", data)
-        except Exception as e:
-            _log_err("booking_updated_demo error: %s", e)
-
     @socketio.on("kiosk_join")
-    def _on_kiosk_join(data: Dict[str, Any]):
-        kiosk_id = data.get("kiosk_id")
-        if not kiosk_id:
-            _log_warn("kiosk_join missing kiosk_id")
-            return
-        room = f"kiosk_{kiosk_id}"
-        join_room(room)
-        join_room(f"console:{kiosk_id}")
-        _log_info("Kiosk client joined room %s", room)
-
+    def _on_kiosk_join(data=None):
+        try:
+            identity = _socket_identity()
+            if identity["kind"] != "kiosk":
+                raise KioskError("kiosk_token_required")
+            data = data or {}
+            claimed = data.get("console_id", data.get("kiosk_id"))
+            if claimed is not None and int(claimed) != identity["console_id"]:
+                raise KioskError("console_mismatch", 403)
+            join_room(f"kiosk_link_{identity['id']}")
+        except (KioskError, ValueError, TypeError):
+            disconnect()
 
     @socketio.on("next_slot_check")
     def _on_next_slot_check(data: Any):
@@ -606,6 +639,7 @@ def register_dashboard_events():
                 emit("next_slot_reply", {"type": "next_slot_reply", "ok": False, "reason": "invalid_format"})
                 return
 
+            _socket_console_scope(data)
             vendor_id = int(data.get("vendor_id", 0) or 0)
             console_id = int(data.get("console_id", 0) or 0)
             if not vendor_id or not console_id:
@@ -664,6 +698,7 @@ def register_dashboard_events():
                 emit("next_slot_error", {"type": "next_slot_error", "reason": "invalid_format"})
                 return
 
+            _socket_console_scope(data)
             vendor_id = int(data.get("vendor_id", 0) or 0)
             console_id = int(data.get("console_id", 0) or 0)
             if not vendor_id or not console_id:
@@ -708,7 +743,7 @@ def register_dashboard_events():
             end_time_ist = body.get("end_time_ist")
             book_status = body.get("book_status")
 
-            socketio.emit("message", {
+            _emit_to_kiosk(console_id, "message", {
                 "type": "extend_confirm",
                 "console_id": console_id,
                 "data": {
@@ -720,7 +755,7 @@ def register_dashboard_events():
                     "amount_due": body.get("amount_due"),
                     "auto_started": body.get("auto_started"),
                 },
-            }, room=f"console:{console_id}")
+            })
 
             socketio.emit("extend_confirm", {
                 "vendorId": vendor_id,

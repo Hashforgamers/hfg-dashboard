@@ -165,6 +165,26 @@ def create_app():
     app.register_blueprint(pricing_blueprint, url_prefix="/api")
     app.register_blueprint(bp_access)
     register_commands(app)
+    from app.controllers.cafe_wallet_controller import bp_cafe, register_cafe_runtime
+    app.register_blueprint(bp_cafe)
+    register_cafe_runtime(app, socketio)
+    from app.services.cafe_audit_hooks import install_cafe_audit_hooks
+    install_cafe_audit_hooks(app)
+
+    from app.controllers.kiosk_controller import bp_kiosk, install_kiosk_errors
+    app.register_blueprint(bp_kiosk)
+    install_kiosk_errors(app)
+    from werkzeug.exceptions import HTTPException
+    @app.errorhandler(Exception)
+    def json_error(exc):
+        db.session.rollback()
+        if isinstance(exc, HTTPException):
+            return {"status": "error", "code": "http_error", "message": exc.description}, exc.code
+        app.logger.exception("Unhandled API error")
+        return {"status": "error", "code": "internal_error"}, 500
+
+    from app.services.kiosk_runtime import start_expiry_worker
+    start_expiry_worker(app)
 
     # Socket events
     register_dashboard_events()

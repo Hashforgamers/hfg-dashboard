@@ -5,9 +5,9 @@
     "semantic_hash": "9f01f5b6e48febfdf16ee3da357af06c"
   },
   "app/__init__.py": {
-    "mtime": 1779910998.8289518,
-    "ast_hash": "d805160ef4dc7333af8a0806785bd068",
-    "semantic_hash": "d805160ef4dc7333af8a0806785bd068"
+    "mtime": 1790049675.4290802,
+    "ast_hash": "80fd47926724c1621442091d4224419c",
+    "semantic_hash": ""
   },
   "app/commands.py": {
     "mtime": 1773687653.995435,
@@ -15,14 +15,14 @@
     "semantic_hash": "b141e74135e037c90c3e0b441c223ad2"
   },
   "app/config.py": {
-    "mtime": 1776000482.7780778,
-    "ast_hash": "7276b0839a04a80a9392ae99ced32eae",
-    "semantic_hash": "7276b0839a04a80a9392ae99ced32eae"
+    "mtime": 1790049384.1776156,
+    "ast_hash": "e70cb893727dc03316edad7b351b2b60",
+    "semantic_hash": ""
   },
   "app/controllers/access_controller.py": {
-    "mtime": 1772655409.9023795,
-    "ast_hash": "e19b200d6fa75b5366f3ba0f09717694",
-    "semantic_hash": "e19b200d6fa75b5366f3ba0f09717694"
+    "mtime": 1790067977.4015248,
+    "ast_hash": "fa8d7f496dd65e3e1d5b91a96b3816de",
+    "semantic_hash": ""
   },
   "app/controllers/admin_games_controller.py": {
     "mtime": 1771765008.9839714,
@@ -40,9 +40,9 @@
     "semantic_hash": "e8997ef1512f474916be3326e9be712b"
   },
   "app/controllers/internal_ws_controller.py": {
-    "mtime": 1773777316.7519746,
-    "ast_hash": "b262d78d549b42ee79c9fcded5b9853e",
-    "semantic_hash": "b262d78d549b42ee79c9fcded5b9853e"
+    "mtime": 1790023336.1391482,
+    "ast_hash": "b4d59d258baf473e9f03de3af1751b83",
+    "semantic_hash": ""
   },
   "app/controllers/package_controller.py": {
     "mtime": 1788887893.0723479,
@@ -90,9 +90,9 @@
     "semantic_hash": "17bf14c45bc74f40c04771c86e5e80d9"
   },
   "app/controllers/vendor_pc_controller.py": {
-    "mtime": 1772321282.9401343,
-    "ast_hash": "48d02abbf18f6ea33633338b310fd23c",
-    "semantic_hash": "48d02abbf18f6ea33633338b310fd23c"
+    "mtime": 1790049526.4880667,
+    "ast_hash": "e3f10dcaba19bb28a39d1463c888345b",
+    "semantic_hash": ""
   },
   "app/controllers/websocket_controller.py": {
     "mtime": 1738706121.8192484,
@@ -460,9 +460,9 @@
     "semantic_hash": "51bdcca2e0986a849528ec83e4f54ff5"
   },
   "app/routes.py": {
-    "mtime": 1778417330.8699398,
-    "ast_hash": "5ae33e688b1fbcbea4752296dbb2d3a6",
-    "semantic_hash": "5ae33e688b1fbcbea4752296dbb2d3a6"
+    "mtime": 1790023766.1640003,
+    "ast_hash": "d4580af356599ca8e6a19d7b1bf94bee",
+    "semantic_hash": ""
   },
   "app/services/add_game_images.py": {
     "mtime": 1771765009.0025344,
@@ -520,9 +520,9 @@
     "semantic_hash": "91e5c0c1222c8669988065751524eaa6"
   },
   "app/services/link_service.py": {
-    "mtime": 1760805856.994219,
-    "ast_hash": "5c6996ed6228770a1a0662d46fbc0fbf",
-    "semantic_hash": "5c6996ed6228770a1a0662d46fbc0fbf"
+    "mtime": 1790049759.3265224,
+    "ast_hash": "3e37e5addd856609167ebbd78de64d6f",
+    "semantic_hash": ""
   },
   "app/services/package_service.py": {
     "mtime": 1760805824.2997591,
@@ -545,8 +545,8 @@
     "semantic_hash": "afaea437d544d510f3394f0a9fc6f2de"
   },
   "app/services/rbac_service.py": {
-    "mtime": 1788969253.7712052,
-    "ast_hash": "6b482a489ebfe106277f60577114e94c",
+    "mtime": 1790049759.329277,
+    "ast_hash": "d4cec5d62ae79a1783b4e8c599d8ceed",
     "semantic_hash": ""
   },
   "app/services/subscription_service.py": {
@@ -560,9 +560,9 @@
     "semantic_hash": "e9be4972f04ad03285f0e32d3bdce7f7"
   },
   "app/services/websocket_service.py": {
-    "mtime": 1776000551.3970642,
-    "ast_hash": "8f13aebe9d40d92a4738e3eb59200152",
-    "semantic_hash": "8f13aebe9d40d92a4738e3eb59200152"
+    "mtime": 1790023242.9365957,
+    "ast_hash": "e2122c80d124a04dbec28b25e0d2e8e7",
+    "semantic_hash": ""
   },
   "run.py": {
     "mtime": 1759440121.3455782,
@@ -667,6 +667,91 @@
   "todo.txt": {
     "mtime": 1737888770.6385753,
     "ast_hash": "a583e7bccaf217a68f0f78b8bd6cbe24",
+    "semantic_hash": ""
+  },
+  "app/controllers/cafe_wallet_controller.py": {
+    "mtime": 1790068738.161408,
+    "ast_hash": "ce3ed7819ef7ea30cde756425ac9927e",
+    "semantic_hash": ""
+  },
+  "app/controllers/kiosk_controller.py": {
+    "mtime": 1790023149.3869784,
+    "ast_hash": "b32137f9009c8158fbb214da259693a2",
+    "semantic_hash": ""
+  },
+  "app/models/cafe_wallet.py": {
+    "mtime": 1790068738.1600368,
+    "ast_hash": "d3879e52046ee2fb1d6fc4ce98682354",
+    "semantic_hash": ""
+  },
+  "app/services/cafe_wallet_service.py": {
+    "mtime": 1790068738.1608372,
+    "ast_hash": "46212bbc09eca4d3d09b3ce923cad89c",
+    "semantic_hash": ""
+  },
+  "app/services/kiosk_runtime.py": {
+    "mtime": 1790049526.4876075,
+    "ast_hash": "5cb5046b93fd7a8806e9bf3083aa9a76",
+    "semantic_hash": ""
+  },
+  "app/services/kiosk_security.py": {
+    "mtime": 1790023766.1072612,
+    "ast_hash": "455aa55b393896de28e62aafef922d8d",
+    "semantic_hash": ""
+  },
+  "sql/20260919_performance_audit_read_only.sql": {
+    "mtime": 1789808456.5853841,
+    "ast_hash": "39140a97bac08961bd7d368f31c2a08b",
+    "semantic_hash": ""
+  },
+  "sql/20260922_cafe_wallet.sql": {
+    "mtime": 1790067565.7091398,
+    "ast_hash": "1a3f91a87d4b6a28c8452a3441bd32c1",
+    "semantic_hash": ""
+  },
+  "sql/20260922_kiosk_runtime.sql": {
+    "mtime": 1790023519.2653775,
+    "ast_hash": "a9b26e874f5e38d8be658728697316be",
+    "semantic_hash": ""
+  },
+  "tests/test_cafe_wallet.py": {
+    "mtime": 1790069296.726641,
+    "ast_hash": "1b5b67a52d747b1ef29c504ea86adc8c",
+    "semantic_hash": ""
+  },
+  "tests/test_kiosk_runtime.py": {
+    "mtime": 1790049480.3234072,
+    "ast_hash": "f4964c33ca88e0d5d474db93f1cc6e10",
+    "semantic_hash": ""
+  },
+  "tests/test_websocket_bridge.py": {
+    "mtime": 1789808392.6405332,
+    "ast_hash": "bcfea26b81948218a577f72f02fb8388",
+    "semantic_hash": ""
+  },
+  "docs/kiosk-api-2026-09-22.md": {
+    "mtime": 1790049639.377474,
+    "ast_hash": "44754002bd63f63f6c0311b14b5feadb",
+    "semantic_hash": ""
+  },
+  "app/services/cafe_audit_hooks.py": {
+    "mtime": 1790049675.3598247,
+    "ast_hash": "dff4b2e169cdce544f49399a479013d5",
+    "semantic_hash": ""
+  },
+  "docs/cafe-wallet-rollout.md": {
+    "mtime": 1790069275.5815604,
+    "ast_hash": "bac2326b526d20f73c6cd8a9a68f3129",
+    "semantic_hash": ""
+  },
+  "app/services/cafe_booking_service.py": {
+    "mtime": 1790069275.5797017,
+    "ast_hash": "20fcfb3227dca01af802048b1efdb016",
+    "semantic_hash": ""
+  },
+  "sql/20260923_unified_kiosk_qr.sql": {
+    "mtime": 1790068738.166339,
+    "ast_hash": "85c9267c4b89b216c5e856fa62ea7fd9",
     "semantic_hash": ""
   }
 }

@@ -70,7 +70,7 @@ def _require_permission(vendor_id: int, permission: str):
 
 @bp_access.post("/session/owner")
 def issue_owner_session(vendor_id: int):
-    _, err = _ensure_vendor_exists(vendor_id)
+    vendor, err = _ensure_vendor_exists(vendor_id)
     if err:
         return err
 
@@ -120,8 +120,10 @@ def issue_owner_session(vendor_id: int):
         return jsonify({"error": "Invalid token"}), 401
 
     sub = claims.get("sub") or {}
+    if not isinstance(sub, dict) or sub.get("type") != "vendor" or claims.get("scope") == "vendor_access":
+        return jsonify({"error": "Owner login required"}), 403
     claim_vid = None
-    owner_name = "Owner"
+    owner_name = str(vendor.owner_name or "Owner")
 
     if isinstance(sub, dict):
         if sub.get("id") is not None:
@@ -146,7 +148,7 @@ def issue_owner_session(vendor_id: int):
         claim_vendor_id=claim_vid,
         owner_name=owner_name,
     )
-    if claim_vid is not None and claim_vid != vendor_id:
+    if claim_vid != vendor_id:
         return jsonify({"error": "Vendor mismatch"}), 403
 
     payload = create_access_token_payload(
