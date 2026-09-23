@@ -51,6 +51,16 @@ def env(monkeypatch):
     class User(db.Model):
         __tablename__='users'
         id=db.Column(db.Integer,primary_key=True)
+    class ContactInfo(db.Model):
+        __tablename__='contact_info'
+        id=db.Column(db.Integer,primary_key=True)
+        parent_id=db.Column(db.Integer)
+        parent_type=db.Column(db.String)
+        email=db.Column(db.String)
+        phone=db.Column(db.String)
+    User.name=db.Column(db.String)
+    User.game_username=db.Column(db.String)
+    model_module('contactInfo',ContactInfo)
     class Console(db.Model):
         __tablename__='consoles'
         id=db.Column(db.Integer,primary_key=True)
@@ -531,3 +541,56 @@ def test_active_booking_cancellation_or_refund_stops_session(env,change):
         e.db.session.execute(text(change));e.db.session.commit();e.s.expire_sessions()
         assert s.state=='cancelled' and s.console_claim is None
         assert e.m.CafeLedger.query.count()==0
+
+
+def test_gamer_search_identifiers_and_access(env):
+    e=env
+    with e.app.app_context():
+        from app.models.user import User
+        from app.models.contactInfo import ContactInfo
+        u=e.db.session.get(User,1);u.name='Asha Rao';u.game_username='ashaplay'
+        e.db.session.add(ContactInfo(parent_id=1,parent_type='user',email='asha@example.test',phone='9876543210'))
+        e.db.session.commit()
+        token=staff_token(e,role='owner')
+    c=e.app.test_client()
+    for query in ['Asha Rao','ashaplay','asha@example.test','9876543210','1']:
+        r=c.get('/api/cafe/1/gamers',query_string={'q':query},headers=auth(token))
+        assert r.status_code==200
+        assert [row['id'] for row in r.json]==[1]
+        assert 'balance' not in r.json[0]
+    for query in ['', 'a', '%%']:
+        assert c.get('/api/cafe/1/gamers',query_string={'q':query},headers=auth(token)).json==[]
+    assert c.get('/api/cafe/2/gamers?q=Asha',headers=auth(token)).status_code==403
+    assert c.get('/api/cafe/1/gamers?q=Asha').status_code==401
+
+
+def test_collections_date_boundaries_and_activity_scope(env):
+    e=env
+    with e.app.app_context():
+        token=staff_token(e,role='owner')
+        entries=[(1,'topup','cash',10000,datetime(2026,9,22,18,30)),
+                 (1,'food_collection','cafe_upi',5000,datetime(2026,9,23,12)),
+                 (1,'refund','cash',-2000,datetime(2026,9,23,12)),
+                 (1,'capture',None,-3000,datetime(2026,9,23,12)),
+                 (1,'topup','cash',999,datetime(2026,9,23,18,30)),
+                 (1,'topup','cash',999,datetime(2026,9,22,18,29,59)),
+                 (2,'topup','cash',999,datetime(2026,9,23,12))]
+        for i,(vendor,kind,method,amount,created) in enumerate(entries):
+            e.db.session.add(e.m.CafeLedger(vendor_id=vendor,user_id=1,kind=kind,method=method,amount=amount,
+                balance_after=0,reserved_after=0,actor_id='1',actor_name='Sam',reason='Test',
+                idempotency_key=str(i),fingerprint=str(i),created_at=created))
+        e.db.session.commit()
+    c=e.app.test_client()
+    r=c.get('/api/cafe/1/collections?date=2026-09-23',headers=auth(token))
+    assert r.status_code==200
+    assert r.json['net']==13000
+    assert r.json['methods']['cash']=={'received':10000,'returned':2000,'net':8000}
+    assert r.json['methods']['cafe_upi']['received']==5000
+    assert c.get('/api/cafe/1/collections?date=wrong',headers=auth(token)).status_code==400
+    assert c.get('/api/cafe/2/collections',headers=auth(token)).status_code==403
+    activity=c.get('/api/cafe/1/activity',headers=auth(token))
+    assert activity.status_code==200
+    payments=[r for r in activity.json if r['id'].startswith('payment-')]
+    assert len(payments)==6
+    assert any(r['action']=='topup' and r['details']['amount']==10000 for r in payments)
+    assert c.get('/api/cafe/2/activity',headers=auth(token)).status_code==403
