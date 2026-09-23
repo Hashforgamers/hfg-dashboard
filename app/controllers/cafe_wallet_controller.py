@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 import os
 import secrets
@@ -8,7 +8,7 @@ from flask import Blueprint, request, jsonify, current_app, g
 from flask_jwt_extended import jwt_required, get_jwt
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import func
+from sqlalchemy import func, or_, and_
 from app.extension.extensions import db
 from app.models.cafe_wallet import *
 from app.models.console_link_session import ConsoleLinkSession
@@ -48,7 +48,8 @@ def staff_actor(vendor_id, permission):
         if not member:
             raise CafeError('Staff account is disabled', 403)
         role = member.role
-    if permission not in get_role_permissions(vendor_id).get(role, []):
+    required = [permission] if isinstance(permission, str) else permission
+    if not any(item in get_role_permissions(vendor_id).get(role, []) for item in required):
         raise CafeError('Permission denied', 403)
     return {'id': str(actor['id']), 'name': str(actor['name'])}
 
@@ -97,7 +98,7 @@ def gamer_required(fn):
 @bp_cafe.get('/<int:vendor_id>/policy')
 @jwt_required()
 def get_policy(vendor_id):
-    staff_actor(vendor_id, 'wallet.topup')
+    staff_actor(vendor_id, ('wallet.topup', 'account.manage'))
     return jsonify(policy(vendor_id))
 
 
@@ -120,6 +121,52 @@ def set_policy(vendor_id):
     audit(vendor_id, actor, 'payment_policy.updated', {'before': before, 'after': settings})
     db.session.commit()
     return jsonify(settings)
+
+
+@bp_cafe.get('/<int:vendor_id>/gamers')
+@jwt_required()
+def search_gamers(vendor_id):
+    staff_actor(vendor_id, 'wallet.topup')
+    from app.models.user import User
+    from app.models.contactInfo import ContactInfo
+    q = str(request.args.get('q') or '').strip()[:100]
+    if len(q) < 2 and not q.isdigit():
+        return jsonify([])
+    pattern = '%' + q.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + '%'
+    conditions = [User.name.ilike(pattern, escape='\\'), User.game_username.ilike(pattern, escape='\\'),
+                  ContactInfo.email.ilike(pattern, escape='\\'), ContactInfo.phone.ilike(pattern, escape='\\')]
+    if q.isdigit() and len(q) <= 10 and int(q) <= 2147483647:
+        conditions.append(User.id == int(q))
+    rows = db.session.query(User.id, User.name, User.game_username, ContactInfo.email, ContactInfo.phone).outerjoin(
+        ContactInfo, and_(ContactInfo.parent_id == User.id, ContactInfo.parent_type == 'user')
+    ).filter(or_(*conditions)).distinct().order_by(User.name, User.id).limit(20).all()
+    return jsonify([dict(id=r.id, name=r.name, game_username=r.game_username, email=r.email, phone=r.phone) for r in rows])
+
+
+@bp_cafe.get('/<int:vendor_id>/collections')
+@jwt_required()
+def collections_summary(vendor_id):
+    staff_actor(vendor_id, 'transactions.view')
+    from zoneinfo import ZoneInfo
+    zone = ZoneInfo('Asia/Kolkata')
+    date_text = request.args.get('date') or datetime.now(zone).date().isoformat()
+    try:
+        day = datetime.strptime(date_text, '%Y-%m-%d').replace(tzinfo=zone)
+    except ValueError:
+        raise CafeError('Choose a valid date (YYYY-MM-DD)')
+    start = day.astimezone(timezone.utc).replace(tzinfo=None)
+    end = (day + timedelta(days=1)).astimezone(timezone.utc).replace(tzinfo=None)
+    rows = db.session.query(CafeLedger.method, CafeLedger.kind, func.sum(CafeLedger.amount)).filter(
+        CafeLedger.vendor_id == vendor_id, CafeLedger.created_at >= start, CafeLedger.created_at < end,
+        CafeLedger.method.in_(['cash', 'cafe_upi']), CafeLedger.kind.in_(['topup', 'food_collection', 'refund'])
+    ).group_by(CafeLedger.method, CafeLedger.kind).all()
+    methods = {method: dict(received=0, returned=0, net=0) for method in ['cash', 'cafe_upi']}
+    for method, kind, amount in rows:
+        amount = int(amount or 0)
+        methods[method]['returned' if kind == 'refund' else 'received'] += -amount if kind == 'refund' else amount
+        methods[method]['net'] += amount
+    return jsonify(date=date_text, timezone='Asia/Kolkata', methods=methods,
+                   net=sum(value['net'] for value in methods.values()))
 
 
 @bp_cafe.get('/<int:vendor_id>/wallets/<int:user_id>')
@@ -208,6 +255,23 @@ def audit_history(vendor_id):
     if before:
         query = query.filter(CafeAudit.id < before)
     return jsonify([serialize(r) for r in query.order_by(CafeAudit.id.desc()).limit(100).all()])
+
+
+@bp_cafe.get('/<int:vendor_id>/activity')
+@jwt_required()
+def desk_activity(vendor_id):
+    staff_actor(vendor_id, 'transactions.view')
+    records = []
+    for row in CafeAudit.query.filter_by(vendor_id=vendor_id).order_by(CafeAudit.id.desc()).limit(100).all():
+        item = serialize(row)
+        item['id'] = f'audit-{row.id}'
+        records.append(item)
+    for row in CafeLedger.query.filter_by(vendor_id=vendor_id).order_by(CafeLedger.id.desc()).limit(100).all():
+        records.append(dict(id=f'payment-{row.id}', actor_name=row.actor_name, action=row.kind,
+            created_at=serialize(row)['created_at'], details=dict(user_id=row.user_id, amount=row.amount,
+            method=row.method, reason=row.reason, transaction_id=row.id)))
+    records.sort(key=lambda item: (item['created_at'], item['id']), reverse=True)
+    return jsonify(records[:100])
 
 
 @bp_cafe.get('/<int:vendor_id>/report')
