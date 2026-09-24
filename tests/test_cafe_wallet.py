@@ -110,6 +110,8 @@ def env(monkeypatch):
     from unittest.mock import Mock
     socket.socketio=Mock();monkeypatch.setitem(sys.modules,socket.__name__,socket)
     app.register_blueprint(controller.bp_cafe)
+    access = load('app.controllers.access_controller', 'app/controllers/access_controller.py')
+    app.register_blueprint(access.bp_access)
     with app.app_context():
         if url.startswith('postgresql'):
             with db.engine.begin() as conn:conn.execute(text(f'CREATE SCHEMA {schema}'))
@@ -594,3 +596,64 @@ def test_collections_date_boundaries_and_activity_scope(env):
     assert len(payments)==6
     assert any(r['action']=='topup' and r['details']['amount']==10000 for r in payments)
     assert c.get('/api/cafe/2/activity',headers=auth(token)).status_code==403
+
+
+def test_staff_renewal_preserves_session_and_logout_revokes_renewals(env):
+    env.app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(minutes=1)
+    token = staff_token(env)
+    env.app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=8)
+    client = env.app.test_client()
+    with env.app.app_context():
+        old = decode_token(token)
+    response = client.post('/api/vendor/1/access/session/refresh', headers=auth(token))
+    assert response.status_code == 200
+    renewed = response.json['token']
+    with env.app.app_context():
+        claims = decode_token(renewed)
+        assert claims['jti'] == old['jti']
+        assert claims['exp'] > old['exp']
+        assert claims['staff']['id'] == '1'
+        assert env.m.CafeStaffSession.query.count() == 1
+        assert env.m.CafeAudit.query.filter_by(action='session.renewed').count() == 1
+    assert client.post('/api/cafe/1/logout', headers=auth(token)).status_code == 200
+    assert client.post('/api/vendor/1/access/session/refresh', headers=auth(renewed)).status_code == 401
+    assert client.get('/api/cafe/1/wallets/1', headers=auth(renewed)).status_code == 401
+
+
+def test_staff_renewal_rechecks_scope_role_and_expiry(env):
+    token = staff_token(env)
+    client = env.app.test_client()
+    assert client.post('/api/vendor/2/access/session/refresh', headers=auth(token)).status_code == 403
+    from app.models.vendorStaff import VendorStaff
+    with env.app.app_context():
+        member = env.db.session.get(VendorStaff, 1)
+        member.role = 'manager'
+        env.db.session.commit()
+    response = client.post('/api/vendor/1/access/session/refresh', headers=auth(token))
+    assert response.status_code == 200
+    assert response.json['staff']['role'] == 'manager'
+    with env.app.app_context():
+        member = env.db.session.get(VendorStaff, 1)
+        member.is_active = False
+        env.db.session.commit()
+    assert client.post('/api/vendor/1/access/session/refresh', headers=auth(token)).status_code == 403
+    with env.app.app_context():
+        member = env.db.session.get(VendorStaff, 1)
+        member.is_active = True
+        row = env.m.CafeStaffSession.query.one()
+        row.expires_at = datetime.utcnow() - timedelta(seconds=1)
+        env.db.session.commit()
+    assert client.post('/api/vendor/1/access/session/refresh', headers=auth(token)).status_code == 401
+
+
+def test_expired_jwt_cannot_renew_live_staff_session(env):
+    token = staff_token(env)
+    with env.app.app_context():
+        claims = decode_token(token)
+        claims['exp'] = int(datetime.now().timestamp()) - 1
+        token = jwt.encode(claims, env.app.config['JWT_SECRET_KEY'], algorithm='HS256')
+        row = env.m.CafeStaffSession.query.one()
+        row.expires_at = datetime.utcnow() + timedelta(hours=1)
+        env.db.session.commit()
+    response = env.app.test_client().post('/api/vendor/1/access/session/refresh', headers=auth(token))
+    assert response.status_code == 401

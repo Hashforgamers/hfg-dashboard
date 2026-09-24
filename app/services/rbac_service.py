@@ -188,13 +188,14 @@ def is_pin_in_use(vendor_id: int, pin: str, exclude_staff_id: Optional[int] = No
     return False
 
 
-def create_access_token_payload(vendor_id: int, staff_id: str, name: str, role: str) -> dict:
+def create_access_token_payload(vendor_id: int, staff_id: str, name: str, role: str, *, session=None) -> dict:
     role_matrix = get_role_permissions(vendor_id)
     permissions = role_matrix.get(role, [])
 
     token = create_access_token(
         identity=str(staff_id),
         additional_claims={
+            **({"jti": session.jti} if session is not None else {}),
             "scope": "vendor_access",
             "vendor_id": vendor_id,
             "staff": {
@@ -212,10 +213,17 @@ def create_access_token_payload(vendor_id: int, staff_id: str, name: str, role: 
     from app.models.cafe_wallet import CafeStaffSession
     from app.services.cafe_wallet_service import audit
     claims = decode_token(token)
-    db.session.add(CafeStaffSession(jti=claims['jti'], vendor_id=vendor_id,
-        actor_id=str(staff_id), actor_name=name,
-        expires_at=datetime.utcfromtimestamp(claims['exp'])))
-    audit(vendor_id, {'id': str(staff_id), 'name': name}, 'session.login',
+    if session is None:
+        db.session.add(CafeStaffSession(jti=claims['jti'], vendor_id=vendor_id,
+            actor_id=str(staff_id), actor_name=name,
+            expires_at=datetime.utcfromtimestamp(claims['exp'])))
+    else:
+        # Preserve the session identity so logout revokes every renewed token,
+        # and simultaneous tabs cannot create orphaned staff sessions.
+        session.expires_at = datetime.utcfromtimestamp(claims['exp'])
+        session.actor_name = name
+    audit(vendor_id, {'id': str(staff_id), 'name': name},
+          'session.renewed' if session is not None else 'session.login',
           {'jti': claims['jti'], 'device': request.headers.get('User-Agent', '')[:300],
            'expires_at': claims['exp']})
     db.session.commit()
