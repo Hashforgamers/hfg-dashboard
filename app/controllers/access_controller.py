@@ -382,3 +382,33 @@ def reset_permissions(vendor_id: int):
 
     matrix = reset_role_permissions(vendor_id)
     return jsonify({"matrix": matrix}), 200
+
+
+@bp_access.post("/session/refresh")
+@jwt_required()
+def refresh_staff_session(vendor_id: int):
+    from datetime import datetime
+    from app.models.cafe_wallet import CafeStaffSession
+    from app.controllers.cafe_wallet_controller import staff_actor
+
+    claims = get_jwt()
+    # Lock the same row used by logout and expiry before checking its status.
+    session = CafeStaffSession.query.filter_by(jti=claims.get('jti')).populate_existing().with_for_update().first()
+    if not session or session.closed_at or session.expires_at <= datetime.utcnow():
+        return jsonify(error="Unlock your staff session again"), 401
+    from app.services.cafe_wallet_service import CafeError
+    try:
+        actor = staff_actor(vendor_id, 'dashboard.view')
+    except CafeError as error:
+        db.session.rollback()
+        return jsonify(error=error.message), error.status
+    if session.vendor_id != vendor_id or session.actor_id != actor['id']:
+        return jsonify(error="Session identity mismatch"), 403
+    if actor['id'] == f"owner-{vendor_id}" and claims['staff']['role'] == 'owner':
+        name, role = session.actor_name, 'owner'
+    else:
+        member = VendorStaff.query.filter_by(id=actor['id'], vendor_id=vendor_id, is_active=True).first()
+        if not member:
+            return jsonify(error="Staff account is disabled"), 403
+        name, role = member.name, member.role
+    return jsonify(create_access_token_payload(vendor_id, actor['id'], name, role, session=session))
