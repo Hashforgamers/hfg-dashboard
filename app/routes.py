@@ -257,24 +257,24 @@ def _resolve_console_group_from_name(console_name: str, vendor_id: int = None) -
 def _booking_start_eligibility(slot_date, start_time, end_time):
     """
     Rules:
-    - Booking date must be today (IST)
-    - Current IST time must be between start_time and end_time (inclusive)
+    - Current IST time may be up to five minutes before scheduled start.
+    - Scheduled end remains unchanged, including overnight sessions.
     """
     now_ist = datetime.now(IST).replace(tzinfo=None)
     if not slot_date or not start_time or not end_time:
         return False, "Booking schedule is incomplete."
 
     slot_day = slot_date if isinstance(slot_date, date) else None
-    if slot_day != now_ist.date():
-        return False, "Session can only be started on its booking date."
+    if slot_day is None:
+        return False, "Booking schedule is incomplete."
 
     start_dt = datetime.combine(slot_day, start_time)
     end_dt = datetime.combine(slot_day, end_time)
     if end_dt <= start_dt:
         end_dt = end_dt + timedelta(days=1)
 
-    if now_ist < start_dt:
-        return False, "Session can be started only when slot time begins."
+    if now_ist < start_dt - timedelta(minutes=5):
+        return False, "Session can be started up to 5 minutes before its scheduled time."
     if now_ist > end_dt:
         return False, "Slot end time has passed. Cannot start session."
     return True, ""
