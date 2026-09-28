@@ -287,34 +287,10 @@ def _build_session_identifier(booking_id, slot_date, start_time, end_time):
 
 
 def _normalize_lifecycle(book_status: str, row_date, start_time=None, end_time=None):
-    """
-    Keep lifecycle monotonic for API output:
-    - future date can never be current/completed
-    - past date can never be upcoming/current
-    """
+    """A clock boundary never completes a started session."""
     status = str(book_status or "upcoming").strip().lower()
     if status not in LIFECYCLE_ORDER:
         status = "upcoming"
-    today_ist = datetime.now(IST).date()
-    if isinstance(row_date, date) and row_date > today_ist:
-        return "upcoming"
-    if isinstance(row_date, date) and row_date < today_ist:
-        return "completed"
-    # For today's rows, trust persisted status unless slot end has already passed.
-    # This prevents stale "upcoming" rows from showing after their end time.
-    if (
-        isinstance(row_date, date)
-        and row_date == today_ist
-        and start_time
-        and end_time
-    ):
-        now_ist = datetime.now(IST).replace(tzinfo=None)
-        start_dt = datetime.combine(row_date, start_time)
-        end_dt = datetime.combine(row_date, end_time)
-        if end_dt <= start_dt:
-            end_dt = end_dt + timedelta(days=1)
-        if now_ist > end_dt:
-            return "completed"
     return status
 
 
@@ -2616,37 +2592,8 @@ def get_landing_page_vendor(vendor_id):
             "verification_failed",
         )
 
-        # Self-heal stale current rows: only sessions with an occupied console can remain current.
-        # If no occupied availability row exists for the same console, mark as completed.
-        stale_current_rows = db.session.execute(
-            text(f"""
-                UPDATE {table_name} b
-                SET book_status = 'completed'
-                WHERE b.book_status = 'current'
-                  AND b.console_id IS NOT NULL
-                  AND NOT EXISTS (
-                      SELECT 1
-                      FROM {availability_table} ca
-                      WHERE ca.vendor_id = :vendor_id
-                        AND ca.console_id = b.console_id
-                        AND COALESCE(ca.is_available, TRUE) = FALSE
-                  )
-                RETURNING b.book_id
-            """),
-            {"vendor_id": vendor_id},
-        ).fetchall()
-        if stale_current_rows:
-            healed_ids = [int(r[0]) for r in stale_current_rows if r and r[0] is not None]
-            if healed_ids:
-                db.session.execute(
-                    text("""
-                        UPDATE bookings
-                        SET status = 'completed'
-                        WHERE id = ANY(:booking_ids)
-                    """),
-                    {"booking_ids": healed_ids},
-                )
-                db.session.commit()
+        # Completion is an explicit lifecycle transition, never inferred from
+        # occupancy or the scheduled end time during a dashboard read.
 
         # Keep dashboard lifecycle aligned with canonical bookings.status for no-show states.
         db.session.execute(
@@ -2711,46 +2658,6 @@ def get_landing_page_vendor(vendor_id):
                 )
                 db.session.commit()
 
-        # Self-heal overdue current rows to completed only if console is no longer occupied.
-        overdue_current_rows = db.session.execute(
-            text(f"""
-                UPDATE {table_name} b
-                SET book_status = 'completed'
-                WHERE b.book_status = 'current'
-                  AND (
-                      b.date < :today_ist
-                      OR (
-                          b.date = :today_ist
-                          AND b.end_time > b.start_time
-                          AND b.end_time < :now_ist_time
-                      )
-                  )
-                  AND NOT EXISTS (
-                      SELECT 1
-                      FROM {availability_table} ca
-                      WHERE ca.vendor_id = :vendor_id
-                        AND ca.console_id = b.console_id
-                        AND COALESCE(ca.is_available, TRUE) = FALSE
-                  )
-                RETURNING b.book_id
-            """),
-            {"today_ist": today_ist, "now_ist_time": now_ist_time, "vendor_id": vendor_id},
-        ).fetchall()
-        if overdue_current_rows:
-            completed_ids = [int(r[0]) for r in overdue_current_rows if r and r[0] is not None]
-            if completed_ids:
-                db.session.execute(
-                    text("""
-                        UPDATE bookings
-                        SET status = 'completed'
-                        WHERE id = ANY(:booking_ids)
-                          AND LOWER(COALESCE(status, '')) NOT IN
-                              ('completed', 'cancelled', 'canceled', 'rejected', 'discarded', 'no_show', 'verification_failed')
-                    """),
-                    {"booking_ids": completed_ids},
-                )
-                db.session.commit()
-
         # Vendor-scoped transaction summary in one query.
         transaction_summary = (
             db.session.query(
@@ -2808,6 +2715,7 @@ def get_landing_page_vendor(vendor_id):
                 ag.single_slot_price,
                 d.slot_id,
                 d.squad_details,
+                d.status AS canonical_booking_status,
                 ca.is_available AS console_is_available,
                 c.model_number AS console_name,
                 c.brand AS console_brand,
@@ -2825,7 +2733,8 @@ def get_landing_page_vendor(vendor_id):
              AND ca.console_id = b.console_id
              AND ca.game_id = b.game_id
             LEFT JOIN consoles c ON c.id = b.console_id
-            WHERE b.date BETWEEN :history_from_date AND :history_to_date
+            WHERE (b.date BETWEEN :history_from_date AND :history_to_date)
+               OR (b.book_status = 'current' AND d.status NOT IN ('completed', 'cancelled', 'canceled', 'no_show', 'discarded'))
             ORDER BY b.date ASC, b.start_time ASC, b.book_id ASC
         """)
         result = db.session.execute(
@@ -2910,7 +2819,7 @@ def get_landing_page_vendor(vendor_id):
                 lifecycle_status = "current"
             session_identifier = _build_session_identifier(row.book_id, row.date, row.start_time, row.end_time)
             lifecycle_step = LIFECYCLE_ORDER.get(lifecycle_status, 1)
-            booking_record_status = str(getattr(row, "status", "") or "").strip().lower()
+            booking_record_status = str(getattr(row, "canonical_booking_status", "") or "").strip().lower()
             outcome_key, outcome_label, outcome_reason = _derive_booking_outcome(
                 lifecycle_status=lifecycle_status,
                 booking_record_status=booking_record_status,
@@ -3014,13 +2923,8 @@ def get_landing_page_vendor(vendor_id):
                 history_bookings.append(booking_data)
             elif lifecycle_status == "upcoming":
                 upcoming_bookings.append(booking_data)
-            elif lifecycle_status == "current" and is_console_occupied:
-                current_slots.append(slot_data)
             elif lifecycle_status == "current":
-                # If slot time says "current" but console is not occupied yet,
-                # keep it visible in upcoming queue instead of dropping it.
-                # This avoids disappearing bookings when occupancy sync is late.
-                upcoming_bookings.append(booking_data)
+                current_slots.append(slot_data)
             else:
                 history_bookings.append(booking_data)
 
