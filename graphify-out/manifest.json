@@ -460,8 +460,8 @@
     "semantic_hash": "51bdcca2e0986a849528ec83e4f54ff5"
   },
   "app/routes.py": {
-    "mtime": 1790596602.3332844,
-    "ast_hash": "5a394bc388b738b5ab923c021e47c774",
+    "mtime": 1790622554.0189073,
+    "ast_hash": "8b693178cbd41a063619c1cf97d84c18",
     "semantic_hash": ""
   },
   "app/services/add_game_images.py": {
@@ -757,6 +757,11 @@
   "tests/test_early_start.py": {
     "mtime": 1790596627.5495853,
     "ast_hash": "e119c6d3a941e7e15de8208fbcf6e3d8",
+    "semantic_hash": ""
+  },
+  "tests/test_manual_session_end.py": {
+    "mtime": 1790622587.7002864,
+    "ast_hash": "78f9a9a66d941abbeb84df9f78ba44dd",
     "semantic_hash": ""
   }
 }

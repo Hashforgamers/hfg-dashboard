@@ -20,8 +20,8 @@
     "semantic_hash": ""
   },
   "app/controllers/access_controller.py": {
-    "mtime": 1790067977.4015248,
-    "ast_hash": "fa8d7f496dd65e3e1d5b91a96b3816de",
+    "mtime": 1790232960.7735128,
+    "ast_hash": "528c23e35a60050ce77ca7e510d0594c",
     "semantic_hash": ""
   },
   "app/controllers/admin_games_controller.py": {
@@ -460,8 +460,8 @@
     "semantic_hash": "51bdcca2e0986a849528ec83e4f54ff5"
   },
   "app/routes.py": {
-    "mtime": 1790023766.1640003,
-    "ast_hash": "d4580af356599ca8e6a19d7b1bf94bee",
+    "mtime": 1790596602.3332844,
+    "ast_hash": "5a394bc388b738b5ab923c021e47c774",
     "semantic_hash": ""
   },
   "app/services/add_game_images.py": {
@@ -545,8 +545,8 @@
     "semantic_hash": "afaea437d544d510f3394f0a9fc6f2de"
   },
   "app/services/rbac_service.py": {
-    "mtime": 1790049759.329277,
-    "ast_hash": "d4cec5d62ae79a1783b4e8c599d8ceed",
+    "mtime": 1790188862.217743,
+    "ast_hash": "88ade7bb44d780e26c5310708e1b702f",
     "semantic_hash": ""
   },
   "app/services/subscription_service.py": {
@@ -670,8 +670,8 @@
     "semantic_hash": ""
   },
   "app/controllers/cafe_wallet_controller.py": {
-    "mtime": 1790068738.161408,
-    "ast_hash": "ce3ed7819ef7ea30cde756425ac9927e",
+    "mtime": 1790110203.09669,
+    "ast_hash": "5ee773d51cc2542b3aceb4685e2d235b",
     "semantic_hash": ""
   },
   "app/controllers/kiosk_controller.py": {
@@ -715,8 +715,8 @@
     "semantic_hash": ""
   },
   "tests/test_cafe_wallet.py": {
-    "mtime": 1790069296.726641,
-    "ast_hash": "1b5b67a52d747b1ef29c504ea86adc8c",
+    "mtime": 1790233881.955073,
+    "ast_hash": "88597fd486b8cf375c31f9f8c78fb088",
     "semantic_hash": ""
   },
   "tests/test_kiosk_runtime.py": {
@@ -752,6 +752,11 @@
   "sql/20260923_unified_kiosk_qr.sql": {
     "mtime": 1790068738.166339,
     "ast_hash": "85c9267c4b89b216c5e856fa62ea7fd9",
+    "semantic_hash": ""
+  },
+  "tests/test_early_start.py": {
+    "mtime": 1790596627.5495853,
+    "ast_hash": "e119c6d3a941e7e15de8208fbcf6e3d8",
     "semantic_hash": ""
   }
 }
