@@ -95,6 +95,85 @@ def gamer_required(fn):
     return wrapped
 
 
+def wallet_page_integer(name, default=None, maximum=2147483647):
+    value = request.args.get(name)
+    if value is None:
+        return default
+    if not value.isascii() or not value.isdecimal() or len(value) > 10:
+        raise CafeError(f'{name} must be a positive integer')
+    number = int(value)
+    if not 1 <= number <= maximum:
+        raise CafeError(f'{name} must be between 1 and {maximum}')
+    return number
+
+
+def gamer_wallet_summary(vendor, row):
+    balance = row.balance if row else 0
+    reserved = row.reserved if row else 0
+    return dict(vendor_id=vendor.id, cafe_name=vendor.cafe_name, currency='INR',
+                balance=balance, reserved=reserved, available_balance=balance-reserved,
+                topup_at_cafe_only=True)
+
+
+def gamer_wallet_vendor(vendor_id):
+    from app.models.vendor import Vendor
+    vendor = db.session.get(Vendor, vendor_id)
+    if not vendor:
+        raise CafeError('Cafe not found', 404)
+    return vendor
+
+
+def private_wallet_response(**payload):
+    response = jsonify(**payload)
+    response.headers['Cache-Control'] = 'private, no-store'
+    return response
+
+
+@bp_cafe.get('/wallets')
+@gamer_required
+def gamer_wallets():
+    """List only the authenticated gamer's existing cafe wallets, including zero balances."""
+    from app.models.vendor import Vendor
+    limit = wallet_page_integer('limit', 20, 100)
+    after = wallet_page_integer('after')
+    query = db.session.query(CafeWallet, Vendor).join(Vendor, Vendor.id == CafeWallet.vendor_id).filter(
+        CafeWallet.user_id == g.cafe_user_id)
+    if after is not None:
+        query = query.filter(CafeWallet.vendor_id > after)
+    rows = query.order_by(CafeWallet.vendor_id.asc()).limit(limit + 1).all()
+    page = rows[:limit]
+    return private_wallet_response(items=[gamer_wallet_summary(vendor, row) for row, vendor in page],
+        next_cursor=page[-1][0].vendor_id if len(rows) > limit else None)
+
+
+@bp_cafe.get('/<int:vendor_id>/wallet')
+@gamer_required
+def gamer_wallet_balance(vendor_id):
+    vendor = gamer_wallet_vendor(vendor_id)
+    row = CafeWallet.query.filter_by(vendor_id=vendor_id, user_id=g.cafe_user_id).first()
+    return private_wallet_response(**gamer_wallet_summary(vendor, row))
+
+
+@bp_cafe.get('/<int:vendor_id>/wallet/history')
+@gamer_required
+def gamer_wallet_history(vendor_id):
+    gamer_wallet_vendor(vendor_id)
+    limit = wallet_page_integer('limit', 20, 100)
+    before = wallet_page_integer('before')
+    # Food collections belong to desk reconciliation, not the gaming wallet.
+    query = CafeLedger.query.filter_by(vendor_id=vendor_id, user_id=g.cafe_user_id).filter(
+        CafeLedger.kind.in_(['topup', 'capture', 'refund', 'adjustment', 'reserve', 'release']))
+    if before is not None:
+        query = query.filter(CafeLedger.id < before)
+    rows = query.order_by(CafeLedger.id.desc()).limit(limit + 1).all()
+    # Explicit public projection: never expose staff names, internal reasons or request keys.
+    fields = ('id', 'kind', 'amount', 'balance_after', 'reserved_after', 'method',
+              'session_id', 'reversal_of', 'created_at')
+    items = [{field: entry[field] for field in fields} for entry in map(serialize, rows[:limit])]
+    return private_wallet_response(vendor_id=vendor_id, currency='INR', items=items,
+        next_cursor=items[-1]['id'] if len(rows) > limit else None)
+
+
 @bp_cafe.get('/<int:vendor_id>/policy')
 @jwt_required()
 def get_policy(vendor_id):

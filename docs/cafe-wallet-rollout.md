@@ -30,6 +30,7 @@ Session state: `reserved → active → completed`, or `reserved → failed`. Th
 
 ## Gamer and staff APIs
 
+- Mobile wallet reads: `GET /api/cafe/wallets`, `GET /api/cafe/{vendor_id}/wallet`, and `GET /api/cafe/{vendor_id}/wallet/history` use the cafe gamer token without QR context. See [the app-team API handoff](cafe-wallet-app-api.md) for pagination and response contracts. These reads do not permit app top-ups.
 - Gamer auth: existing Hash token → `POST /api/cafe-checkout/token` on booking service; web sign-in → `/api/cafe-checkout/login/request` and `/verify`. Use the resulting scoped token only with cafe gamer endpoints.
 - `GET /api/cafe/checkout?qr=...`: cafe, PC, price options, available balance, existing bookings with eligibility reasons, and the gamer’s active session ID on this PC.
 - `POST /api/cafe/checkout`: `qr`, `minutes`, `expected_amount`, `payment_method: "cafe_wallet"`, `idempotency_key`. A changed price requires checkout reload and confirmation. The web UI retains its request key across refreshes.
