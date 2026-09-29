@@ -3079,7 +3079,7 @@ def get_vendor_dashboard(vendor_id):
     config_map = {}
     for r in (config_rows or []):
         dkey = (r.day or "").strip().lower()
-        config_map[dkey] = {
+        config_map[dkey[:3]] = {
             "open": to_24h(r.opening_time),
             "close": to_24h(r.closing_time),
             "duration": coerce_duration(r.slot_duration)
@@ -3122,14 +3122,14 @@ def get_vendor_dashboard(vendor_id):
         duration_value = None
         if durations_min:
             cnt = Counter(durations_min)
-            duration_value = cnt.most_common(1)[0]  # mode as a single int
+            duration_value = cnt.most_common(1)[0][0]  # mode as a single int
 
         return opening_24, closing_24, duration_value
 
     fallback_open, fallback_close, fallback_duration = infer_hours_and_duration(all_slots)
 
     # 4) Build operatingHours in a consistent weekday order or using vendor.opening_days
-    opening_days_list = [od.day for od in (vendor.opening_days or [])] or WEEKDAY_ORDER
+    opening_days_list = WEEKDAY_ORDER
     opening_day_enabled_map = {}
     for od in (vendor.opening_days or []):
         raw = (od.day or "").strip().lower()
@@ -3158,7 +3158,7 @@ def get_vendor_dashboard(vendor_id):
             "open": open_str,
             "close": close_str,
             "slotDurationMinutes": duration_int,  # always int or None
-            "isEnabled": opening_day_enabled_map.get(dkey, True),
+            "isEnabled": opening_day_enabled_map.get(dkey, not bool(vendor.opening_days)),
             "is24Hours": bool(open_str and close_str and open_str == close_str),
         })
 
