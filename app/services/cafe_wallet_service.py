@@ -114,6 +114,11 @@ def topup(vendor_id, user_id, body, actor):
         if existing.fingerprint != fp or existing.actor_id != actor['id']:
             raise CafeError('Idempotency key already used for another request', 409)
         return existing
+    from app.services.payment_methods import require_method
+    try:
+        require_method(vendor_id, 'cafe_wallet')
+    except ValueError as error:
+        raise CafeError(str(error), 403)
     if method not in policy(vendor_id)['desk_methods']:
         raise CafeError('This desk payment method is disabled', 403)
     shift = CafeShift.query.filter_by(open_key=f"{vendor_id}:{actor['id']}").first()
@@ -164,6 +169,11 @@ def reserve(vendor_id, user_id, link, minutes, idem, expected_amount=None):
         if existing.fingerprint != fp:
             raise CafeError('Idempotency key already used for another checkout', 409)
         return existing
+    from app.services.payment_methods import require_method
+    try:
+        require_method(vendor_id, 'cafe_wallet')
+    except ValueError as error:
+        raise CafeError(str(error), 403)
     settings = policy(vendor_id)
     if not settings['self_service']:
         raise CafeError('Self-service is disabled at this cafe', 403)

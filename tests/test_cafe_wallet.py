@@ -102,6 +102,7 @@ def env(monkeypatch):
     for name,model in [('vendor',Vendor),('user',User),('console',Console),('console_link_session',ConsoleLinkSession),('vendorStaff',VendorStaff),('vendorRolePermission',VendorRolePermission),('extraServiceMenu',ExtraServiceMenu),('extraServiceCategory',ExtraServiceCategory)]:
         model_module(name,model)
     models=load('app.models.cafe_wallet','app/models/cafe_wallet.py')
+    methods=load('app.services.payment_methods','app/services/payment_methods.py')
     service=load('app.services.cafe_wallet_service','app/services/cafe_wallet_service.py')
     booking_service=load('app.services.cafe_booking_service','app/services/cafe_booking_service.py')
     rbac=load('app.services.rbac_service','app/services/rbac_service.py')
@@ -126,6 +127,10 @@ def env(monkeypatch):
             db.session.execute(text('CREATE TABLE vendor_1_dashboard (console_id integer, book_status varchar, book_id integer, date date, start_time time, end_time time)'))
             db.session.execute(text('INSERT INTO vendor_1_console_availability VALUES (1,true),(2,true)'))
             db.session.execute(text('SELECT cafe_install_console_guards(1)'))
+        db.session.execute(text('CREATE TABLE payment_method (pay_method_id serial PRIMARY KEY, method_name varchar UNIQUE)'))
+        db.session.execute(text('CREATE TABLE payment_vendor_map (id serial PRIMARY KEY, vendor_id integer, pay_method_id integer, UNIQUE(vendor_id,pay_method_id))'))
+        db.session.execute(text("INSERT INTO payment_method VALUES (1,'cafe_wallet'),(2,'payment_gateway'),(3,'hash_wallet'),(4,'hash_global_pass'),(5,'cafe_specific_pass'),(6,'pay_at_cafe')"))
+        db.session.execute(text('INSERT INTO payment_vendor_map(vendor_id,pay_method_id) VALUES (1,1),(1,2),(2,2)'))
         db.session.execute(text('CREATE TABLE bookings (id integer PRIMARY KEY, user_id integer, game_id integer, status varchar, squad_details json, access_code_id integer)'))
         db.session.execute(text('CREATE TABLE available_games (id integer PRIMARY KEY, vendor_id integer, game_name varchar)'))
         db.session.execute(text('CREATE TABLE available_game_console (available_game_id integer, console_id integer)'))
@@ -378,8 +383,7 @@ def test_email_login_otp_replay_attempt_limit_and_real_token(env,monkeypatch):
         try:
             raw.cursor().execute((ROOT.parent/'hfg-booking/sql/20260922_cafe_login.sql').read_text());raw.commit()
         finally:raw.close()
-        e.db.session.execute(text('CREATE TABLE contact_info (parent_id integer,parent_type varchar,email varchar)'))
-        e.db.session.execute(text("INSERT INTO contact_info VALUES (1,'user','gamer@example.invalid')"));e.db.session.commit()
+        e.db.session.execute(text("INSERT INTO contact_info(parent_id,parent_type,email) VALUES (1,'user','gamer@example.invalid')"));e.db.session.commit()
     client=e.app.test_client()
     challenge=client.post('/api/cafe-checkout/login/request',json={'email':'gamer@example.invalid'})
     assert challenge.status_code==200,challenge.json
@@ -400,17 +404,22 @@ def test_email_login_otp_replay_attempt_limit_and_real_token(env,monkeypatch):
     assert client.post('/api/cafe-checkout/login/request',json={'email':'gamer@example.invalid'}).status_code==429
 
 
-def test_legacy_payment_policy_cannot_collect_for_wallet_cafe(env,monkeypatch):
+def test_payment_policy_allows_other_enabled_methods_at_wallet_cafe(env,monkeypatch):
     e=env
     from flask import jsonify
     parent=types.ModuleType('db');parent.__path__=[]
     extension=types.ModuleType('db.extensions');extension.db=e.db
     monkeypatch.setitem(sys.modules,'db',parent);monkeypatch.setitem(sys.modules,'db.extensions',extension)
+    monkeypatch.setitem(sys.modules,'services',types.ModuleType('services'))
+    monkeypatch.setitem(sys.modules,'services.payment_methods',sys.modules['app.services.payment_methods'])
     spec=importlib.util.spec_from_file_location('cafe_policy_guard',ROOT.parent/'hfg-booking/services/cafe_payment_policy.py')
     module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
     e.app.before_request(module.enforce_cafe_payment_policy)
     e.app.add_url_rule('/legacy-order','create_order',lambda:jsonify(ok=True),methods=['POST'])
     client=e.app.test_client()
+    assert client.post('/legacy-order',json={'vendor_id':1}).status_code==200
+    with e.app.app_context():
+        e.db.session.execute(text('DELETE FROM payment_vendor_map WHERE vendor_id=1 AND pay_method_id=2'));e.db.session.commit()
     assert client.post('/legacy-order',json={'vendor_id':1}).status_code==403
     assert client.post('/legacy-order',json={}).status_code==400
     assert client.post('/legacy-order',json={'vendor_id':2}).status_code==200
@@ -657,3 +666,28 @@ def test_expired_jwt_cannot_renew_live_staff_session(env):
         env.db.session.commit()
     response = env.app.test_client().post('/api/vendor/1/access/session/refresh', headers=auth(token))
     assert response.status_code == 401
+
+
+def test_disabled_cafe_wallet_does_not_reserve_or_debit(env):
+    e=env
+    with e.app.app_context():
+        fund(e)
+        e.db.session.execute(text('DELETE FROM payment_vendor_map WHERE vendor_id=1 AND pay_method_id=1'))
+        e.db.session.commit()
+        with pytest.raises(e.s.CafeError, match='disabled'):
+            e.s.reserve(1,1,e.db.session.get(e.Link,1),30,'disabled-wallet-test')
+        e.db.session.rollback()
+
+
+def test_disabled_wallet_hides_qr_payment_but_keeps_history_and_refunds(env):
+    e=env
+    with e.app.app_context():
+        entry=fund(e);entry_id=entry.id
+        e.db.session.execute(text('DELETE FROM payment_vendor_map WHERE vendor_id=1 AND pay_method_id=1'));e.db.session.commit()
+        details=e.c.checkout_details(e.db.session.get(e.Link,1),1)
+        assert 'cafe_wallet' not in details['enabled_payment_methods']
+        assert 'payment_gateway' in details['enabled_payment_methods']
+        assert details['available_balance']==20000
+        with pytest.raises(e.s.CafeError,match='disabled'):
+            e.s.topup(1,1,{'amount':1000,'method':'cash','idempotency_key':'disabled-topup'},ACTOR)
+        e.db.session.rollback()
