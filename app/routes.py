@@ -3079,7 +3079,7 @@ def get_vendor_dashboard(vendor_id):
     config_map = {}
     for r in (config_rows or []):
         dkey = (r.day or "").strip().lower()
-        config_map[dkey] = {
+        config_map[dkey[:3]] = {
             "open": to_24h(r.opening_time),
             "close": to_24h(r.closing_time),
             "duration": coerce_duration(r.slot_duration)
@@ -3122,14 +3122,14 @@ def get_vendor_dashboard(vendor_id):
         duration_value = None
         if durations_min:
             cnt = Counter(durations_min)
-            duration_value = cnt.most_common(1)[0]  # mode as a single int
+            duration_value = cnt.most_common(1)[0][0]  # mode as a single int
 
         return opening_24, closing_24, duration_value
 
     fallback_open, fallback_close, fallback_duration = infer_hours_and_duration(all_slots)
 
     # 4) Build operatingHours in a consistent weekday order or using vendor.opening_days
-    opening_days_list = [od.day for od in (vendor.opening_days or [])] or WEEKDAY_ORDER
+    opening_days_list = WEEKDAY_ORDER
     opening_day_enabled_map = {}
     for od in (vendor.opening_days or []):
         raw = (od.day or "").strip().lower()
@@ -3158,7 +3158,7 @@ def get_vendor_dashboard(vendor_id):
             "open": open_str,
             "close": close_str,
             "slotDurationMinutes": duration_int,  # always int or None
-            "isEnabled": opening_day_enabled_map.get(dkey, True),
+            "isEnabled": opening_day_enabled_map.get(dkey, not bool(vendor.opening_days)),
             "is24Hours": bool(open_str and close_str and open_str == close_str),
         })
 
@@ -5133,6 +5133,9 @@ def create_payout(vendor_id):
         
         
 PAYMENT_METHOD_DEFINITIONS = {
+    "hash_wallet": {"display_name": "Hash Wallet", "description": "Accept the gamer's global Hash balance.", "aliases": {"hash wallet", "wallet", "global wallet", "hash global wallet"}},
+    "cafe_wallet": {"display_name": "Cafe Wallet", "description": "Accept this cafe's balance. Top-ups are collected at the cafe desk.", "aliases": {"cafe wallet", "cafe specific wallet"}},
+    "payment_gateway": {"display_name": "Payment Gateway", "description": "Accept verified online payments.", "aliases": {"payment gateway", "gateway", "online"}},
     "pay_at_cafe": {
         "display_name": "Pay in Cafe",
         "description": "Customers can pay directly at your cafe (cash/card/UPI).",
@@ -5145,7 +5148,7 @@ PAYMENT_METHOD_DEFINITIONS = {
     },
     "cafe_specific_pass": {
         "display_name": "Cafe Specific Pass",
-        "description": "Auto-enabled when you add at least one active cafe pass.",
+        "description": "Accept passes issued for this cafe.",
         "aliases": {"cafe_specific_pass", "cafe specific pass", "vendor pass"},
     },
 }
@@ -5162,14 +5165,9 @@ def _normalize_payment_method_name(name):
 
 
 def _ensure_payment_method_catalog():
-    methods_by_name = {m.method_name: m for m in PaymentMethod.query.all()}
-    changed = False
+    from sqlalchemy.dialects.postgresql import insert
     for key in PAYMENT_METHOD_DEFINITIONS:
-        if key not in methods_by_name:
-            db.session.add(PaymentMethod(method_name=key))
-            changed = True
-    if changed:
-        db.session.flush()
+        db.session.execute(insert(PaymentMethod).values(method_name=key).on_conflict_do_nothing(index_elements=['method_name']))
 
 
 def _method_ids_for_canonical(canonical_name):
@@ -5190,31 +5188,22 @@ def _set_vendor_payment_method_state(vendor_id, canonical_name, enabled):
         PaymentVendorMap.vendor_id == vendor_id,
         PaymentVendorMap.pay_method_id.in_(method_ids),
     ).all()
-    changed = False
-
+    canonical_method = PaymentMethod.query.filter_by(method_name=canonical_name).first()
+    keep = next((row for row in existing_rows if enabled and canonical_method and row.pay_method_id == canonical_method.pay_method_id), None)
     for row in existing_rows:
-        db.session.delete(row)
-        changed = True
-
-    if enabled:
-        canonical_method = PaymentMethod.query.filter_by(method_name=canonical_name).first()
-        if canonical_method is None:
-            canonical_method = PaymentMethod(method_name=canonical_name)
-            db.session.add(canonical_method)
-            db.session.flush()
-
-        db.session.add(
-            PaymentVendorMap(vendor_id=vendor_id, pay_method_id=canonical_method.pay_method_id)
-        )
-        changed = True
+        if row is not keep:
+            db.session.delete(row)
+    db.session.flush()
+    if enabled and keep is None:
+        db.session.add(PaymentVendorMap(vendor_id=vendor_id, pay_method_id=canonical_method.pay_method_id))
+    changed = bool(existing_rows) != enabled or len(existing_rows) > 1
 
     return changed
 
 
 def _sync_cafe_specific_pass_payment_method(vendor_id):
-    active_pass_count = CafePass.query.filter_by(vendor_id=vendor_id, is_active=True).count()
-    should_enable = active_pass_count > 0
-    return _set_vendor_payment_method_state(vendor_id, "cafe_specific_pass", should_enable)
+    # Cafe acceptance is an explicit choice; catalog edits must not override it.
+    return False
 
 
 def _build_payment_method_response(vendor_id):
@@ -5244,11 +5233,11 @@ def _build_payment_method_response(vendor_id):
         existing = by_canonical.get(canonical)
         if existing is None or (
             row["is_enabled"] and not existing["is_enabled"]
-        ) or row["pay_method_id"] < existing["pay_method_id"]:
+        ) or (row["is_enabled"] == existing["is_enabled"] and row["pay_method_id"] < existing["pay_method_id"]):
             by_canonical[canonical] = row
 
     response_rows = []
-    for canonical_name in ["pay_at_cafe", "hash_global_pass", "cafe_specific_pass"]:
+    for canonical_name in PAYMENT_METHOD_DEFINITIONS:
         row = by_canonical.get(canonical_name)
         if row is None:
             canonical_method = PaymentMethod.query.filter_by(method_name=canonical_name).first()
@@ -5267,7 +5256,7 @@ def _build_payment_method_response(vendor_id):
                 "display_name": meta["display_name"],
                 "description": meta["description"],
                 "is_enabled": row["is_enabled"],
-                "is_auto_managed": canonical_name == "cafe_specific_pass",
+                "is_auto_managed": False,
             }
         )
     return response_rows
@@ -5281,9 +5270,8 @@ def get_all_payment_methods_for_vendor(vendor_id):
         if not vendor:
             return jsonify({'success': False, 'error': 'Vendor not found'}), 404
 
-        changed = _sync_cafe_specific_pass_payment_method(vendor_id)
-        if changed:
-            db.session.commit()
+        _ensure_payment_method_catalog()
+        db.session.commit()
 
         methods_data = _build_payment_method_response(vendor_id)
         enabled_count = sum(1 for method in methods_data if method.get("is_enabled"))
@@ -5304,12 +5292,18 @@ def get_all_payment_methods_for_vendor(vendor_id):
 def toggle_payment_method_for_vendor(vendor_id):
     """Toggle manually managed payment methods for vendor."""
     try:
+        from flask_jwt_extended import verify_jwt_in_request
+        from app.controllers.cafe_wallet_controller import staff_actor
+        verify_jwt_in_request()
+        staff_actor(vendor_id, 'account.manage')
         data = request.get_json() or {}
+        if not isinstance(data, dict):
+            return jsonify(success=False, error='A JSON object is required'), 400
         pay_method_id = data.get('pay_method_id')
         if pay_method_id is None:
             return jsonify({'success': False, 'error': 'pay_method_id is required'}), 400
 
-        vendor = Vendor.query.get(vendor_id)
+        vendor = Vendor.query.filter_by(id=vendor_id).with_for_update().first()
         if not vendor:
             return jsonify({'success': False, 'error': 'Vendor not found'}), 404
 
@@ -5320,11 +5314,6 @@ def toggle_payment_method_for_vendor(vendor_id):
         canonical_name = _normalize_payment_method_name(payment_method.method_name)
         if canonical_name not in PAYMENT_METHOD_DEFINITIONS:
             return jsonify({'success': False, 'error': 'Unsupported payment method'}), 400
-        if canonical_name == "cafe_specific_pass":
-            return jsonify({
-                'success': False,
-                'error': 'Cafe Specific Pass is auto-managed by vendor passes',
-            }), 400
 
         _ensure_payment_method_catalog()
         selected_ids = _method_ids_for_canonical(canonical_name)
@@ -5333,7 +5322,9 @@ def toggle_payment_method_for_vendor(vendor_id):
             PaymentVendorMap.pay_method_id.in_(selected_ids),
         ).first() is not None
 
-        next_enabled = not current_enabled
+        next_enabled = data.get('is_enabled', not current_enabled)
+        if type(next_enabled) is not bool:
+            return jsonify(success=False, error='is_enabled must be boolean'), 400
         _set_vendor_payment_method_state(vendor_id, canonical_name, next_enabled)
         _sync_cafe_specific_pass_payment_method(vendor_id)
         db.session.commit()
@@ -5355,6 +5346,14 @@ def toggle_payment_method_for_vendor(vendor_id):
             }
         }), 200
     except Exception as e:
+        from app.services.cafe_wallet_service import CafeError
+        if isinstance(e, CafeError):
+            db.session.rollback()
+            return jsonify(success=False, error=e.message), e.status
+        from flask_jwt_extended.exceptions import JWTExtendedException
+        from jwt import InvalidTokenError
+        if isinstance(e, (JWTExtendedException, InvalidTokenError)):
+            return jsonify(success=False, error='Unlock your staff session again'), 401
         db.session.rollback()
         current_app.logger.error(f"Error toggling payment method for vendor {vendor_id}: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -5367,30 +5366,26 @@ def get_payment_method_stats(vendor_id):
         methods = _build_payment_method_response(vendor_id)
         tx_rows = db.session.query(
             Transaction.mode_of_payment,
+            Transaction.payment_use_case,
             func.count(Transaction.id).label('count'),
             func.sum(Transaction.amount).label('total_amount')
-        ).filter(Transaction.vendor_id == vendor_id).group_by(Transaction.mode_of_payment).all()
+        ).filter(Transaction.vendor_id == vendor_id).group_by(Transaction.mode_of_payment, Transaction.payment_use_case).all()
 
-        tx_count_by_mode = {str(row.mode_of_payment or '').lower(): int(row.count or 0) for row in tx_rows}
-        tx_amount_by_mode = {str(row.mode_of_payment or '').lower(): float(row.total_amount or 0) for row in tx_rows}
+        tx_count_by_mode = {}
+        tx_amount_by_mode = {}
+        for row in tx_rows:
+            mode = _normalize_payment_method_name(row.payment_use_case) or _normalize_payment_method_name(row.mode_of_payment)
+            if mode is None and str(row.mode_of_payment).lower() in {'cash', 'card', 'upi'}:
+                mode = 'pay_at_cafe'
+            if mode:
+                tx_count_by_mode[mode] = tx_count_by_mode.get(mode, 0) + int(row.count or 0)
+                tx_amount_by_mode[mode] = tx_amount_by_mode.get(mode, 0) + float(row.total_amount or 0)
 
         stats = []
         for method in methods:
             mode_key = method["method_name"]
-            usage_count = 0
-            total_revenue = 0.0
-            if mode_key == "pay_at_cafe":
-                for payment_mode in ("cash", "card", "upi", "pay_at_cafe"):
-                    usage_count += tx_count_by_mode.get(payment_mode, 0)
-                    total_revenue += tx_amount_by_mode.get(payment_mode, 0.0)
-            elif mode_key == "hash_global_pass":
-                for payment_mode in ("hash", "hash_global_pass"):
-                    usage_count += tx_count_by_mode.get(payment_mode, 0)
-                    total_revenue += tx_amount_by_mode.get(payment_mode, 0.0)
-            elif mode_key == "cafe_specific_pass":
-                for payment_mode in ("pass", "cafe_specific_pass", "vendor_pass"):
-                    usage_count += tx_count_by_mode.get(payment_mode, 0)
-                    total_revenue += tx_amount_by_mode.get(payment_mode, 0.0)
+            usage_count = tx_count_by_mode.get(mode_key, 0)
+            total_revenue = tx_amount_by_mode.get(mode_key, 0.0)
 
             stats.append({
                 'pay_method_id': method["pay_method_id"],

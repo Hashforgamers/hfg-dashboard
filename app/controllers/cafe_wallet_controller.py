@@ -388,7 +388,9 @@ def checkout_details(link, user_id, include_bookings=False):
     from app.models.vendor import Vendor
     from app.models.console import Console
     row = CafeWallet.query.filter_by(vendor_id=link.vendor_id, user_id=user_id).first()
-    result = dict(cafe_name=db.session.get(Vendor, link.vendor_id).cafe_name,
+    from app.services.payment_methods import accepted_methods
+    result = dict(enabled_payment_methods=sorted(accepted_methods(link.vendor_id)),
+        cafe_name=db.session.get(Vendor, link.vendor_id).cafe_name,
         console_number=db.session.get(Console, link.console_id).console_number,
         vendor_id=link.vendor_id, console_id=link.console_id, policy=policy(link.vendor_id),
         available_balance=(row.balance-row.reserved) if row else 0)
