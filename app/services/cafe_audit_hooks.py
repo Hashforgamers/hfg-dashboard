@@ -17,7 +17,7 @@ def install_cafe_audit_hooks(app):
     def track_mutation():
         if request.method not in ('POST','PUT','PATCH','DELETE'):
             return
-        match = re.match(r'^/api/vendor/(\d+)/(console-pricing|access/(staff|role-permissions))(?:/|$)', request.path)
+        match = re.match(r'^/api/vendor/(\d+)/(console-pricing|pricing-offers|controller-pricing|squad-pricing-rules|access/(staff|role-permissions))(?:/|$)', request.path)
         if not match:
             return
         vendor_id = int(match[1])
@@ -25,7 +25,7 @@ def install_cafe_audit_hooks(app):
             return
         verify_jwt_in_request()
         from app.controllers.cafe_wallet_controller import staff_actor
-        permission = 'pricing.manage' if match[2] == 'console-pricing' else 'staff.manage'
+        permission = 'pricing.manage' if match[2] in {'console-pricing','pricing-offers','controller-pricing','squad-pricing-rules'} else 'staff.manage'
         actor = staff_actor(vendor_id, permission)
         body = request.get_json(silent=True) or {}
         # Persist useful changes, never PINs, passwords or tokens.

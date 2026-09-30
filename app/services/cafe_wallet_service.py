@@ -15,7 +15,7 @@ DEFAULT_POLICY = {
     'gaming_methods': ['cafe_wallet'], 'topup_channels': ['desk'],
     'desk_methods': ['cash', 'cafe_upi'], 'hash_online_collection': False,
     'self_service': False, 'food_ordering': True, 'food_collection': 'vendor',
-    'durations': [{'minutes': 60, 'amount': 10000}],
+    'durations': [{'minutes': 60}],
 }
 
 
@@ -42,7 +42,9 @@ def key(value):
 
 def policy(vendor_id):
     row = db.session.get(CafePaymentPolicy, vendor_id)
-    return dict(row.settings) if row else dict(DEFAULT_POLICY)
+    settings = dict(row.settings) if row else dict(DEFAULT_POLICY)
+    settings['durations'] = [{'minutes':item['minutes']} for item in settings['durations']]
+    return settings
 
 
 def validate_policy(data):
@@ -65,14 +67,13 @@ def validate_policy(data):
         raise CafeError('Supply 1–12 session durations')
     seen = set()
     for item in data['durations']:
-        if not isinstance(item, dict) or set(item) != {'minutes', 'amount'}:
-            raise CafeError('Each duration requires minutes and amount in paise')
+        if not isinstance(item, dict) or set(item) not in ({'minutes'}, {'minutes', 'amount'}):
+            raise CafeError('Each duration requires minutes; prices come from Console Pricing')
         minutes = integer(item['minutes'], 5, 720)
-        integer(item['amount'], 1, 10000000)
         if minutes in seen:
             raise CafeError('Duplicate duration')
         seen.add(minutes)
-    return data
+    return dict(data, durations=[{'minutes':item['minutes']} for item in data['durations']])
 
 
 def audit(vendor_id, actor, action, details):
@@ -177,9 +178,14 @@ def reserve(vendor_id, user_id, link, minutes, idem, expected_amount=None):
     settings = policy(vendor_id)
     if not settings['self_service']:
         raise CafeError('Self-service is disabled at this cafe', 403)
-    price = next((d['amount'] for d in settings['durations'] if d['minutes'] == minutes), None)
+    from app.services.cafe_session_pricing import session_prices
+    try:
+        quote = next((d for d in session_prices(link, settings['durations']) if d['minutes'] == minutes), None)
+    except ValueError as error:
+        raise CafeError(str(error), 409)
+    price = quote['amount'] if quote else None
     if price is None:
-        raise CafeError('This duration is no longer available')
+        raise CafeError((quote or {}).get('unavailable_reason') or 'This duration is no longer available', 409)
     if expected_amount is not None and expected_amount != price:
         raise CafeError('Price changed. Reload checkout before paying.', 409)
     from app.models.console import Console

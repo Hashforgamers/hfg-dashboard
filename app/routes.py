@@ -570,6 +570,8 @@ def get_console_pricing(vendor_id):
 @dashboard_service.route("/vendor/<int:vendor_id>/console-pricing", methods=["POST"])
 def update_console_pricing(vendor_id):
     try:
+        from app.services.pricing_math import money
+        Vendor.query.filter_by(id=vendor_id).with_for_update().first()
         data = request.get_json()
         if not isinstance(data, dict) or not data:
             return jsonify({"error": "No data provided"}), 400
@@ -580,7 +582,12 @@ def update_console_pricing(vendor_id):
             if not normalized:
                 continue
             try:
-                updated_prices[normalized] = max(0.0, float(value))
+                price = money(value, maximum=10000)
+                if price != price.to_integral_value():
+                    raise ValueError('Base slot prices use whole rupees')
+                if normalized in updated_prices and updated_prices[normalized] != int(price):
+                    return jsonify(error=f'Conflicting aliases for {normalized}'), 400
+                updated_prices[normalized] = int(price)
             except (TypeError, ValueError):
                 return jsonify({"error": f"Invalid price for {key}"}), 400
 
@@ -589,6 +596,9 @@ def update_console_pricing(vendor_id):
 
         updated_count = 0
         games = AvailableGame.query.filter_by(vendor_id=vendor_id).all()
+        known = {normalize_console_slug(game.game_name) for game in games}
+        if set(updated_prices) - known:
+            return jsonify(error='One or more console types are not configured for this cafe'), 400
         for game in games:
             normalized_game = normalize_console_slug(game.game_name)
             if normalized_game and normalized_game in updated_prices:
