@@ -7,6 +7,7 @@ from app.services.rbac_service import claim_vendor_id, claims_permissions
 
 # method, regex path, permission
 RBAC_ROUTE_RULES = [
+    *[(method, r"^/api/vendor/(?P<vendor_id>\d+)/(pricing-offers(?:/\d+)?|controller-pricing|squad-pricing-rules)$", "pricing.manage") for method in ("POST", "PUT", "PATCH", "DELETE")],
     ("GET", r"^/api/getConsoles/vendor/(?P<vendor_id>\d+)$", "gaming.manage"),
     ("POST", r"^/api/addConsole$", "gaming.manage"),
     ("DELETE", r"^/api/console/(?P<vendor_id>\d+)/\d+$", "gaming.manage"),
@@ -106,7 +107,7 @@ def enforce_rbac_permissions():
         return jsonify({"error": "Unable to infer vendor_id for RBAC check"}), 400
 
     auth_header = request.headers.get("Authorization")
-    enforcement_enabled = bool(current_app.config.get("RBAC_ENFORCEMENT", False))
+    enforcement_enabled = bool(current_app.config.get("RBAC_ENFORCEMENT", False)) or (required_permission == "pricing.manage" and request.method != "GET")
 
     # Backward compatible mode: if no header and enforcement disabled, bypass.
     if not enforcement_enabled and not auth_header:
@@ -122,6 +123,12 @@ def enforce_rbac_permissions():
     if claim_vid is not None and claim_vid != vendor_id:
         return jsonify({"error": "Vendor mismatch"}), 403
 
+    if required_permission == 'pricing.manage' and request.method != 'GET':
+        subject = claims.get('sub')
+        if claims.get('scope') != 'vendor_access' and not (isinstance(subject, dict) and subject.get('type') == 'vendor'):
+            return jsonify(error='A cafe staff or owner identity is required'), 403
+        if claim_vid != vendor_id:
+            return jsonify(error='Vendor mismatch'), 403
     permissions = claims_permissions(claims, vendor_id)
     if required_permission not in permissions:
         return jsonify({

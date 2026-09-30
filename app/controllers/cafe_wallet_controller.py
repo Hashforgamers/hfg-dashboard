@@ -394,6 +394,13 @@ def checkout_details(link, user_id, include_bookings=False):
         console_number=db.session.get(Console, link.console_id).console_number,
         vendor_id=link.vendor_id, console_id=link.console_id, policy=policy(link.vendor_id),
         available_balance=(row.balance-row.reserved) if row else 0)
+    from app.services.cafe_session_pricing import session_prices
+    try:
+        result['policy']['durations'] = session_prices(link, result['policy']['durations'])
+    except ValueError as error:
+        result['policy']['durations'] = []
+        result['pricing_error'] = str(error)
+    result['pricing_source'] = 'console_pricing'
     if include_bookings:
         from app.services.cafe_booking_service import existing_bookings
         result['bookings'] = existing_bookings(link, user_id)
@@ -430,7 +437,7 @@ def checkout():
         if body.get('payment_method') != 'cafe_wallet':
             raise CafeError('Select cafe wallet.')
         session = reserve(link.vendor_id, g.cafe_user_id, link, body.get('minutes'), body.get('idempotency_key'),
-                          expected_amount=integer(body.get('expected_amount')))
+                          expected_amount=integer(body.get('expected_amount'), minimum=0))
     db.session.commit()
     if session.state == 'reserved':
         from app.services.websocket_service import socketio

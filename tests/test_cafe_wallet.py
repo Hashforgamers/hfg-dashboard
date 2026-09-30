@@ -102,6 +102,8 @@ def env(monkeypatch):
     for name,model in [('vendor',Vendor),('user',User),('console',Console),('console_link_session',ConsoleLinkSession),('vendorStaff',VendorStaff),('vendorRolePermission',VendorRolePermission),('extraServiceMenu',ExtraServiceMenu),('extraServiceCategory',ExtraServiceCategory)]:
         model_module(name,model)
     models=load('app.models.cafe_wallet','app/models/cafe_wallet.py')
+    load('app.services.pricing_math','app/services/pricing_math.py')
+    load('app.services.cafe_session_pricing','app/services/cafe_session_pricing.py')
     methods=load('app.services.payment_methods','app/services/payment_methods.py')
     service=load('app.services.cafe_wallet_service','app/services/cafe_wallet_service.py')
     booking_service=load('app.services.cafe_booking_service','app/services/cafe_booking_service.py')
@@ -132,8 +134,15 @@ def env(monkeypatch):
         db.session.execute(text("INSERT INTO payment_method VALUES (1,'cafe_wallet'),(2,'payment_gateway'),(3,'hash_wallet'),(4,'hash_global_pass'),(5,'cafe_specific_pass'),(6,'pay_at_cafe')"))
         db.session.execute(text('INSERT INTO payment_vendor_map(vendor_id,pay_method_id) VALUES (1,1),(1,2),(2,2)'))
         db.session.execute(text('CREATE TABLE bookings (id integer PRIMARY KEY, user_id integer, game_id integer, status varchar, squad_details json, access_code_id integer)'))
-        db.session.execute(text('CREATE TABLE available_games (id integer PRIMARY KEY, vendor_id integer, game_name varchar)'))
+        db.session.execute(text('CREATE TABLE available_games (id integer PRIMARY KEY, vendor_id integer, game_name varchar, single_slot_price integer DEFAULT 50)'))
         db.session.execute(text('CREATE TABLE available_game_console (available_game_id integer, console_id integer)'))
+        db.session.execute(text('CREATE TABLE slots (id integer PRIMARY KEY, gaming_type_id integer, start_time time, end_time time)'))
+        db.session.execute(text('CREATE TABLE console_pricing_offers (id serial PRIMARY KEY, vendor_id integer, available_game_id integer, default_price numeric, offered_price numeric, start_date date, start_time time, end_date date, end_time time, offer_name varchar, offer_description varchar, is_active boolean, created_at timestamp, updated_at timestamp)'))
+        db.session.execute(text("INSERT INTO available_games(id,vendor_id,game_name,single_slot_price) VALUES (100,1,'Gaming PC',50)"))
+        db.session.execute(text('INSERT INTO available_game_console VALUES (100,1),(100,2)'))
+        from datetime import time as day_time
+        for i in range(48):
+            db.session.execute(text('INSERT INTO slots VALUES (:id,100,:start,:end)'), {'id':100+i, 'start':day_time(i//2,(i%2)*30), 'end':day_time(((i+1)//2)%24,((i+1)%2)*30)})
         db.session.execute(text('CREATE TABLE transactions (id integer PRIMARY KEY, booking_id integer, vendor_id integer, user_id integer, booking_type varchar, amount numeric, settlement_status varchar)'))
         if not url.startswith('postgresql'):
             db.session.execute(text('CREATE TABLE vendor_1_dashboard (console_id integer, book_status varchar, book_id integer, date date, start_time time, end_time time)'))
@@ -447,7 +456,7 @@ def test_food_store_collection_is_not_allowed_at_cafe(env):
 def seed_booking(e, *, paid=True, contiguous=False):
     now=datetime.now(e.b.IST).replace(microsecond=0)
     start=now-timedelta(minutes=5);end=now+timedelta(minutes=25)
-    e.db.session.execute(text("INSERT INTO available_games VALUES (1,1,'Gaming PC')"))
+    e.db.session.execute(text("INSERT INTO available_games(id,vendor_id,game_name) VALUES (1,1,'Gaming PC')"))
     e.db.session.execute(text('INSERT INTO available_game_console VALUES (1,1),(1,2)'))
     for bid,begin,finish in [(101,start,end)]+([(102,end,end+timedelta(minutes=30))] if contiguous else []):
         e.db.session.execute(text("INSERT INTO bookings VALUES (:id,1,1,'confirmed','{}',99)"),{'id':bid})
