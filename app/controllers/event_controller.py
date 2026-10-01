@@ -15,6 +15,26 @@ from sqlalchemy import func
 
 bp_events = Blueprint('events', __name__, url_prefix='/api/vendor/events')
 
+@bp_events.before_request
+def require_tournament_plan():
+    if request.method=='OPTIONS': return
+    from app.services.subscription_entitlements import require_feature
+    from app.services.kiosk_security import vendor_identity, bearer_token, KioskError
+    from flask_jwt_extended import verify_jwt_in_request
+    if request.endpoint=='events.issue_jwt':
+        try:
+            identity=vendor_identity(bearer_token(),'tournaments.manage')
+            supplied=(request.get_json(silent=True) or {}).get('vendor_id')
+            if str(supplied)!=str(identity['vendor_id']): raise KioskError('vendor_mismatch',403)
+            return require_feature(identity['vendor_id'],'tournaments')
+        except KioskError as error:
+            return jsonify(error=error.error_code),error.code
+    verify_jwt_in_request()
+    try: vendor_id=int((get_jwt().get('vendor') or {})['id'])
+    except (KeyError,ValueError,TypeError): return jsonify(error='Vendor identity required'),403
+    return require_feature(vendor_id,'tournaments')
+
+
 def _vendor_id():
     vendor = get_jwt().get("vendor") or {}
     return int(vendor.get("id"))
@@ -141,7 +161,7 @@ def issue_jwt():   # ✅ renamed function to avoid shadowing
         }
 
         for k, v in extra.items():
-            if k not in {"sub", "iat", "exp"}:
+            if k not in {"sub", "iat", "exp", "vendor", "type", "scope", "staff", "vendor_id"}:
                 payload[k] = v
 
         token = jwt.encode(payload, secret, algorithm=alg)

@@ -19,6 +19,12 @@ from app.services.tournament_engine_service import (
 
 bp_tournament_engine = Blueprint("tournament_engine", __name__, url_prefix="/api/vendor/events/<uuid:event_id>")
 
+@bp_tournament_engine.before_request
+def require_tournament_subscription():
+    from app.controllers.event_controller import require_tournament_plan
+    return require_tournament_plan()
+
+
 
 def _vendor_id():
     vendor = get_jwt().get("vendor") or {}

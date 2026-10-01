@@ -122,6 +122,11 @@ def create_app():
     def handle_rbac_guard():
         return enforce_rbac_permissions()
 
+    @app.before_request
+    def handle_subscription_features():
+        from app.services.subscription_entitlements import enforce_entitlements
+        return enforce_entitlements()
+
     # Extensions
     db.init_app(app)
     Migrate(app, db)
@@ -150,6 +155,8 @@ def create_app():
 
     # Register blueprints
     app.register_blueprint(dashboard_service, url_prefix="/api")
+    from app.controllers.subscription_commerce_controller import bp_commerce
+    app.register_blueprint(bp_commerce)
     app.register_blueprint(bp_packages, url_prefix='/api/packages')
     app.register_blueprint(bp_subs, url_prefix='/api/vendors/<int:vendor_id>/subscription')
     app.register_blueprint(bp_vendor_pc)

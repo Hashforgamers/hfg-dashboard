@@ -20,7 +20,8 @@ def get_pcs(vendor_id):
             current_app.logger.exception(
                 "Subscription lookup failed for vendor_id=%s, using default limit", vendor_id
             )
-            limit = 3
+            db.session.rollback()
+            return jsonify(error="Unable to verify kiosk licence capacity"), 503
 
         active_console_ids = set()
         try:
