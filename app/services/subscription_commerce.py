@@ -53,6 +53,19 @@ def preview(vendor_id, data):
     target = dict(package_code=package.code,package_name=package.name,pc_limit=package.pc_limit+extra,
                   extra_pcs=extra,billing_cycle=cycle,recurring_paise=recurring,
                   extra_pc_monthly=float(extra_price),entitlements=f.get('entitlements',list(FEATURES)))
+    if data.get('action') == 'add_pcs':
+        if not current: raise ValueError('An active subscription is required to add PCs')
+        old = terms(current)
+        if package.code != old['package_code']: raise ValueError('Add PCs to your current package')
+        if extra < 1: raise ValueError('Choose at least one additional PC')
+        if 'kiosk' not in old['entitlements']: raise ValueError('Your current plan does not include kiosk access')
+        cycle = old['billing_cycle']
+        if cycle not in CYCLES: raise ValueError('Invalid existing billing cycle')
+        # Preserve purchased capacity, features and base price even if the catalog changed.
+        recurring = old['recurring_paise'] + paise(extra_price)*extra*CYCLES[cycle]
+        target = dict(old, pc_limit=old['pc_limit']+extra,
+                      extra_pcs=old.get('extra_pcs',0)+extra,
+                      recurring_paise=recurring, extra_pc_monthly=float(extra_price))
     if target['pc_limit']>10000: raise ValueError('Total PC capacity cannot exceed 10000')
     if extra and 'kiosk' not in target['entitlements']: raise ValueError('Additional PCs require the kiosk feature')
     active_links=ConsoleLinkSession.query.filter_by(vendor_id=vendor_id,status='active').count()
