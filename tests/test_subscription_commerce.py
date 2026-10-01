@@ -242,3 +242,29 @@ def test_add_pcs_preserves_purchased_plan_after_catalog_change(commerce):
     assert quote['terms']['entitlements']==['kiosk','pricing']
     assert quote['period_end']==q['period_end']
     assert 0 < quote['amount_paise'] <= 19800
+
+
+@pytest.mark.parametrize('value', [
+    '2026-09-08T18:12:25.94787+00:00',
+    '2026-09-08T18:12:25.947870Z',
+    '2026-09-08T23:42:25.94787+05:30',
+    '2026-09-08T18:12:25.94787',
+])
+def test_billing_datetime_accepts_database_precision(value):
+    assert service.billing_datetime(value) == datetime(2026,9,8,18,12,25,947870,tzinfo=timezone.utc)
+
+
+def test_add_pc_quote_with_five_digit_fractional_billing_dates(commerce, monkeypatch):
+    q=preview(commerce);pay(commerce,q);finish(commerce,q)
+    sub=Subscription.query.one()
+    sub.commercial_terms=dict(sub.commercial_terms,
+        cycle_start='2026-09-08T18:12:25.94787+00:00',
+        cycle_end='2026-10-08T18:12:25.94787+00:00')
+    sub.current_period_end=service.billing_datetime('2026-10-08T18:12:25.94787+00:00')
+    db.session.commit()
+    monkeypatch.setattr(service,'get_active_subscription',lambda vendor_id:sub)
+    monkeypatch.setattr(service,'utcnow',lambda:datetime(2026,9,23,18,12,25,947870,tzinfo=timezone.utc))
+    response=commerce.test_client().post('/api/vendors/1/subscription/preview',headers=auth(commerce),json={'action':'add_pcs','package_code':'base','extra_pcs':1})
+    assert response.status_code==201,response.json
+    assert response.json['amount_paise']==1000
+    assert service.billing_datetime(response.json['period_end'])==service._as_utc(sub.current_period_end)

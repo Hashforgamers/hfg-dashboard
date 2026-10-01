@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from uuid import uuid4
 from dateutil.relativedelta import relativedelta
+from dateutil.parser import isoparse
 from app.extension.extensions import db
 from app.models.package import Package
 from app.models.subscription import Subscription, SubscriptionStatus
@@ -24,6 +25,11 @@ def utcnow():
 
 def paise(value):
     return int((money(value)*100).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+
+
+def billing_datetime(value):
+    """Accept PostgreSQL ISO timestamps with variable fractional precision on Python 3.9."""
+    return _as_utc(isoparse(value))
 
 
 def terms(sub):
@@ -88,8 +94,8 @@ def preview(vendor_id, data):
             difference=recurring-old['recurring_paise']
             if difference <= 0: raise ValueError('Select a higher-priced plan or add PCs for an upgrade')
             end=_as_utc(current.current_period_end)
-            period_start=datetime.fromisoformat(old['cycle_start']) if old.get('cycle_start') else _as_utc(current.current_period_start)
-            cycle_end=datetime.fromisoformat(old['cycle_end']) if old.get('cycle_end') else end
+            period_start=billing_datetime(old['cycle_start']) if old.get('cycle_start') else _as_utc(current.current_period_start)
+            cycle_end=billing_datetime(old['cycle_end']) if old.get('cycle_end') else end
             duration=Decimal(str((cycle_end-period_start).total_seconds()))
             if duration <= 0: raise ValueError('Invalid existing billing period; contact Hash support')
             remaining=Decimal(str((end-now).total_seconds()))
@@ -143,7 +149,7 @@ def activate(row, payment=None):
     now=utcnow()
     try:
         current=check_base(row)
-        if datetime.fromisoformat(row.snapshot['period_end'])<=now:
+        if billing_datetime(row.snapshot['period_end'])<=now:
             raise ValueError('The purchased period has ended before activation')
     except ValueError as error:
         if not payment: raise
@@ -154,7 +160,7 @@ def activate(row, payment=None):
     target=row.snapshot['terms']; action=row.snapshot['action']
     if action=='renew' and current:
         # Extend the current entitlement; the invoice separately records the purchased future period.
-        sub=current;sub.current_period_end=datetime.fromisoformat(row.snapshot['period_end'])
+        sub=current;sub.current_period_end=billing_datetime(row.snapshot['period_end'])
         saved=terms(sub);saved.setdefault('cycle_start',_as_utc(sub.current_period_start).isoformat());saved.setdefault('cycle_end',row.snapshot['base_period_end']);saved['recurring_paise']=target['recurring_paise'];saved['billing_cycle']=target['billing_cycle']
         # Keep cycle_start for upgrades until the prepaid period begins.
         sub.commercial_terms=saved
@@ -163,7 +169,7 @@ def activate(row, payment=None):
             old.status=SubscriptionStatus.expired;old.canceled_at=now
         db.session.flush()
         sub=Subscription(vendor_id=row.vendor_id,package_id=row.package_id,status=SubscriptionStatus.active,
-            current_period_start=now,current_period_end=datetime.fromisoformat(row.snapshot['period_end']),
+            current_period_start=now,current_period_end=billing_datetime(row.snapshot['period_end']),
             unit_amount=Decimal(row.snapshot['amount_paise'])/100,currency='INR',
             external_ref=payment['id'] if payment else 'free:'+row.id,commercial_terms=target)
         db.session.add(sub);db.session.flush()
