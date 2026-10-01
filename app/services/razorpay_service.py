@@ -32,7 +32,8 @@ def create_order(amount, currency='INR', receipt=None, notes=None):
     
     # Convert amount to paise (Razorpay requires smallest currency unit)
     # ₹1 = 100 paise
-    amount_paise = int(float(amount) * 100)
+    from decimal import Decimal, ROUND_HALF_UP
+    amount_paise = int((Decimal(str(amount)) * 100).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
     
     order_data = {
         'amount': amount_paise,

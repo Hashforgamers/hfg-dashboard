@@ -22,6 +22,7 @@ from app.services.razorpay_service import (
     get_order_details,
 )
 from app.models.package import Package
+from app.services.subscription_commerce import terms
 from app.extension.extensions import db  # ✅ ADD THIS
 from sqlalchemy.exc import IntegrityError
 
@@ -29,6 +30,21 @@ from sqlalchemy.exc import IntegrityError
 bp_subs = Blueprint('subscriptions', __name__)
 
 ALLOWED_BILLING_CYCLES = {"monthly", "quarterly", "yearly"}
+
+@bp_subs.before_request
+def authorize_subscription():
+    if request.method == 'OPTIONS': return
+    from app.controllers.package_controller import _admin_authorized
+    from app.services.kiosk_security import vendor_identity, bearer_token, KioskError
+    admin_only = request.endpoint in {'subscriptions.change', 'subscriptions.provision_default', 'subscriptions.debug_force_expire'}
+    if _admin_authorized(): return
+    if admin_only: return jsonify(error='Hash administrator authorization required'),403
+    try:
+        identity=vendor_identity(bearer_token(), 'dashboard.view' if request.endpoint == 'subscriptions.check_subscription_status' else 'subscription.manage')
+        if identity['vendor_id'] != request.view_args.get('vendor_id'): raise KioskError('vendor_mismatch',403)
+    except KioskError as error:
+        return jsonify(error=error.error_code),error.code
+
 
 
 def _parse_period_datetime(value, *, end_of_day=False):
@@ -64,9 +80,9 @@ def _subscription_status_snapshot(sub):
         "external_ref": sub.external_ref,
         "package": {
             "id": sub.package.id if sub.package else None,
-            "code": sub.package.code if sub.package else None,
-            "name": sub.package.name if sub.package else None,
-            "pc_limit": sub.package.pc_limit if sub.package else None,
+            "code": terms(sub)["package_code"] if sub.package else None,
+            "name": terms(sub)["package_name"] if sub.package else None,
+            "pc_limit": terms(sub)["pc_limit"] if sub.package else None,
         },
     }
 
@@ -79,21 +95,28 @@ def get_subscription(vendor_id):
         return jsonify({"status": "none", "has_active": False}), 200
     
     is_active, _ = is_subscription_active(vendor_id)
+    from app.services.subscription_commerce import terms
+    purchased=terms(sub)
+    from app.services.link_service import count_active_links
+    linked=count_active_links(vendor_id)
     
     return jsonify({
         "status": sub.status.value,
         "has_active": is_active,
         "package": {
             "id": sub.package.id,
-            "code": sub.package.code,
-            "name": sub.package.name,
-            "pc_limit": sub.package.pc_limit,
+            "code": terms(sub)["package_code"],
+            "name": terms(sub)["package_name"],
+            "pc_limit": purchased["pc_limit"],
             "price": float(sub.package.features.get('price_inr', 0))
         },
-        "pc_limit": sub.package.pc_limit,
+        "pc_limit": purchased["pc_limit"],
         "period_start": sub.current_period_start.isoformat(),
         "period_end": sub.current_period_end.isoformat(),
-        "amount_paid": float(sub.unit_amount)
+        "amount_paid": float(sub.unit_amount),
+        "commercial_terms": purchased,
+        "active_links": linked,
+        "remaining_capacity": max(0,purchased["pc_limit"]-linked)
     }), 200
 
 
@@ -112,7 +135,9 @@ def check_subscription_status(vendor_id):
         .first()
     )
 
+    from app.services.subscription_commerce import terms
     payload = {
+        "entitlements": terms(sub)["entitlements"] if sub else [],
         "is_active": is_active,
         "locked": not is_active,
         "message": "Subscription expired. Please renew to continue." if not is_active else "Active",
@@ -187,69 +212,7 @@ def get_limit(vendor_id):
 @bp_subs.post('/create-order')
 def create_payment_order(vendor_id):
     """Create Razorpay order for subscription purchase"""
-    try:
-        data = request.get_json(silent=True) or {}
-        package_code = data.get('package_code')
-        action = data.get('action', 'new')
-        billing_cycle = normalize_billing_cycle(data.get('billing_cycle'))
-        
-        if not package_code:
-            return jsonify({"error": "package_code is required"}), 400
-        if billing_cycle not in ALLOWED_BILLING_CYCLES:
-            return jsonify({"error": "billing_cycle must be one of monthly|quarterly|yearly"}), 400
-        
-        package = Package.query.filter_by(code=package_code, active=True).first()
-        if not package:
-            return jsonify({"error": "Invalid package code"}), 404
-        
-        price = get_package_price_for_cycle(package, billing_cycle)
-        
-        if price == 0:
-            return jsonify({
-                "error": "Cannot create payment order for free package",
-                "message": "This package is free. Use provision-default endpoint instead."
-            }), 400
-        
-        # Create Razorpay order
-        order = create_order(
-            amount=price,
-            currency='INR',
-            receipt=f'sub_{vendor_id}_{package_code}_{int(datetime.now().timestamp())}',
-            notes={
-                'vendor_id': str(vendor_id),
-                'package_code': package_code,
-                'action': action,
-                'billing_cycle': billing_cycle,
-                'dev_mode': str(current_app.config.get('SUBSCRIPTION_DEV_MODE', False))
-            }
-        )
-        
-        # ✅ Determine if test or live mode
-        key_id = current_app.config['RAZORPAY_KEY_ID']
-        is_test_mode = key_id.startswith('rzp_test_')
-        
-        return jsonify({
-            "success": True,
-            "order_id": order['id'],
-            "amount": price,
-            "currency": "INR",
-            "key_id": key_id,
-            "test_mode": is_test_mode,  # ✅ ADD THIS
-            "package": {
-                "code": package.code,
-                "name": package.name,
-                "price": price,
-                "billing_cycle": billing_cycle,
-                "pc_limit": package.pc_limit,
-                "features": package.features
-            },
-            "billing_cycle": billing_cycle,
-            "dev_mode": current_app.config.get('SUBSCRIPTION_DEV_MODE', False)
-        }), 200
-        
-    except Exception as e:
-        current_app.logger.error(f"Error creating Razorpay order for vendor {vendor_id}: {str(e)}")
-        return jsonify({"error": "Failed to create payment order", "details": str(e)}), 500
+    return jsonify(error='Review an invoice preview before paying', preview_url=f'/api/vendors/{vendor_id}/subscription/preview'), 409
 
 
 @bp_subs.post('/verify-payment')
@@ -449,9 +412,9 @@ def get_subscription_history(vendor_id):
             {
                 "id": sub.id,
                 "package": {
-                    "code": sub.package.code,
-                    "name": sub.package.name,
-                    "pc_limit": sub.package.pc_limit
+                    "code": terms(sub)["package_code"],
+                    "name": terms(sub)["package_name"],
+                    "pc_limit": terms(sub)["pc_limit"]
                 },
                 "status": sub.status.value,
                 "period_start": sub.current_period_start.isoformat(),
@@ -471,6 +434,7 @@ def get_subscription_history(vendor_id):
 def get_subscription_invoice(vendor_id: int, subscription_id: int):
     """Render a print-ready invoice for a subscription purchase."""
     from app.models.subscription import Subscription
+    from html import escape
 
     sub = (
         Subscription.query
@@ -480,6 +444,11 @@ def get_subscription_invoice(vendor_id: int, subscription_id: int):
     if not sub:
         return jsonify({"error": "Invoice not found"}), 404
 
+    from app.models.subscription_checkout import SubscriptionCheckout
+    receipt=SubscriptionCheckout.query.filter_by(subscription_id=sub.id,state='paid').order_by(SubscriptionCheckout.paid_at.desc()).first()
+    if receipt:
+        from app.controllers.subscription_commerce_controller import invoice
+        return invoice(vendor_id,receipt.id)
     billing_cycle = (sub.package.features or {}).get("billing_cycle", "custom")
     invoice_number = _invoice_number(sub.id)
     invoice_date = sub.created_at.strftime("%d %b %Y") if sub.created_at else "-"
@@ -519,10 +488,10 @@ def get_subscription_invoice(vendor_id: int, subscription_id: int):
     <div class="grid">
       <div class="card"><div class="label">Vendor ID</div><div class="value">{vendor_id}</div></div>
       <div class="card"><div class="label">Invoice Date</div><div class="value">{invoice_date}</div></div>
-      <div class="card"><div class="label">Plan</div><div class="value">{sub.package.name}</div></div>
+      <div class="card"><div class="label">Plan</div><div class="value">{escape(terms(sub)["package_name"])}</div></div>
       <div class="card"><div class="label">Status</div><div class="value">{sub.status.value}</div></div>
-      <div class="card"><div class="label">Billing Cycle</div><div class="value">{billing_cycle}</div></div>
-      <div class="card"><div class="label">Payment Reference</div><div class="value">{payment_ref}</div></div>
+      <div class="card"><div class="label">Billing Cycle</div><div class="value">{escape(str(billing_cycle))}</div></div>
+      <div class="card"><div class="label">Payment Reference</div><div class="value">{escape(payment_ref)}</div></div>
       <div class="card"><div class="label">Period Start</div><div class="value">{period_start}</div></div>
       <div class="card"><div class="label">Period End</div><div class="value">{period_end}</div></div>
     </div>

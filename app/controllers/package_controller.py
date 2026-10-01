@@ -1,9 +1,14 @@
 import os
+import hmac
+import re
 
 from flask import Blueprint, jsonify, current_app, request
 from app.models.package import Package
 from app.models.subscription import Subscription
 from app.services.subscription_service import get_package_price
+from app.services.subscription_commerce import FEATURES
+from app.services.pricing_math import money
+from app.extension.extensions import db
 
 
 bp_packages = Blueprint('packages', __name__)
@@ -18,9 +23,7 @@ def _extract_admin_key() -> str:
 
 def _admin_authorized() -> bool:
     expected = (os.getenv("SUPER_ADMIN_API_KEY") or "").strip()
-    if not expected:
-        return True
-    return _extract_admin_key() == expected
+    return bool(expected) and hmac.compare_digest(_extract_admin_key(), expected)
 
 
 def _serialize_package(pkg: Package) -> dict:
@@ -41,6 +44,8 @@ def _serialize_package(pkg: Package) -> dict:
         "plan_features": plan_features,
         "features": plan_features,
         "raw_features": features,
+        "entitlements": features.get("entitlements", list(FEATURES)),
+        "extra_pc_monthly": features.get("extra_pc_monthly", 0),
     }
 
 
@@ -72,7 +77,7 @@ def list_packages():
             "original_price": float(pkg.features.get('price_inr', 0)),
             "is_custom": pkg.is_custom,
             "is_free": price == 0,
-            "features": pkg.features,
+            "features": dict(pkg.features or {}, entitlements=(pkg.features or {}).get("entitlements",list(FEATURES))),
             "description": f"Manage up to {pkg.pc_limit} PCs/Consoles"
         })
     
@@ -125,44 +130,47 @@ def upsert_admin_catalog():
         return jsonify({"success": False, "message": "Unauthorized"}), 401
 
     payload = request.get_json(silent=True) or {}
+    if not isinstance(payload, dict):
+        return jsonify(success=False,message="Supply a JSON object"),400
     models = payload.get("models") or []
     if not isinstance(models, list) or not models:
         return jsonify({"success": False, "message": "models must be a non-empty list"}), 400
 
     changed = 0
-    for item in models:
-        if not isinstance(item, dict):
-            continue
-        code = (item.get("code") or "").strip().lower()
-        name = (item.get("name") or "").strip()
-        if not code or not name:
-            continue
-
-        package = Package.query.filter_by(code=code).first()
-        if not package:
-            package = Package(code=code, name=name, pc_limit=0, is_custom=True, features={}, active=True)
-            from app.extension.extensions import db
-            db.session.add(package)
-
-        package.name = name
-        package.pc_limit = max(0, int(item.get("pc_limit") or 0))
-        package.active = bool(item.get("enabled", item.get("active", True)))
-
-        existing_features = dict(package.features or {})
-        existing_features.update(
-            {
-                "price_inr": float(item.get("monthly") or existing_features.get("price_inr") or 0),
-                "quarterly_price_inr": float(item.get("quarterly") or existing_features.get("quarterly_price_inr") or 0),
-                "yearly_price_inr": float(item.get("yearly") or existing_features.get("yearly_price_inr") or 0),
-                "onboarding_offer": item.get("onboarding_offer"),
-                "plan_features": item.get("features") or item.get("plan_features") or [],
-            }
-        )
-        package.features = existing_features
-        changed += 1
-
-    from app.extension.extensions import db
-    db.session.commit()
+    try:
+        seen=set()
+        for item in models:
+            if not isinstance(item, dict): raise ValueError('Each plan must be an object')
+            code=str(item.get('code','')).strip().lower();name=str(item.get('name','')).strip()
+            if not re.fullmatch(r'[a-z0-9_-]{1,32}',code) or not 1 <= len(name) <= 64:
+                raise ValueError('Use a valid plan code and name up to 64 characters')
+            if code in seen: raise ValueError('Duplicate plan code')
+            seen.add(code)
+            limit=item.get('pc_limit')
+            if type(limit) is not int or not 0 <= limit <= 10000: raise ValueError('PC limit must be a whole number from 0 to 10000')
+            enabled=item.get('enabled',item.get('active',True))
+            if type(enabled) is not bool: raise ValueError('Plan status must be boolean')
+            package=Package.query.filter_by(code=code).with_for_update().first()
+            if not package:
+                package=Package(code=code,name=name,pc_limit=limit,is_custom=True,features={},active=enabled)
+                db.session.add(package)
+            f=dict(package.features or {})
+            for incoming,stored in [('monthly','price_inr'),('quarterly','quarterly_price_inr'),('yearly','yearly_price_inr'),('extra_pc_monthly','extra_pc_monthly')]:
+                if incoming in item: f[stored]=float(money(item[incoming]))
+            descriptions=item.get('features',item.get('plan_features',f.get('plan_features',[])))
+            if not isinstance(descriptions,list) or len(descriptions)>50 or any(not isinstance(v,str) or len(v)>200 for v in descriptions):
+                raise ValueError('Features must be up to 50 short descriptions')
+            entitlements=item.get('entitlements',f.get('entitlements',list(FEATURES)))
+            if not isinstance(entitlements,list) or any(not isinstance(v,str) or v not in FEATURES for v in entitlements):
+                raise ValueError('Unknown dashboard feature')
+            f.update(plan_features=descriptions,entitlements=sorted(set(entitlements)))
+            if 'onboarding_offer' in item: f['onboarding_offer']=item['onboarding_offer']
+            package.name=name;package.pc_limit=limit;package.active=enabled;package.features=f
+            changed+=1
+        db.session.commit()
+    except (ValueError,TypeError) as error:
+        db.session.rollback()
+        return jsonify(success=False,message=str(error)),400
 
     packages = Package.query.order_by(Package.id.asc()).all()
     return jsonify({"success": True, "updated": changed, "models": [_serialize_package(pkg) for pkg in packages]}), 200

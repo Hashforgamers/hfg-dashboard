@@ -104,11 +104,20 @@ def is_subscription_active(vendor_id):
     return True, sub
 
 
+def purchased_terms(package, amount, start, end, cycle='monthly'):
+    from app.services.subscription_commerce import FEATURES, paise
+    features=package.features or {}
+    return dict(package_code=package.code,package_name=package.name,pc_limit=package.pc_limit,extra_pcs=0,
+                billing_cycle=cycle,recurring_paise=paise(amount),entitlements=features.get('entitlements',list(FEATURES)),
+                extra_pc_monthly=features.get('extra_pc_monthly',0),cycle_start=_as_utc(start).isoformat(),cycle_end=_as_utc(end).isoformat())
+
+
 def provision_default_subscription(vendor_id):
     """
     Create default subscription for new vendor
     Used during vendor onboarding
     """
+    Vendor.query.filter_by(id=vendor_id).with_for_update().one()
     if get_active_subscription(vendor_id):
         current_app.logger.info(f"Vendor {vendor_id} already has active subscription")
         return
@@ -124,6 +133,7 @@ def provision_default_subscription(vendor_id):
     sub = Subscription(
         vendor_id=vendor_id, 
         package_id=base_pkg.id,
+        commercial_terms=purchased_terms(base_pkg,0,now,now+duration),
         status=SubscriptionStatus.active,
         current_period_start=now,
         current_period_end=now + duration,
@@ -150,6 +160,7 @@ def create_subscription(vendor_id, package_code, payment_amount, external_ref=No
     Returns:
         Subscription: New subscription object
     """
+    Vendor.query.filter_by(id=vendor_id).with_for_update().one()
     now = datetime.now(timezone.utc)
     cycle = normalize_billing_cycle(billing_cycle)
     duration = get_subscription_duration(cycle)
@@ -185,10 +196,12 @@ def create_subscription(vendor_id, package_code, payment_amount, external_ref=No
         sub.canceled_at = now
         current_app.logger.info(f"Vendor {vendor_id}: Expired old subscription {sub.id}")
     
+    db.session.flush()
     # Create new subscription
     new_sub = Subscription(
         vendor_id=vendor_id,
         package_id=package.id,
+        commercial_terms=purchased_terms(package,payment_amount,now,now+duration,cycle),
         status=SubscriptionStatus.active,
         current_period_start=now,
         current_period_end=now + duration,
@@ -221,6 +234,7 @@ def renew_subscription(vendor_id, payment_amount, external_ref=None, billing_cyc
     Returns:
         Subscription: Renewed subscription object
     """
+    Vendor.query.filter_by(id=vendor_id).with_for_update().one()
     now = datetime.now(timezone.utc)
     cycle = normalize_billing_cycle(billing_cycle)
     duration = get_subscription_duration(cycle)
@@ -261,10 +275,12 @@ def renew_subscription(vendor_id, payment_amount, external_ref=None, billing_cyc
             sub.current_period_end = now
         sub.canceled_at = now
     
+    db.session.flush()
     # Create renewed subscription
     renewed = Subscription(
         vendor_id=vendor_id,
         package_id=package.id,
+        commercial_terms=purchased_terms(package,payment_amount,now,now+duration,cycle),
         status=SubscriptionStatus.active,
         current_period_start=now,
         current_period_end=now + duration,
@@ -297,6 +313,7 @@ def change_subscription(
     """
     Change vendor's subscription package (Admin function)
     """
+    Vendor.query.filter_by(id=vendor_id).with_for_update().one()
     now = datetime.now(timezone.utc)
     start_at = period_start or now
     duration = get_subscription_duration()
@@ -305,7 +322,7 @@ def change_subscription(
         raise ValueError("period_end must be after period_start")
     
     normalized_code = str(package_code or "").strip().lower()
-    if normalized_code == "pro":
+    if normalized_code == "pro" and not Package.query.filter_by(code="pro",active=True).first():
         normalized_code = "grow"
     new_pkg = Package.query.filter_by(code=normalized_code, active=True).first()
     if not new_pkg:
@@ -328,9 +345,11 @@ def change_subscription(
             if sub.current_period_end is None or sub.current_period_end > now:
                 sub.current_period_end = now
         
+        db.session.flush()
         new = Subscription(
             vendor_id=vendor_id, 
             package_id=new_pkg.id,
+            commercial_terms=purchased_terms(new_pkg,unit_amount,start_at,end_at),
             status=SubscriptionStatus.active,
             current_period_start=start_at,
             current_period_end=end_at,
@@ -351,9 +370,11 @@ def change_subscription(
         end_at = period_end or (start_at + duration)
         if end_at <= start_at:
             raise ValueError("period_end must be after period_start")
+        db.session.flush()
         new = Subscription(
             vendor_id=vendor_id, 
             package_id=new_pkg.id,
+            commercial_terms=purchased_terms(new_pkg,unit_amount,start_at,end_at),
             status=SubscriptionStatus.active,
             current_period_start=start_at,
             current_period_end=end_at,
@@ -373,19 +394,15 @@ def change_subscription(
 def get_vendor_pc_limit(vendor_id):
     """
     Get PC limit for vendor based on their subscription
-    Returns default of 3 if no subscription found
+    Expired or missing subscriptions have zero kiosk capacity.
     """
     sub = get_active_subscription(vendor_id)
-    
-    if sub and sub.package:
-        return sub.package.pc_limit
-    
-    # Fallback to base package
-    pkg = Package.query.filter_by(code='early_onboard', active=True).first()
-    if not pkg:
-        pkg = Package.query.filter_by(code='base', active=True).first()
-    
-    return pkg.pc_limit if pkg else 3
+    if not sub or not sub.package:
+        return 0
+    from app.services.subscription_commerce import terms
+    purchased = terms(sub)
+    return int(purchased['pc_limit']) if 'kiosk' in purchased['entitlements'] else 0
+
 
 
 def expire_subscriptions():

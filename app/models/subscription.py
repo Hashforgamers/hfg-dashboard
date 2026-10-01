@@ -1,5 +1,5 @@
 # models/subscription.py
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Enum, Index, Numeric, Boolean, text
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Enum, Index, Numeric, Boolean, text, JSON
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.extension.extensions import db
@@ -27,6 +27,7 @@ class Subscription(db.Model):
     trial_end = Column(DateTime(timezone=True), nullable=True)
 
     # billing metadata (optional, for proration/invoicing)
+    commercial_terms = Column(JSON, nullable=True)  # Purchased limits/features and recurring price, independent of catalog edits.
     currency = Column(String(8), nullable=False, default='INR')
     unit_amount = Column(Numeric(12,2), nullable=False, default=0)   # monthly price incl. tax if needed
     external_ref = Column(String(64), nullable=True)                 # gateway sub id
@@ -44,7 +45,8 @@ class Subscription(db.Model):
             'uq_subscription_open_vendor',
             'vendor_id',
             unique=True,
-            postgresql_where=text("status IN ('active', 'trialing', 'past_due')")
+            postgresql_where=text("status IN ('active', 'trialing', 'past_due')"),
+            sqlite_where=text("status IN ('active', 'trialing', 'past_due')")
         ),
         Index('ix_subscription_active_unique', 'vendor_id', 'status', unique=False),
     )

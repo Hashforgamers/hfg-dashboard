@@ -21,6 +21,8 @@ def list_vendor_pcs(vendor_id):
 
 def create_link(vendor_id, console_id, kiosk_id=None):
     with db.session.begin_nested():
+        from app.models.vendor import Vendor
+        Vendor.query.filter_by(id=vendor_id).with_for_update().one()
         limit = get_vendor_pc_limit(vendor_id)
         active = count_active_links(vendor_id)
         if active >= limit:
