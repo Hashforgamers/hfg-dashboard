@@ -226,3 +226,19 @@ def test_postgres_migration_rerun_preserves_purchased_terms(commerce):
         raw.commit();db.session.expire_all()
         assert Subscription.query.one().commercial_terms['pc_limit']==5
     finally:raw.close()
+
+
+def test_add_pcs_preserves_purchased_plan_after_catalog_change(commerce):
+    q=preview(commerce);pay(commerce,q);finish(commerce,q)
+    package=Package.query.filter_by(code='base').one()
+    package.pc_limit=10
+    package.features={'price_inr':399,'extra_pc_monthly':99,'entitlements':['kiosk','pricing','staff']}
+    db.session.commit()
+    response=commerce.test_client().post('/api/vendors/1/subscription/preview',headers=auth(commerce),json={'action':'add_pcs','package_code':'base','extra_pcs':2})
+    assert response.status_code==201,response.json
+    quote=response.json
+    assert quote['terms']['pc_limit']==7
+    assert quote['terms']['recurring_paise']==29800
+    assert quote['terms']['entitlements']==['kiosk','pricing']
+    assert quote['period_end']==q['period_end']
+    assert 0 < quote['amount_paise'] <= 19800
