@@ -78,6 +78,18 @@ class CafeStaffSession(db.Model):
     closed_at = db.Column(db.DateTime)
 
 
+class CafeSlotReservation(db.Model):
+    __tablename__ = 'cafe_slot_reservations'
+    session_id = db.Column(db.String(36), primary_key=True)
+    vendor_id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.Date, primary_key=True)
+    slot_id = db.Column(db.Integer, primary_key=True)
+    units = db.Column(db.Integer, nullable=False, default=1)
+    released_at = db.Column(db.DateTime)
+    __table_args__ = (db.CheckConstraint('units > 0'),
+        db.Index('ix_cafe_slot_reservation_capacity', 'vendor_id', 'date', 'slot_id', 'released_at'))
+
+
 class CafePlaySession(db.Model):
     __tablename__ = 'cafe_play_sessions'
     id = db.Column(db.String(36), primary_key=True)
@@ -99,8 +111,13 @@ class CafePlaySession(db.Model):
     deadline = db.Column(db.DateTime, nullable=False)
     started_at = db.Column(db.DateTime)
     ends_at = db.Column(db.DateTime)
+    warning_sent_at = db.Column(db.DateTime)
+    due_amount = db.Column(db.BigInteger, nullable=False, default=0, server_default='0')
+    settled_at = db.Column(db.DateTime)
+    ended_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     __table_args__ = (db.UniqueConstraint('vendor_id', 'user_id', 'idempotency_key'),
+        db.CheckConstraint('due_amount >= 0'),
         db.Index('ix_cafe_play_deadline', 'state', 'deadline'),
         db.Index('ix_cafe_play_ends', 'state', 'ends_at'))
 
@@ -133,3 +150,35 @@ class CafeBookingClaim(db.Model):
     __tablename__ = 'cafe_booking_claims'
     booking_id = db.Column(db.Integer, primary_key=True)
     session_id = db.Column(db.String(36), nullable=False, index=True)
+
+
+class CafeContinuation(db.Model):
+    __tablename__ = 'cafe_continuations'
+    id = db.Column(db.String(36), primary_key=True)
+    vendor_id = db.Column(db.Integer, nullable=False, index=True)
+    user_id = db.Column(db.Integer, nullable=False)
+    parent_id = db.Column(db.String(36), nullable=False)
+    session_id = db.Column(db.String(36), unique=True)
+    # One unresolved request per source session, released after decision/expiry.
+    pending_key = db.Column(db.String(36), unique=True)
+    idempotency_key = db.Column(db.String(100), nullable=False)
+    fingerprint = db.Column(db.String(64), nullable=False)
+    minutes = db.Column(db.Integer, nullable=False)
+    amount = db.Column(db.BigInteger, nullable=False)
+    state = db.Column(db.String(24), nullable=False, default='pending')
+    expires_at = db.Column(db.DateTime, nullable=False)
+    decided_at = db.Column(db.DateTime)
+    decided_by = db.Column(db.String(80))
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    __table_args__ = (db.UniqueConstraint('vendor_id', 'user_id', 'idempotency_key'),
+        db.CheckConstraint('amount >= 0 AND minutes >= 5 AND minutes <= 720'))
+
+
+class CafeOwnerEmail(db.Model):
+    __tablename__ = 'cafe_owner_email_outbox'
+    request_id = db.Column(db.String(36), primary_key=True)
+    recipient = db.Column(db.String(255))
+    attempts = db.Column(db.Integer, nullable=False, default=0)
+    next_attempt_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    sent_at = db.Column(db.DateTime)
+    last_error = db.Column(db.String(255))

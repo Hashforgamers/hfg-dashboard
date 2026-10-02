@@ -191,7 +191,7 @@ def test_qr_quote_uses_dated_schedule_and_ignores_other_templates(env):
         e.db.session.execute(text('INSERT INTO slots VALUES (200,100,:start,:end),(201,100,:start,:end)'),
             {'start': time(10), 'end': time(11)})
         for slot_id, scheduled_day in [(120,day),(121,day),(120,day),(200,day-timedelta(days=1))]:
-            e.db.session.execute(text('INSERT INTO vendor_1_slot VALUES (1,:id,:day)'),
+            e.db.session.execute(text('INSERT INTO vendor_1_slot(vendor_id,slot_id,date) VALUES (1,:id,:day)'),
                 {'id':slot_id, 'day':scheduled_day})
         link = e.db.session.get(e.Link, 1)
         result = session_prices(link, [{'minutes':30},{'minutes':60}], datetime.combine(day,time(10,15)))

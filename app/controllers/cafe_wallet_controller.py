@@ -254,7 +254,7 @@ def collections_summary(vendor_id):
     end = (day + timedelta(days=1)).astimezone(timezone.utc).replace(tzinfo=None)
     rows = db.session.query(CafeLedger.method, CafeLedger.kind, func.sum(CafeLedger.amount)).filter(
         CafeLedger.vendor_id == vendor_id, CafeLedger.created_at >= start, CafeLedger.created_at < end,
-        CafeLedger.method.in_(['cash', 'cafe_upi']), CafeLedger.kind.in_(['topup', 'food_collection', 'refund'])
+        CafeLedger.method.in_(['cash', 'cafe_upi']), CafeLedger.kind.in_(['topup', 'food_collection', 'session_collection', 'refund'])
     ).group_by(CafeLedger.method, CafeLedger.kind).all()
     methods = {method: dict(received=0, returned=0, net=0) for method in ['cash', 'cafe_upi']}
     for method, kind, amount in rows:
@@ -428,7 +428,8 @@ def checkout_details(link, user_id, include_bookings=False):
 
 def public_session(row):
     link = db.session.get(ConsoleLinkSession, row.link_id)
-    return dict(serialize(row), checkout=checkout_details(link, row.user_id))
+    from app.services.cafe_continuation_service import snapshot
+    return dict(snapshot(row), checkout=checkout_details(link, row.user_id))
 
 
 @bp_cafe.get('/checkout')
@@ -453,17 +454,20 @@ def checkout():
     else:
         if body.get('payment_method') != 'cafe_wallet':
             raise CafeError('Select cafe wallet.')
+        if type(body.get('use_available_balance',False)) is not bool:
+            raise CafeError('use_available_balance must be boolean')
         session = reserve(link.vendor_id, g.cafe_user_id, link, body.get('minutes'), body.get('idempotency_key'),
-                          expected_amount=integer(body.get('expected_amount'), minimum=0))
+                          expected_amount=integer(body.get('expected_amount'), minimum=0),
+                          use_available_balance=body.get('use_available_balance',False))
     db.session.commit()
-    if session.state == 'reserved':
-        from app.services.websocket_service import socketio
-        socketio.emit('session.prepare', command(session), to=f'cafe-agent:{link.id}', namespace='/cafe-agent')
+    from app.services.cafe_slot_reservations import notify_slot_changes
+    notify_slot_changes(session)
     return jsonify(public_session(session)), 202 if session.state == 'reserved' else 200
 
 
 def command(session):
-    return dict(serialize(session), command_token=session.command_token)
+    from app.services.cafe_continuation_service import snapshot
+    return dict(snapshot(session), command_token=session.command_token)
 
 
 @bp_cafe.get('/sessions/<session_id>')
@@ -490,6 +494,8 @@ def agent_ack():
         raise CafeError('success must be boolean')
     row = acknowledge(body.get('session_id'), link, body.get('command_token'), body['success'])
     db.session.commit()
+    from app.services.cafe_slot_reservations import notify_slot_changes
+    notify_slot_changes(row)
     return jsonify(serialize(row))
 
 
@@ -520,8 +526,28 @@ def register_cafe_runtime(app, socketio):
                 finally:
                     db.session.remove()
             socketio.sleep(5)
+    @app.cli.command('cafe-email-dispatch')
+    def email_dispatch():
+        from app.services.cafe_owner_email import dispatch_owner_emails
+        dispatch_owner_emails()
+
+    def email_worker():
+        # SMTP cannot delay expiry and slot reconciliation.
+        while True:
+            with app.app_context():
+                try:
+                    from app.services.cafe_owner_email import dispatch_owner_emails
+                    dispatch_owner_emails()
+                except Exception:
+                    db.session.rollback()
+                    app.logger.exception('Cafe owner email dispatch failed')
+                finally:
+                    db.session.remove()
+            socketio.sleep(15)
+
     if app.config.get('CAFE_RECONCILER_ENABLED', False):
         socketio.start_background_task(worker)
+        socketio.start_background_task(email_worker)
 
 
 @bp_cafe.get('/food/menu')
@@ -672,3 +698,157 @@ def food_context(data):
             raise CafeError('An active session is required', 403)
         return db.session.get(ConsoleLinkSession, row.link_id)
     return resolve_qr(data.get('qr'))
+
+
+@bp_cafe.get('/<int:vendor_id>/sessions/live')
+@jwt_required()
+def live_qr_sessions(vendor_id):
+    staff_actor(vendor_id, 'dashboard.view')
+    from app.services.cafe_continuation_service import snapshot
+    from app.models.user import User
+    from app.models.console import Console
+    rows = CafePlaySession.query.filter_by(vendor_id=vendor_id).filter(
+        or_(CafePlaySession.state.in_(['reserved','active']),
+            and_(CafePlaySession.due_amount>0,CafePlaySession.settled_at.is_(None)),
+            CafePlaySession.id.in_(db.session.query(CafeContinuation.parent_id).filter_by(vendor_id=vendor_id,state='pending')))
+    ).order_by(CafePlaySession.created_at.desc()).all()
+    items=[]
+    for row in rows:
+        user=db.session.get(User,row.user_id);console=db.session.get(Console,row.console_id)
+        items.append(dict(snapshot(row),gamer_name=getattr(user,'name',None) or f'Gamer {row.user_id}',
+                          console_number=getattr(console,'console_number',row.console_id)))
+    requests=[]
+    for row in CafeContinuation.query.filter_by(vendor_id=vendor_id,state='pending').all():
+        email=db.session.get(CafeOwnerEmail,row.id)
+        requests.append(dict(serialize(row),email_delivery={
+            'sent': bool(email and email.sent_at), 'error': email.last_error if email else 'Email not queued'}))
+    return jsonify(items=items,requests=requests)
+
+
+@bp_cafe.get('/sessions/<session_id>/continuation/quote')
+@gamer_required
+def continuation_quote(session_id):
+    row=CafePlaySession.query.filter_by(id=session_id,user_id=g.cafe_user_id).first()
+    if not row: raise CafeError('Session not found',404)
+    from app.services.cafe_session_pricing import session_prices
+    from app.services.cafe_slot_reservations import local_window
+    start=max(datetime.utcnow(),row.ends_at or datetime.utcnow())
+    local,_=local_window(start,start)
+    local=local.replace(second=0,microsecond=0)
+    return jsonify(durations=session_prices(db.session.get(ConsoleLinkSession,row.link_id),
+        policy(row.vendor_id)['durations'],now=local,check_capacity=False),billing='fixed_duration',
+        owner_approval_required=True,slots_reserved_on_approval=True)
+
+
+@bp_cafe.post('/sessions/<session_id>/continuation')
+@gamer_required
+def gamer_continuation(session_id):
+    from app.services.cafe_continuation_service import request_continuation, publish_session
+    row=request_continuation(session_id,g.cafe_user_id,request.get_json(silent=True) or {})
+    db.session.commit()
+    publish_session(db.session.get(CafePlaySession,row.parent_id))
+    return jsonify(serialize(row)),202
+
+
+@bp_cafe.post('/<int:vendor_id>/continuations/<request_id>/decision')
+@jwt_required()
+def owner_continuation_decision(vendor_id,request_id):
+    actor=staff_actor(vendor_id,'dashboard.view')
+    # Financial credit authority cannot be delegated through custom RBAC permissions.
+    if (get_jwt().get('staff') or {}).get('role')!='owner':
+        raise CafeError('Only the cafe owner can approve or reject credit play',403)
+    from app.services.cafe_continuation_service import decide, publish_session
+    row=decide(vendor_id,request_id,request.get_json(silent=True) or {},actor)
+    db.session.commit()
+    publish_session(db.session.get(CafePlaySession,row.parent_id))
+    if row.session_id:
+        from app.services.cafe_slot_reservations import notify_slot_changes
+        notify_slot_changes(db.session.get(CafePlaySession,row.session_id))
+    return jsonify(serialize(row))
+
+
+@bp_cafe.post('/<int:vendor_id>/sessions/<session_id>/end')
+@jwt_required()
+def staff_end_qr_session(vendor_id,session_id):
+    actor=staff_actor(vendor_id,'dashboard.view')
+    if (get_jwt().get('staff') or {}).get('role')!='owner':
+        staff_actor(vendor_id,'booking.manage')
+    if not CafePlaySession.query.filter_by(id=session_id,vendor_id=vendor_id).first():
+        raise CafeError('Session not found',404)
+    from app.services.cafe_continuation_service import end_session,snapshot
+    row=end_session(session_id,actor);db.session.commit()
+    from app.services.cafe_slot_reservations import notify_slot_changes
+    notify_slot_changes(row)
+    return jsonify(snapshot(row))
+
+
+@bp_cafe.post('/agent/session/end')
+def agent_end_qr_session():
+    link=agent_link();body=request.get_json(silent=True) or {}
+    row=CafePlaySession.query.filter_by(id=body.get('session_id'),link_id=link.id).first()
+    if not row or not secrets.compare_digest(row.command_token,str(body.get('command_token'))):
+        raise CafeError('Invalid PC session',403)
+    from app.services.cafe_continuation_service import end_session,snapshot
+    row=end_session(row.id,{'id':f'pc-{link.console_id}','name':f'PC {link.console_id}'})
+    db.session.commit()
+    from app.services.cafe_slot_reservations import notify_slot_changes
+    notify_slot_changes(row)
+    return jsonify(snapshot(row))
+
+
+@bp_cafe.post('/<int:vendor_id>/sessions/<session_id>/settle')
+@jwt_required()
+def settle_qr_session(vendor_id,session_id):
+    actor=staff_actor(vendor_id,'wallet.topup')
+    from app.services.cafe_continuation_service import settle,publish_session,snapshot
+    row=settle(vendor_id,session_id,request.get_json(silent=True) or {},actor)
+    db.session.commit();publish_session(row)
+    return jsonify(snapshot(row))
+
+
+@bp_cafe.get('/agent/status')
+def agent_realtime_snapshot():
+    """Reconnect snapshot includes the last stopped session and any pending decision."""
+    link=agent_link()
+    row=CafePlaySession.query.filter_by(link_id=link.id).order_by(CafePlaySession.created_at.desc()).first()
+    from app.services.cafe_continuation_service import snapshot
+    return jsonify(session=command(row) if row else None,play_allowed=bool(row and snapshot(row)['play_allowed']),
+                   server_time=datetime.utcnow().isoformat()+'Z')
+
+
+@bp_cafe.post('/agent/continuation')
+def agent_request_continuation():
+    link=agent_link();body=request.get_json(silent=True) or {}
+    row=CafePlaySession.query.filter_by(id=body.get('session_id'),link_id=link.id).first()
+    if not row or not secrets.compare_digest(row.command_token,str(body.get('command_token'))):
+        raise CafeError('Invalid PC session',403)
+    from app.services.cafe_continuation_service import request_continuation,publish_session
+    continuation=request_continuation(row.id,row.user_id,body);db.session.commit()
+    publish_session(row)
+    return jsonify(serialize(continuation)),202
+
+
+@bp_cafe.get('/agent/continuation/quote')
+def agent_continuation_quote():
+    link=agent_link()
+    row=CafePlaySession.query.filter_by(id=request.args.get('session_id'),link_id=link.id).first()
+    if not row or not secrets.compare_digest(row.command_token,str(request.headers.get('X-Session-Command'))):
+        raise CafeError('Invalid PC session',403)
+    from app.services.cafe_session_pricing import session_prices
+    from app.services.cafe_slot_reservations import local_window
+    start=max(datetime.utcnow(),row.ends_at or datetime.utcnow());local,_=local_window(start,start)
+    local=local.replace(second=0,microsecond=0)
+    return jsonify(durations=session_prices(link,policy(row.vendor_id)['durations'],now=local,check_capacity=False),
+                   billing='fixed_duration',owner_approval_required=True)
+
+
+@bp_cafe.get('/checkout/affordable')
+@gamer_required
+def wallet_affordable_checkout():
+    link=resolve_qr(request.args.get('qr'))
+    from app.services.cafe_session_pricing import affordable_duration
+    row=CafeWallet.query.filter_by(vendor_id=link.vendor_id,user_id=g.cafe_user_id).first()
+    balance=row.balance-row.reserved if row else 0
+    quote=affordable_duration(link,balance,policy(link.vendor_id)['durations'])
+    return jsonify(duration=quote,available_balance=balance,currency='INR',
+                   reason=None if quote else 'Balance or slots do not cover a five-minute session. Visit the desk.')

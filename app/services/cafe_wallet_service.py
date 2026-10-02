@@ -159,7 +159,7 @@ def refund(vendor_id, entry_id, body, actor):
                   method=original.method, shift_id=shift.id if shift else None)
 
 
-def reserve(vendor_id, user_id, link, minutes, idem, expected_amount=None):
+def reserve(vendor_id, user_id, link, minutes, idem, expected_amount=None, *, owner_credit=False, use_available_balance=False):
     integer(minutes, 5, 720)
     key(idem)
     fp = fingerprint([link.console_id, minutes])
@@ -170,6 +170,9 @@ def reserve(vendor_id, user_id, link, minutes, idem, expected_amount=None):
         if existing.fingerprint != fp:
             raise CafeError('Idempotency key already used for another checkout', 409)
         return existing
+    if not owner_credit and CafePlaySession.query.filter_by(vendor_id=vendor_id,user_id=user_id).filter(
+        CafePlaySession.due_amount > 0, CafePlaySession.settled_at.is_(None)).first():
+        raise CafeError('Settle the outstanding gaming balance at the desk before a new checkout',409)
     from app.services.payment_methods import require_method
     try:
         require_method(vendor_id, 'cafe_wallet')
@@ -180,7 +183,12 @@ def reserve(vendor_id, user_id, link, minutes, idem, expected_amount=None):
         raise CafeError('Self-service is disabled at this cafe', 403)
     from app.services.cafe_session_pricing import session_prices
     try:
-        quote = next((d for d in session_prices(link, settings['durations']) if d['minutes'] == minutes), None)
+        durations = settings['durations']
+        if use_available_balance:
+            if minutes > max(d['minutes'] for d in durations):
+                raise CafeError('This duration exceeds the cafe session limit',409)
+            durations = [{'minutes':minutes}]
+        quote = next((d for d in session_prices(link, durations) if d['minutes'] == minutes), None)
     except ValueError as error:
         raise CafeError(str(error), 409)
     price = quote['amount'] if quote else None
@@ -188,6 +196,15 @@ def reserve(vendor_id, user_id, link, minutes, idem, expected_amount=None):
         raise CafeError((quote or {}).get('unavailable_reason') or 'This duration is no longer available', 409)
     if expected_amount is not None and expected_amount != price:
         raise CafeError('Price changed. Reload checkout before paying.', 409)
+    from app.services.cafe_slot_reservations import scheduled_slots, ensure_console_window, hold_slots, local_window
+    now = datetime.utcnow()
+    deadline = now + timedelta(seconds=45)
+    # Cover the full paid duration even when PC acknowledgement takes 45 seconds.
+    start, end = local_window(now, deadline + timedelta(minutes=minutes))
+    try:
+        slots = scheduled_slots(link, start, end, lock=True)
+    except ValueError as error:
+        raise CafeError(str(error), 409)
     from app.models.console import Console
     console = Console.query.filter_by(id=link.console_id, vendor_id=vendor_id).populate_existing().with_for_update().first()
     from app.models.console_link_session import ConsoleLinkSession
@@ -196,6 +213,10 @@ def reserve(vendor_id, user_id, link, minutes, idem, expected_amount=None):
         raise CafeError('PC is not linked', 409)
     if CafePlaySession.query.filter_by(console_claim=console.id).first():
         raise CafeError('PC is already reserved or playing', 409)
+    try:
+        ensure_console_window(link, start, end)
+    except ValueError as error:
+        raise CafeError(str(error), 409)
     # Existing dashboard assignments remain the authority for legacy bookings.
     from sqlalchemy import text
     if db.engine.dialect.name == 'postgresql':
@@ -203,14 +224,20 @@ def reserve(vendor_id, user_id, link, minutes, idem, expected_amount=None):
         if not busy or not all(row[0] for row in busy):
             raise CafeError('PC is unavailable', 409)
         db.session.execute(text(f'UPDATE VENDOR_{int(vendor_id)}_CONSOLE_AVAILABILITY SET is_available = false WHERE console_id = :cid'), {'cid': console.id})
-    if w.balance - w.reserved < price:
+    if not owner_credit and w.balance - w.reserved < price:
         raise CafeError('Insufficient cafe balance. Please top up at the desk.', 409)
     session = CafePlaySession(id=str(uuid.uuid4()), vendor_id=vendor_id, user_id=user_id,
         console_id=console.id, link_id=link.id, console_claim=console.id,
         idempotency_key=idem, fingerprint=fp, amount=price, minutes=minutes,
-        command_token=secrets.token_urlsafe(32), state='reserved',
-        deadline=datetime.utcnow() + timedelta(seconds=45))
+        command_token=secrets.token_urlsafe(32), state='reserved', kind='owner_credit' if owner_credit else 'wallet',
+        deadline=deadline, created_at=now)
     db.session.add(session)
+    try:
+        hold_slots(session, slots)
+    except ValueError as error:
+        raise CafeError(str(error), 409)
+    if owner_credit:
+        return session
     w.reserved += price
     ledger(w, 'reserve', 0, {'id': f'gamer-{user_id}', 'name': 'Gamer self-service'},
            f'reserve:{session.id}', fp, session_id=session.id, reason='Awaiting PC acknowledgement')
@@ -218,6 +245,8 @@ def reserve(vendor_id, user_id, link, minutes, idem, expected_amount=None):
 
 
 def release_console(session):
+    from app.services.cafe_slot_reservations import release_slots
+    release_slots(session)
     session.console_claim = None
     db.session.flush()
     from sqlalchemy import text
@@ -237,6 +266,18 @@ def acknowledge(session_id, link, command_token, success):
     if session.kind == 'existing_booking':
         from app.services.cafe_booking_service import acknowledge_booking
         return acknowledge_booking(session, link, success)
+    if session.kind == 'owner_credit':
+        if success and datetime.utcnow() < session.deadline:
+            session.state = 'active'
+            session.started_at = datetime.utcnow()
+            session.ends_at = session.started_at + timedelta(minutes=session.minutes)
+            session.due_amount = session.amount
+            audit(session.vendor_id, {'id':f'pc-{link.console_id}','name':f'PC {link.console_id}'},
+                  'credit_play.started', {'session_id':session.id,'amount':session.amount,'minutes':session.minutes})
+        else:
+            session.state = 'failed'
+            release_console(session)
+        return session
     actor = {'id': f'pc-{link.console_id}', 'name': f'PC {link.console_id}'}
     w.reserved -= session.amount
     if success and datetime.utcnow() < session.deadline:
@@ -256,12 +297,24 @@ def acknowledge(session_id, link, command_token, success):
 
 def expire_sessions():
     now = datetime.utcnow()
+    changed = []
+    # The reconciler can touch several cafes in one transaction. Lock their
+    # financial serialization rows in vendor order before any session/request
+    # locks, including warnings; this preserves endpoint lock order.
+    from app.models.vendor import Vendor
+    from app.models.cafe_wallet import CafeContinuation, CafeSlotReservation
+    claims = db.session.query(CafeSlotReservation.session_id).filter(CafeSlotReservation.released_at.is_(None))
+    vendor_ids = {r[0] for r in db.session.query(CafePlaySession.vendor_id).filter(
+        (CafePlaySession.state.in_(['active','reserved'])) | CafePlaySession.id.in_(claims)).distinct().all()}
+    vendor_ids.update(r[0] for r in db.session.query(CafeContinuation.vendor_id).filter_by(state='pending').distinct().all())
+    if vendor_ids:
+        Vendor.query.filter(Vendor.id.in_(vendor_ids)).order_by(Vendor.id).populate_existing().with_for_update().all()
     pending = CafePlaySession.query.filter(CafePlaySession.state == 'reserved', CafePlaySession.deadline <= now).all()
     from app.models.console_link_session import ConsoleLinkSession
     for session in pending:
         link = db.session.get(ConsoleLinkSession, session.link_id)
         if link:
-            acknowledge(session.id, link, session.command_token, False)
+            changed.append(acknowledge(session.id, link, session.command_token, False))
     from sqlalchemy import or_
     active = CafePlaySession.query.filter(CafePlaySession.state == 'active', or_(CafePlaySession.ends_at <= now, CafePlaySession.kind == 'existing_booking')).order_by(CafePlaySession.vendor_id, CafePlaySession.id).all()
     for initial in active:
@@ -274,14 +327,35 @@ def expire_sessions():
                     continue
             else:
                 session.state = 'completed'
+            session.ended_at = now
             release_console(session)
+            changed.append(session)
+    # Migration backfills live sessions. Old code may finish one between the
+    # migration and deployment, so recover its remaining claims once here too.
+    from app.models.cafe_wallet import CafeSlotReservation
+    unreleased = db.session.query(CafeSlotReservation.session_id).filter(CafeSlotReservation.released_at.is_(None))
+    terminal = CafePlaySession.query.filter(CafePlaySession.id.in_(unreleased),
+        CafePlaySession.state.in_(['failed','completed','cancelled','canceled'])).all()
+    for initial in terminal:
+        session = CafePlaySession.query.filter_by(id=initial.id).populate_existing().with_for_update().one()
+        if session.state in ('failed','completed','cancelled','canceled'):
+            release_console(session)
+            changed.append(session)
     expired = CafeStaffSession.query.filter(CafeStaffSession.closed_at.is_(None), CafeStaffSession.expires_at <= now).all()
     for row in expired:
         row = CafeStaffSession.query.filter_by(jti=row.jti).populate_existing().with_for_update().one()
         if row.closed_at is None:
             row.closed_at = row.expires_at
             audit(row.vendor_id, {'id': row.actor_id, 'name': row.actor_name}, 'session.expired', {'jti': row.jti, 'expired_at': row.expires_at.isoformat()})
+    from app.services.cafe_continuation_service import reconcile_notifications
+    warnings = reconcile_notifications(now)
     db.session.commit()
+    from app.services.cafe_continuation_service import publish_session
+    for session in warnings:
+        publish_session(session, 'session.warning' if session.state=='active' else None)
+    from app.services.cafe_slot_reservations import notify_slot_changes
+    for session in changed:
+        notify_slot_changes(session)
 
 
 def serialize(row):

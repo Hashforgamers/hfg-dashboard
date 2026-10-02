@@ -7,6 +7,13 @@ class Config:
     DEBUG = os.getenv("FLASK_DEBUG", "false").lower() == "true"
     CAFE_CHECKOUT_URL = os.getenv("CAFE_CHECKOUT_URL", "")
     CAFE_RECONCILER_ENABLED = os.getenv("CAFE_RECONCILER_ENABLED", "true").lower() == "true"
+    MAIL_SERVER = os.getenv('MAIL_SERVER', '')
+    MAIL_PORT = int(os.getenv('MAIL_PORT', '587'))
+    MAIL_USE_TLS = os.getenv('MAIL_USE_TLS', 'true').lower() == 'true'
+    MAIL_USE_SSL = os.getenv('MAIL_USE_SSL', 'false').lower() == 'true'
+    MAIL_USERNAME = os.getenv('MAIL_USERNAME')
+    MAIL_PASSWORD = os.getenv('MAIL_PASSWORD')
+    MAIL_DEFAULT_SENDER = os.getenv('MAIL_DEFAULT_SENDER', '')
     RBAC_ENFORCEMENT = os.getenv("RBAC_ENFORCEMENT", "false").lower() == "true"
 
     SQLALCHEMY_DATABASE_URI = os.getenv(
