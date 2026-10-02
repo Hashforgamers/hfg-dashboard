@@ -1,5 +1,5 @@
 """Quote the linked console using Console Pricing, never wallet-policy amounts."""
-from datetime import datetime, date, time
+from datetime import datetime, date, time, timedelta
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 from sqlalchemy import text
@@ -15,11 +15,20 @@ def session_prices(link, durations, now=None):
     if len(games) != 1:
         raise ValueError('Link this console to exactly one console pricing record before enabling wallet sessions')
     game = games[0]
-    slots = db.session.execute(text('SELECT start_time,end_time FROM slots WHERE gaming_type_id=:gid'), {'gid':game.id}).all()
+    # Slot templates include different weekday schedules and historical timings.
+    # Only the vendor's dated schedule identifies the slots for this session.
+    last_day = (now + timedelta(minutes=max((d['minutes'] for d in durations), default=0))).date()
+    slots = db.session.execute(text(f'''SELECT DISTINCT v.date,s.start_time,s.end_time
+        FROM VENDOR_{int(link.vendor_id)}_SLOT v JOIN slots s ON s.id=v.slot_id
+        WHERE v.vendor_id=:vid AND s.gaming_type_id=:gid
+          AND v.date BETWEEN :first_day AND :last_day'''),
+        {'vid':link.vendor_id, 'gid':game.id,
+         'first_day':now.date()-timedelta(days=1), 'last_day':last_day}).all()
     offers = db.session.execute(text('''SELECT start_date,start_time,end_date,end_time,offered_price,is_active
         FROM console_pricing_offers WHERE vendor_id=:vid AND available_game_id=:gid AND is_active=true'''),
         {'vid':link.vendor_id,'gid':game.id}).all()
-    slots = [SimpleNamespace(start_time=time.fromisoformat(row.start_time) if isinstance(row.start_time,str) else row.start_time,
+    slots = [SimpleNamespace(date=date.fromisoformat(row.date) if isinstance(row.date,str) else row.date,
+        start_time=time.fromisoformat(row.start_time) if isinstance(row.start_time,str) else row.start_time,
         end_time=time.fromisoformat(row.end_time) if isinstance(row.end_time,str) else row.end_time) for row in slots]
     typed_offers = []
     for row in offers:

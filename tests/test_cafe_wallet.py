@@ -137,12 +137,20 @@ def env(monkeypatch):
         db.session.execute(text('CREATE TABLE available_games (id integer PRIMARY KEY, vendor_id integer, game_name varchar, single_slot_price integer DEFAULT 50)'))
         db.session.execute(text('CREATE TABLE available_game_console (available_game_id integer, console_id integer)'))
         db.session.execute(text('CREATE TABLE slots (id integer PRIMARY KEY, gaming_type_id integer, start_time time, end_time time)'))
+        db.session.execute(text('CREATE TABLE vendor_1_slot (vendor_id integer, slot_id integer, date date)'))
         db.session.execute(text('CREATE TABLE console_pricing_offers (id serial PRIMARY KEY, vendor_id integer, available_game_id integer, default_price numeric, offered_price numeric, start_date date, start_time time, end_date date, end_time time, offer_name varchar, offer_description varchar, is_active boolean, created_at timestamp, updated_at timestamp)'))
         db.session.execute(text("INSERT INTO available_games(id,vendor_id,game_name,single_slot_price) VALUES (100,1,'Gaming PC',50)"))
         db.session.execute(text('INSERT INTO available_game_console VALUES (100,1),(100,2)'))
         from datetime import time as day_time
         for i in range(48):
             db.session.execute(text('INSERT INTO slots VALUES (:id,100,:start,:end)'), {'id':100+i, 'start':day_time(i//2,(i%2)*30), 'end':day_time(((i+1)//2)%24,((i+1)%2)*30)})
+        from datetime import datetime, timedelta
+        from zoneinfo import ZoneInfo
+        today = datetime.now(ZoneInfo('Asia/Kolkata')).date()
+        for offset in (-1, 0, 1):
+            for i in range(48):
+                db.session.execute(text('INSERT INTO vendor_1_slot VALUES (1,:id,:day)'),
+                    {'id':100+i, 'day':today+timedelta(days=offset)})
         db.session.execute(text('CREATE TABLE transactions (id integer PRIMARY KEY, booking_id integer, vendor_id integer, user_id integer, booking_type varchar, amount numeric, settlement_status varchar)'))
         if not url.startswith('postgresql'):
             db.session.execute(text('CREATE TABLE vendor_1_dashboard (console_id integer, book_status varchar, book_id integer, date date, start_time time, end_time time)'))

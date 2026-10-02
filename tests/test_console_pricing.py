@@ -178,3 +178,33 @@ def test_malformed_controller_rule_is_client_error(pricing_api):
     e=pricing_api
     response=e.app.test_client().put('/api/vendor/1/controller-pricing',json={'pricing':{'playstation':5}},headers=auth(staff_token(e,'owner')))
     assert response.status_code==400
+
+
+def test_qr_quote_uses_dated_schedule_and_ignores_other_templates(env):
+    from app.services.cafe_session_pricing import session_prices
+    e = env
+    with e.app.app_context():
+        day = date(2026, 10, 2)
+        e.db.session.execute(text('DELETE FROM vendor_1_slot'))
+        # A different day's hour-long slot and an unused historical template
+        # must not overlap Friday's half-hour schedule.
+        e.db.session.execute(text('INSERT INTO slots VALUES (200,100,:start,:end),(201,100,:start,:end)'),
+            {'start': time(10), 'end': time(11)})
+        for slot_id, scheduled_day in [(120,day),(121,day),(120,day),(200,day-timedelta(days=1))]:
+            e.db.session.execute(text('INSERT INTO vendor_1_slot VALUES (1,:id,:day)'),
+                {'id':slot_id, 'day':scheduled_day})
+        link = e.db.session.get(e.Link, 1)
+        result = session_prices(link, [{'minutes':30},{'minutes':60}], datetime.combine(day,time(10,15)))
+        assert result[0] == {'minutes':30, 'amount':5000}
+        assert result[1]['amount'] is None
+        assert 'cover' in result[1]['unavailable_reason']
+
+
+def test_dated_session_slots_cover_midnight_without_repeating_previous_day():
+    day = date(2026, 10, 2)
+    slots = [SimpleNamespace(date=day,start_time=time(23,30),end_time=time(0)),
+             SimpleNamespace(date=day+timedelta(days=1),start_time=time(0),end_time=time(0,30)),
+             SimpleNamespace(date=day-timedelta(days=1),start_time=time(0),end_time=time(1))]
+    assert math.session_amount(50,slots,[],datetime.combine(day,time(23,45)),30) == 5000
+    with pytest.raises(ValueError,match='cover'):
+        math.session_amount(50,slots[:1],[],datetime.combine(day,time(23,45)),30)
