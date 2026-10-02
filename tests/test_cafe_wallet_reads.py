@@ -122,3 +122,46 @@ def test_gamer_cannot_use_staff_topup_or_wallet_routes(env):
     with env.app.app_context():
         assert env.m.CafeWallet.query.count() == 0
         assert env.m.CafeLedger.query.count() == 0
+
+
+def test_topup_search_contact_privacy_and_customer_scope(env):
+    from sqlalchemy import text
+    from app.models.user import User
+    from app.models.contactInfo import ContactInfo
+    e = env
+    with e.app.app_context():
+        e.db.session.get(User,1).name = 'Asha Rao'
+        e.db.session.add(ContactInfo(parent_id=1,parent_type='user',email='asha@example.test',phone='9876543210'))
+        e.db.session.execute(text("INSERT INTO transactions(id,vendor_id,user_id,settlement_status) VALUES(1,2,1,'completed')"))
+        e.db.session.add(e.m.CafeWallet(vendor_id=1,user_id=1,balance=0,reserved=0))
+        e.db.session.commit()
+        token = staff_token(e,role='owner')
+    client = e.app.test_client()
+    response = client.get('/api/cafe/1/gamers?q=Asha',headers=auth(token))
+    assert response.status_code == 200
+    assert response.headers['Cache-Control'] == 'private, no-store'
+    row = response.json[0]
+    assert row['phone'] == '******210' and row['email'] == 'as***@example.test'
+    assert row['contact_masked'] is True and row['is_cafe_customer'] is False
+    assert '9876543210' not in response.get_data(as_text=True)
+    assert 'asha@example.test' not in response.get_data(as_text=True)
+    with e.app.app_context():
+        e.db.session.execute(text("INSERT INTO transactions(id,vendor_id,user_id,settlement_status) VALUES(2,1,1,'completed')"))
+        e.db.session.commit()
+    row = client.get('/api/cafe/1/gamers?q=Asha',headers=auth(token)).json[0]
+    assert row['phone'] == '9876543210' and row['email'] == 'asha@example.test'
+    assert row['contact_masked'] is False and row['is_cafe_customer'] is True
+
+
+def test_topup_establishes_customer_contact_access(env):
+    from app.models.user import User
+    from app.models.contactInfo import ContactInfo
+    e = env
+    with e.app.app_context():
+        e.db.session.get(User,1).name = 'Asha'
+        e.db.session.add(ContactInfo(parent_id=1,parent_type='user',email='asha@example.test',phone='9876543210'))
+        fund(e)
+        e.db.session.commit()
+        token = staff_token(e,role='owner')
+    row = e.app.test_client().get('/api/cafe/1/gamers?q=Asha',headers=auth(token)).json[0]
+    assert row['phone']=='9876543210' and row['contact_masked'] is False
