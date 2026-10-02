@@ -8,7 +8,7 @@ from flask import Blueprint, request, jsonify, current_app, g
 from flask_jwt_extended import jwt_required, get_jwt
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import func, or_, and_
+from sqlalchemy import func, or_, and_, text, bindparam
 from app.extension.extensions import db
 from app.models.cafe_wallet import *
 from app.models.console_link_session import ConsoleLinkSession
@@ -219,6 +219,32 @@ def set_policy(vendor_id):
     return jsonify(settings)
 
 
+def masked_contact(value, email=False):
+    if not value:
+        return value
+    value = str(value).strip()
+    if email:
+        local, separator, domain = value.partition('@')
+        return local[:min(2, max(0, len(local)-1))] + '***' + ('@' + domain if separator else '')
+    digits = ''.join(char for char in value if char.isdigit())
+    return '******' + (digits[-3:] if len(digits) > 3 else '')
+
+
+def cafe_customer_ids(vendor_id, user_ids):
+    if not user_ids:
+        return set()
+    # Real cafe activity establishes the relationship; creating an empty wallet does not.
+    query = text("""SELECT user_id FROM transactions
+        WHERE vendor_id=:vendor_id AND user_id IN :user_ids
+          AND lower(COALESCE(settlement_status,'')) NOT IN ('failed','rejected','cancelled','canceled')
+        UNION SELECT user_id FROM cafe_wallet_ledger
+        WHERE vendor_id=:vendor_id AND user_id IN :user_ids AND kind='topup' AND amount>0
+        UNION SELECT user_id FROM cafe_play_sessions
+        WHERE vendor_id=:vendor_id AND user_id IN :user_ids AND state IN ('active','completed')
+    """).bindparams(bindparam('user_ids', expanding=True))
+    return {row[0] for row in db.session.execute(query, dict(vendor_id=vendor_id,user_ids=user_ids))}
+
+
 @bp_cafe.get('/<int:vendor_id>/gamers')
 @jwt_required()
 def search_gamers(vendor_id):
@@ -236,7 +262,13 @@ def search_gamers(vendor_id):
     rows = db.session.query(User.id, User.name, User.game_username, ContactInfo.email, ContactInfo.phone).outerjoin(
         ContactInfo, and_(ContactInfo.parent_id == User.id, ContactInfo.parent_type == 'user')
     ).filter(or_(*conditions)).distinct().order_by(User.name, User.id).limit(20).all()
-    return jsonify([dict(id=r.id, name=r.name, game_username=r.game_username, email=r.email, phone=r.phone) for r in rows])
+    customers = cafe_customer_ids(vendor_id, [r.id for r in rows])
+    response = jsonify([dict(id=r.id, name=r.name, game_username=r.game_username,
+        email=r.email if r.id in customers else masked_contact(r.email, email=True),
+        phone=r.phone if r.id in customers else masked_contact(r.phone),
+        is_cafe_customer=r.id in customers, contact_masked=r.id not in customers) for r in rows])
+    response.headers['Cache-Control'] = 'private, no-store'
+    return response
 
 
 @bp_cafe.get('/<int:vendor_id>/collections')
