@@ -165,6 +165,7 @@ def env(monkeypatch):
             raw=db.engine.raw_connection()
             try:
                 raw.cursor().execute((ROOT/'sql/20261002_shared_slot_reservations.sql').read_text());raw.commit()
+                raw.cursor().execute((ROOT/'sql/20261002_overtime_assignment.sql').read_text());raw.commit()
             finally:raw.close()
     result=types.SimpleNamespace(app=app,db=db,m=models,s=service,c=controller,rbac=rbac,b=booking_service,Link=ConsoleLinkSession,pg=url.startswith('postgresql'))
     yield result
@@ -510,8 +511,8 @@ def test_single_qr_paid_booking_no_second_charge(env):
         with pytest.raises(Exception):e.db.session.execute(text("UPDATE vendor_1_dashboard SET console_id=2 WHERE book_id=101"))
         e.db.session.rollback()
         session.ends_at=datetime.utcnow()-timedelta(seconds=1);e.db.session.commit();e.s.expire_sessions()
-        assert session.state=='completed' and session.console_claim is None
-        assert e.db.session.execute(text("SELECT count(*) FROM bookings WHERE status='completed'")).scalar()==2
+        assert session.state=='active' and session.console_claim == 1
+        assert e.db.session.execute(text("SELECT count(*) FROM bookings WHERE status='checked_in'")).scalar()==2
 
 
 @pytest.mark.parametrize('change', ['unpaid','other_gamer','cancelled','future','wrong_pc','incompatible','squad'])

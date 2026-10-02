@@ -76,7 +76,7 @@ def test_request_and_email_are_idempotent_reject_does_not_hold_slot(env):
         e.s.expire_sessions()
         assert r.state=='rejected' and r.pending_key is None
         assert e.m.CafePlaySession.query.count()==1
-        assert parent.console_claim is None
+        assert parent.console_claim == 1
 
 
 def test_low_time_warning_once_expiry_stop_and_reconnect(env):
@@ -87,11 +87,11 @@ def test_low_time_warning_once_expiry_stop_and_reconnect(env):
         emits=sys.modules['app.services.websocket_service'].socketio.emit
         assert sum(call.args[0]=='session.warning' for call in emits.call_args_list)==1
         parent.ends_at=datetime.utcnow()-timedelta(seconds=1);e.db.session.commit();e.s.expire_sessions()
-        assert parent.state=='completed'
-        assert any(call.args[0]=='session.stop' for call in emits.call_args_list)
+        assert parent.state=='active'
+        assert not any(call.args[0]=='session.stop' for call in emits.call_args_list)
         response=e.app.test_client().get('/api/cafe/agent/status',headers=auth('agent-secret'))
-        assert response.status_code==200 and response.json['play_allowed'] is False
-        assert response.json['session']['warning']=='time_exhausted'
+        assert response.status_code==200 and response.json['play_allowed'] is True
+        assert response.json['session']['warning']=='overtime'
 
 
 def test_owner_only_cross_vendor_and_gamer_ownership(env):
@@ -141,7 +141,7 @@ def test_request_expires_without_claiming_pc(env):
         r.expires_at=datetime.utcnow()-timedelta(seconds=1);e.db.session.commit()
         e.s.expire_sessions()
         assert r.state=='expired' and r.pending_key is None
-        assert parent.console_claim is None
+        assert parent.console_claim == 1
 
 
 def test_unpaid_credit_cannot_be_bypassed_via_original_session_or_checkout(env):
@@ -173,7 +173,7 @@ def test_future_booking_blocks_approval_and_keeps_existing_reservation_consisten
         with pytest.raises(e.s.CafeError,match='another booking'):
             services().decide(1,r.id,{'decision':'approve','expected_amount':r.amount},{'id':'owner','name':'Owner'})
         e.db.session.rollback()
-        assert r.state=='pending' and parent.console_claim is None
+        assert r.state=='pending' and parent.console_claim == 1
         assert before==e.db.session.execute(text('SELECT sum(available_slot) FROM vendor_1_slot')).scalar()
 
 
@@ -235,6 +235,8 @@ def test_rejected_request_snapshot_and_single_prepare_command(env):
         services().decide(1,r.id,{'decision':'reject'},{'id':'owner','name':'Owner'});e.db.session.commit()
         snapshot=services().snapshot(parent)
         assert snapshot['last_continuation']['state']=='rejected' and snapshot['continuation_request'] is None
+        parent.ends_at=datetime.utcnow()+timedelta(seconds=1)
+        services().end_session(parent.id,{'id':'owner','name':'Owner'});e.db.session.commit()
         # A checkout publishes one command, not a duplicate from both the route
         # and capacity invalidation helper.
         e.s.expire_sessions()
@@ -275,3 +277,30 @@ def test_budget_duration_cannot_exceed_cafe_limit_or_turn_missing_price_into_zer
             e.s.reserve(1,1,e.db.session.get(e.Link,1),22,'budget-zero-key',expected_amount=0,use_available_balance=True)
         e.db.session.rollback()
         assert e.m.CafePlaySession.query.count()==0
+
+
+def test_wallet_overtime_due_frozen_on_release_without_negative_wallet(env):
+    import math
+    e=env
+    with e.app.app_context():
+        parent=started(e)
+        parent.ends_at=datetime.utcnow()-timedelta(seconds=61)
+        e.db.session.commit()
+        balance=e.db.session.get(e.m.CafeWallet,(1,1)).balance
+        e.s.expire_sessions();e.db.session.commit()
+        live=services().snapshot(parent)
+        assert parent.state=='active' and parent.console_claim==1
+        assert live['play_allowed'] is True and live['stop_at'] is None
+        assert live['payment_due']==math.ceil(parent.amount*2/parent.minutes)
+        services().end_session(parent.id,{'id':'owner','name':'Owner'});e.db.session.commit()
+        due=parent.due_amount
+        assert parent.state=='completed' and parent.console_claim is None
+        assert services().snapshot(parent)['payment_due']==due
+        assert e.db.session.get(e.m.CafeWallet,(1,1)).balance==balance
+        payment={'method':'cash','expected_amount':due,'idempotency_key':'wallet-overtime-collection'}
+        services().settle(1,parent.id,payment,{'id':'1','name':'Sam'});e.db.session.commit()
+        services().settle(1,parent.id,payment,{'id':'1','name':'Sam'});e.db.session.commit()
+        assert services().snapshot(parent)['payment_due']==0
+        assert e.m.CafeLedger.query.filter_by(kind='session_collection',session_id=parent.id).count()==1
+        assert e.db.session.get(e.m.CafeWallet,(1,1)).balance==balance
+

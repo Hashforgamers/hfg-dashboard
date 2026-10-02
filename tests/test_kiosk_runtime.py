@@ -252,7 +252,7 @@ class KioskTests(unittest.TestCase):
         db.session.execute(text("INSERT INTO vendor_1_dashboard VALUES(6,77,'Player',100,10,:day,:start,:end,'current')"),
                            {'day':self.start.date(),'start':self.start.time(),'end':self.end.time()})
         db.session.commit()
-        self.assertEqual(runtime['expire_vendor'](1),1)
+        self.assertEqual(runtime['expire_vendor'](1),0)
         self.assertFalse(db.session.execute(text('SELECT is_available FROM vendor_1_console_availability WHERE console_id=10')).scalar_one())
         self.assertEqual(runtime['booking_window'](1,5,10)['status'],'active')
 
@@ -291,16 +291,20 @@ class KioskTests(unittest.TestCase):
         self.assertEqual(self.calls,1)
         self.assertEqual(self.post('/release/100/10/1',{'booking_id':6},key='once').status_code,409)
 
-    def test_expiry_without_client_and_cancelled(self):
+    def test_scheduled_end_continues_overtime_until_release_or_cancel(self):
         db.session.execute(text("UPDATE vendor_1_dashboard SET end_time=:end"), {'end':(self.start+timedelta(seconds=10)).time()})
         db.session.commit()
-        self.assertEqual(runtime['expire_vendor'](1),1)
-        self.assertTrue(db.session.execute(text('SELECT is_available FROM vendor_1_console_availability WHERE console_id=10')).scalar_one())
-        self.assertEqual(runtime['booking_window'](1,5,10)['status'],'expired')
         self.assertEqual(runtime['expire_vendor'](1),0)
+        self.assertFalse(db.session.execute(text('SELECT is_available FROM vendor_1_console_availability WHERE console_id=10')).scalar_one())
+        window=runtime['booking_window'](1,5,10)
+        self.assertEqual(window['status'],'active')
+        self.assertGreater(window['overtime_seconds'],0)
+        self.assertFalse(window['auto_lock_at_end'])
         db.session.execute(text("UPDATE bookings SET status='cancelled' WHERE id=5"))
         db.session.commit()
+        self.assertEqual(runtime['expire_vendor'](1),1)
         self.assertEqual(runtime['booking_window'](1,5,10)['status'],'cancelled')
+
 
     def test_dashboard_assignment_notifies_only_on_success(self):
         body = dict(vendor_id=1,game_id=100,console_id=10,booking_ids=[5])

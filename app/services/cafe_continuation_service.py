@@ -12,17 +12,30 @@ from app.models.console_link_session import ConsoleLinkSession
 from app.services.cafe_wallet_service import CafeError, wallet, reserve, integer, key, fingerprint, serialize, audit, ledger, policy, release_console
 
 
+def overtime_charge(session, now=None):
+    """Prorate extra whole minutes at the agreed session price, rounded up to paise."""
+    import math
+    if not session.ends_at or not session.started_at or session.minutes<=0:
+        return 0
+    finish=session.ended_at or now or datetime.utcnow()
+    seconds=max(0,(finish-session.ends_at).total_seconds())
+    return math.ceil(session.amount * math.ceil(seconds/60) / session.minutes)
+
+
 def snapshot(session):
     result = serialize(session)
     now = datetime.utcnow()
     result['remaining_seconds'] = max(0, int((session.ends_at-now).total_seconds())) if session.ends_at else 0
-    result['play_allowed'] = bool(session.state == 'active' and session.ends_at and now < session.ends_at)
-    result['stop_at'] = result.get('ends_at')
-    result['payment_due'] = session.due_amount if session.settled_at is None else 0
-    result['billing'] = 'fixed_duration'
+    result['play_allowed'] = bool(session.state == 'active')
+    result['stop_at'] = None
+    result['auto_lock_at_end'] = False
+    result['overtime_seconds'] = max(0,int(((session.ended_at or now)-session.ends_at).total_seconds())) if session.ends_at else 0
+    result['overtime_amount'] = overtime_charge(session,now)
+    result['payment_due'] = ((session.amount if session.kind=='owner_credit' else 0)+overtime_charge(session,now) if session.state=='active' else session.due_amount) if session.settled_at is None else 0
+    result['billing'] = 'duration_plus_overtime'
     result['server_time'] = now.isoformat()+'Z'
     result['warning'] = 'time_exhausted' if session.state == 'completed' else (
-        'time_low' if result['play_allowed'] and result['remaining_seconds'] <= 300 else None)
+        'overtime' if result['play_allowed'] and result['overtime_seconds']>0 else 'time_low' if result['play_allowed'] and result['remaining_seconds'] <= 300 else None)
     latest = CafeContinuation.query.filter_by(parent_id=session.id).order_by(CafeContinuation.created_at.desc()).first()
     result['last_continuation'] = serialize(latest) if latest else None
     pending = latest if latest and latest.state=='pending' else None
@@ -128,7 +141,9 @@ def decide(vendor_id, request_id, body, actor):
         if parent.ends_at and now < parent.ends_at:
             raise CafeError('Funded play is still running. Approve after its timer ends.',409)
         if parent.state == 'active':
-            parent.state='completed';parent.ended_at=parent.ends_at
+            parent.ended_at=now
+            parent.due_amount=(parent.amount if parent.kind=='owner_credit' else 0)+overtime_charge(parent,now)
+            parent.state='completed'
             release_console(parent)
         if parent.state != 'completed': raise CafeError('Source session is unavailable',409)
         amount = integer(body.get('expected_amount'),0)
@@ -153,8 +168,9 @@ def end_session(session_id, actor):
         from app.services.cafe_wallet_service import acknowledge
         return acknowledge(session.id,db.session.get(ConsoleLinkSession,session.link_id),session.command_token,False)
     if session.state == 'active':
-        session.state='completed';session.ended_at=datetime.utcnow()
-        session.ends_at=min(session.ends_at,session.ended_at) if session.ends_at else session.ended_at
+        session.ended_at=datetime.utcnow()
+        session.due_amount=(session.amount if session.kind=='owner_credit' else 0)+overtime_charge(session)
+        session.state='completed'
         release_console(session)
         audit(session.vendor_id,actor,'session.ended',{'session_id':session.id,'due_amount':session.due_amount})
     return session
@@ -171,14 +187,14 @@ def settle(vendor_id,session_id,body,actor):
     if old:
         if old.fingerprint!=fp or old.actor_id!=actor['id']: raise CafeError('Idempotency key already used',409)
         return row
-    if row.state!='completed' or row.kind!='owner_credit' or row.settled_at or not row.due_amount:
+    if row.state!='completed' or row.kind not in ('owner_credit','wallet') or row.settled_at or not row.due_amount:
         raise CafeError('There is no completed unpaid duration to settle',409)
     if amount!=row.due_amount: raise CafeError('Balance due changed. Refresh.',409)
     if method not in policy(vendor_id)['desk_methods']: raise CafeError('Desk payment method disabled',403)
     shift=CafeShift.query.filter_by(open_key=f"{vendor_id}:{actor['id']}").first()
     if not shift: raise CafeError('Open your shift before collecting payment',409)
     ledger(w,'session_collection',amount,actor,idem,fp,session_id=row.id,method=method,
-           shift_id=shift.id,reason='Owner-approved gaming duration collected at desk')
+           shift_id=shift.id,reason='Gaming duration and overtime collected at desk')
     row.settled_at=datetime.utcnow()
     audit(vendor_id,actor,'session.settled',{'session_id':row.id,'amount':amount,'method':method})
     return row

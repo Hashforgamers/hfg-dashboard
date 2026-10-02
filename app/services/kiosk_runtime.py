@@ -74,7 +74,7 @@ def booking_window(vendor_id, booking_id, console_id):
     now = datetime.now(timezone.utc)
     cancelled = anchor['book_status'] in ('cancelled', 'canceled') or anchor['booking_status'] in ('cancelled', 'canceled')
     live = console_id not in released_ids and any(r['book_status'] == 'current' for r in group)
-    status = 'cancelled' if cancelled else ('active' if live and begin <= now < finish else 'expired')
+    status = 'cancelled' if cancelled else ('active' if live and begin <= now else 'expired')
     return {
         'booking_id': booking_id, 'booking_ids': [int(r['book_id']) for r in group],
         'console_id': console_id, 'vendor_id': vendor_id, 'game_id': int(anchor['game_id']),
@@ -84,6 +84,8 @@ def booking_window(vendor_id, booking_id, console_id):
         'start_time': begin.isoformat(), 'end_time': finish.isoformat(),
         'server_time': now.isoformat(), 'status': status,
         'seconds_remaining': max(0, math.ceil((finish - now).total_seconds())) if status == 'active' else 0,
+        'auto_lock_at_end': False, 'stop_at': None,
+        'overtime_seconds': max(0, math.ceil((now-finish).total_seconds())) if status == 'active' else 0,
     }
 
 
@@ -254,7 +256,7 @@ def expire_vendor(vendor_id):
             _, finish = utc_window(row['date'], row['start_time'], row['end_time'])
         except KioskError:
             finish = now  # Fail closed for corrupt schedules; do not block other sessions.
-        if finish <= now or row['booking_status'] in ('cancelled', 'canceled'):
+        if row['booking_status'] in ('cancelled', 'canceled', 'completed'):
             expired.append(row['book_id'])
             candidates.update(assigned_consoles(row))
         else:
