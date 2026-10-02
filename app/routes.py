@@ -648,6 +648,12 @@ def get_consoles(vendor_id):
                 ms.available_status,
                 ca_agg.is_available_int,
                 COALESCE(cur.game_id, ca_agg.occupied_game_id, ca_agg.any_game_id) AS game_id,
+                qr.id AS current_qr_session_id,
+                qr.user_id AS qr_user_id,
+                qr.gamer_name AS qr_username,
+                qr.local_start AS qr_start_time,
+                qr.local_end AS qr_end_time,
+                qr.payment_due AS qr_payment_due,
                 cur.book_id AS current_booking_id,
                 cur.user_id AS current_user_id,
                 cur.username AS current_username,
@@ -723,6 +729,17 @@ def get_consoles(vendor_id):
                 ORDER BY cls.started_at DESC
                 LIMIT 1
             ) link ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT ps.id,ps.user_id,u.name AS gamer_name,
+                    (ps.started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata')::time AS local_start,
+                    (ps.ends_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata')::time AS local_end,
+                    CASE WHEN ps.settled_at IS NULL THEN ps.due_amount ELSE 0 END AS payment_due
+                FROM cafe_play_sessions ps LEFT JOIN users u ON u.id=ps.user_id
+                WHERE ps.vendor_id=:vendor_id AND ps.console_id=c.id
+                  AND ((ps.state='active' AND ps.ends_at>timezone('UTC',now()))
+                    OR (ps.state='reserved' AND ps.deadline>timezone('UTC',now())))
+                ORDER BY ps.created_at DESC LIMIT 1
+            ) qr ON TRUE
             WHERE c.vendor_id = :vendor_id
               AND EXISTS (
                 SELECT 1
@@ -744,11 +761,11 @@ def get_consoles(vendor_id):
             raw_maintenance = str(row.available_status or "").strip().lower()
             is_maintenance = raw_maintenance in {"under maintenance", "maintenance"}
             is_available = bool(int(row.is_available_int or 0) == 1) if row.is_available_int is not None else True
-            has_live_booking = (not is_available) or bool(row.current_booking_id)
+            has_live_booking = (not is_available) or bool(row.current_booking_id or row.current_qr_session_id)
             occupancy_state = "maintenance" if is_maintenance else ("occupied" if has_live_booking else "free")
             pending_due = float(row.pending_due or 0.0)
-            pending_due = round(pending_due, 2)
-            display_username = row.current_username
+            pending_due = round(pending_due + float(row.qr_payment_due or 0)/100, 2)
+            display_username = row.current_username or row.qr_username
             squad_details = row.current_squad_details if isinstance(row.current_squad_details, dict) else {}
             member_console_map = (
                 squad_details.get("member_console_map")
@@ -789,10 +806,11 @@ def get_consoles(vendor_id):
                 "occupancyState": occupancy_state,
                 "gameId": row.game_id,
                 "currentBookingId": row.current_booking_id,
-                "currentUserId": row.current_user_id,
+                "currentQrSessionId": row.current_qr_session_id,
+                "currentUserId": row.current_user_id or row.qr_user_id,
                 "currentUsername": display_username,
-                "currentStartTime": row.current_start_time.strftime('%I:%M %p') if row.current_start_time else None,
-                "currentEndTime": row.current_end_time.strftime('%I:%M %p') if row.current_end_time else None,
+                "currentStartTime": (row.current_start_time or row.qr_start_time).strftime('%I:%M %p') if (row.current_start_time or row.qr_start_time) else None,
+                "currentEndTime": (row.current_end_time or row.qr_end_time).strftime('%I:%M %p') if (row.current_end_time or row.qr_end_time) else None,
                 "currentDate": row.current_date.isoformat() if row.current_date else None,
                 "collectibleAmount": pending_due,
                 "hasPendingCollection": pending_due > 0,

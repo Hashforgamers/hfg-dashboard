@@ -35,6 +35,11 @@ def snapshot(session):
 def publish_session(session, event=None):
     from app.services.websocket_service import socketio
     try:
+        from app.routes import _invalidate_vendor_caches
+        _invalidate_vendor_caches(session.vendor_id)
+    except Exception:
+        current_app.logger.debug('Console cache invalidation unavailable', exc_info=True)
+    try:
         payload = snapshot(session)
         socketio.emit('cafe_session_updated', payload, room=f'vendor_{session.vendor_id}')
         kind = event or ('session.stop' if session.state in ('failed','completed') else 'session.updated')
