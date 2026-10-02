@@ -1,16 +1,16 @@
 # Graph Report - hfg-dashboard-service  (2026-10-02)
 
 ## Corpus Check
-- 177 files · ~86,539 words
+- 177 files · ~86,849 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1447 nodes · 3949 edges · 81 communities (72 shown, 9 thin omitted)
+- 1453 nodes · 3964 edges · 84 communities (72 shown, 12 thin omitted)
 - Extraction: 97% EXTRACTED · 3% INFERRED · 0% AMBIGUOUS · INFERRED: 102 edges (avg confidence: 0.59)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `04003ded`
+- Built from commit: `52224a44`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -20,13 +20,13 @@
 - vendor.py
 - pricingController.py
 - tournament_engine_service.py
-- app/routes.py
+- add_or_update_bank_details
 - ExtraServiceService
 - websocket_service.py
 - KioskTests
 - toggle_payment_method_for_vendor
 - test_cafe_wallet.py
-- VendorGame
+- ConsolePricingOffer
 - cafe_wallet_controller.py
 - passModels.py
 - review_controller.py
@@ -34,37 +34,37 @@
 - vendor_games.py
 - subscription_controller.py
 - package_controller.py
-- GameService
+- AvailableGame
 - test_subscription_commerce.py
 - extensions.py
 - booking_bridge.py
 - test_console_pricing.py
 - auth
-- link_service.py
+- subscription_service.py
 - datetime
 - BridgeTests
 - Kiosk backend contract — 22 September 2026
-- CafePass
+- get_landing_page_vendor
 - date
 - 20260922_cafe_wallet.sql
-- route
+- app/routes.py
 - Self QR sessions, owner-approved continuation and balance due
 - tournament_matches
 - is_subscription_active
 - get_vendor_dashboard
 - CloudinaryMenuImageService
-- console_catalog_service.py
+- get_vendor_notification_preferences
 - ConsoleService
 - Cafe wallets: read-only mobile app APIs
-- subscription_service.py
+- subscription_commerce.py
 - vendor_console_overrides
 - update_menu_inventory
-- _invalidate_vendor_caches
+- get_vendor_passes
 - vendor_notification_preferences
 - AGENTS.md
 - extra_service_menus
 - registrations
-- verify_and_activate
+- razorpay_service.py
 - cafePass.py
 - CloudinaryProfileImageService
 - test_cafe_continuations.py
@@ -72,12 +72,15 @@
 - booking_bridge_controller.py
 - 20260923_unified_kiosk_qr.sql
 - 20261002_shared_slot_reservations.sql
+- vendorTaxProfile.py
 - test_payment_methods.py
 - Subscription packages, purchases and kiosk licences
+- transaction.py
 - Console and cafe-wallet pricing
 - Shared capacity for app, dashboard, kiosk and QR bookings
 - test_kiosk_runtime.py
 - cafe_play_sessions
+- vendorDaySlotConfig.py
 - get_extra_services
 
 ## God Nodes (most connected - your core abstractions)
@@ -88,9 +91,9 @@
 5. `KioskError` - 28 edges
 6. `ConsoleService` - 26 edges
 7. `fund()` - 26 edges
-8. `audit()` - 25 edges
-9. `serialize()` - 23 edges
-10. `_invalidate_vendor_caches()` - 22 edges
+8. `KioskTests` - 26 edges
+9. `audit()` - 25 edges
+10. `serialize()` - 23 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `test_postgres_concurrent_checkout_and_legacy_guards()` --indirect_call--> `checkout()`  [INFERRED]
@@ -107,7 +110,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (81 total, 9 thin omitted)
+## Communities (84 total, 12 thin omitted)
 
 ### Community 0 - "event_controller.py"
 Cohesion: 0.06
@@ -122,24 +125,24 @@ Cohesion: 0.07
 Nodes (29): BankTransferDetails, PayoutTransaction, Return masked account number for UI display, Return masked UPI ID for UI display (mask first 4 characters), BusinessRegistration, ContactInfo, Document, DocumentSubmitted (+21 more)
 
 ### Community 3 - "pricingController.py"
-Cohesion: 0.09
-Nodes (39): calculate_controller_pricing(), _calculate_controller_total(), create_pricing_offer(), _default_squad_policy(), delete_pricing_offer(), get_active_pricing(), get_controller_pricing(), get_ist_now() (+31 more)
+Cohesion: 0.07
+Nodes (58): calculate_controller_pricing(), _calculate_controller_total(), create_pricing_offer(), _default_squad_policy(), delete_pricing_offer(), get_active_pricing(), get_controller_pricing(), get_ist_now() (+50 more)
 
 ### Community 4 - "tournament_engine_service.py"
-Cohesion: 0.11
-Nodes (47): admin_match_result(), close_event_check_in(), _emit(), _event_for_vendor(), generate_bracket(), get_event_bracket(), get_event_matches(), open_event_check_in() (+39 more)
+Cohesion: 0.10
+Nodes (48): admin_match_result(), close_event_check_in(), _emit(), _event_for_vendor(), generate_bracket(), get_event_bracket(), get_event_matches(), open_event_check_in() (+40 more)
 
-### Community 5 - "app/routes.py"
-Cohesion: 0.08
-Nodes (32): Transaction, VendorDaySlotConfig, VendorTaxProfile, add_or_update_bank_details(), _build_session_identifier(), _coerce_bool(), _default_vendor_notification_preferences(), _derive_booking_outcome() (+24 more)
+### Community 5 - "add_or_update_bank_details"
+Cohesion: 0.25
+Nodes (9): add_or_update_bank_details(), _ensure_bank_details_audit_table(), get_bank_details(), get_bank_details_history(), _mask_account_number(), _mask_upi_id(), Get vendor's bank transfer details, Get historized changes for vendor bank/UPI details. (+1 more)
 
 ### Community 6 - "ExtraServiceService"
-Cohesion: 0.08
-Nodes (23): Amenity, ExtraServiceCategory, ExtraServiceMenu, ExtraServiceMenuImage, add_extra_service_category(), add_extra_service_menu(), delete_category(), delete_extra_service_category() (+15 more)
+Cohesion: 0.07
+Nodes (27): Amenity, ExtraServiceCategory, ExtraServiceMenu, ExtraServiceMenuImage, add_extra_service_category(), add_extra_service_menu(), create_category(), create_menu_item() (+19 more)
 
 ### Community 7 - "websocket_service.py"
-Cohesion: 0.06
-Nodes (87): Config, before_request, require_tournament_plan(), ensure_ist(), internal_send_unlock(), internal_store_updated(), post, Ensure a datetime is timezone-aware in IST (idempotent). (+79 more)
+Cohesion: 0.05
+Nodes (92): Config, register_cafe_runtime(), before_request, require_tournament_plan(), internal_send_unlock(), internal_store_updated(), post, Internal endpoint to notify dashboard clients that store inventory/products… (+84 more)
 
 ### Community 9 - "toggle_payment_method_for_vendor"
 Cohesion: 0.18
@@ -149,17 +152,17 @@ Nodes (12): PaymentVendorMap, _build_payment_method_response(), _ensure_payment_
 Cohesion: 0.15
 Nodes (22): fund(), parametrize, Real transactional integration tests. Set CAFE_TEST_DATABASE_URL to a…, seed_booking(), test_active_booking_cancellation_or_refund_stops_session(), test_concurrent_duplicate_ack_does_not_double_capture(), test_disabled_cafe_wallet_does_not_reserve_or_debit(), test_disabled_wallet_hides_qr_payment_but_keeps_history_and_refunds() (+14 more)
 
-### Community 11 - "VendorGame"
-Cohesion: 0.12
-Nodes (9): ConsolePricingOffer, Time-based promotional pricing for console types (AvailableGames) Allows…, Check if this offer is active RIGHT NOW using IST. Returns True if current IST…, Calculate discount percentage, Convert to dictionary for API responses, Serialize VendorGame — price is always dynamically computed, Dynamically compute price from parent AvailableGame. - If an active…, Returns full pricing context: base price, offer price, offer details. Useful… (+1 more)
+### Community 11 - "ConsolePricingOffer"
+Cohesion: 0.24
+Nodes (5): ConsolePricingOffer, Time-based promotional pricing for console types (AvailableGames) Allows…, Check if this offer is active RIGHT NOW using IST. Returns True if current IST…, Calculate discount percentage, Convert to dictionary for API responses
 
 ### Community 12 - "cafe_wallet_controller.py"
-Cohesion: 0.05
-Nodes (141): adjust_wallet(), agent_ack(), agent_continuation_quote(), agent_end_qr_session(), agent_link(), agent_qr(), agent_realtime_snapshot(), agent_request_continuation() (+133 more)
+Cohesion: 0.06
+Nodes (136): adjust_wallet(), agent_ack(), agent_continuation_quote(), agent_end_qr_session(), agent_link(), agent_qr(), agent_realtime_snapshot(), agent_request_continuation() (+128 more)
 
 ### Community 13 - "passModels.py"
-Cohesion: 0.17
-Nodes (5): PassRedemptionLog, PassType, Generate unique pass UID for hour-based passes, UserPass, add_pass_type()
+Cohesion: 0.12
+Nodes (7): CafePass, PassRedemptionLog, PassType, Generate unique pass UID for hour-based passes, UserPass, add_pass_type(), create_hash_pass()
 
 ### Community 14 - "review_controller.py"
 Cohesion: 0.32
@@ -175,23 +178,23 @@ Nodes (21): add_game_to_consoles(), bulk_delete_game(), delete_game_image(), del
 
 ### Community 17 - "subscription_controller.py"
 Cohesion: 0.13
-Nodes (27): invoice(), change(), check_payment_status(), check_subscription_status(), create_payment_order(), debug_force_expire(), get_limit(), get_subscription() (+19 more)
+Nodes (26): change(), check_payment_status(), check_subscription_status(), create_payment_order(), debug_force_expire(), get_limit(), get_subscription(), get_subscription_history() (+18 more)
 
 ### Community 18 - "package_controller.py"
-Cohesion: 0.17
+Cohesion: 0.18
 Nodes (17): _admin_authorized(), admin_catalog(), delete_admin_catalog_item(), _extract_admin_key(), get_package(), list_packages(), delete, get (+9 more)
 
-### Community 19 - "GameService"
-Cohesion: 0.08
-Nodes (22): create_game(), route, Create a new game with optional image, update_game(), Game, Create Game from RAWG API - image_url gets background_image automatically!, add_images_to_games(), CloudinaryGameImageService (+14 more)
+### Community 19 - "AvailableGame"
+Cohesion: 0.06
+Nodes (28): create_game(), route, Create a new game with optional image, update_game(), AvailableGame, Console, Game, Create Game from RAWG API - image_url gets background_image automatically! (+20 more)
 
 ### Community 20 - "test_subscription_commerce.py"
-Cohesion: 0.24
-Nodes (26): auth(), captured(), commerce(), finish(), pay(), preview(), fixture, parametrize (+18 more)
+Cohesion: 0.13
+Nodes (41): get_pcs(), link_pc(), get, post, unlink_pc(), ConsoleLinkSession, ConsoleLinkStatus, vendor_required() (+33 more)
 
 ### Community 21 - "extensions.py"
 Cohesion: 0.09
-Nodes (25): AdditionalDetails, AvailableGame, Booking, BookingExtraService, BookingSquadMember, Console, HardwareSpecification, MaintenanceStatus (+17 more)
+Nodes (25): ensure_ist(), Ensure a datetime is timezone-aware in IST (idempotent)., AdditionalDetails, Booking, BookingExtraService, BookingSquadMember, HardwareSpecification, MaintenanceStatus (+17 more)
 
 ### Community 22 - "booking_bridge.py"
 Cohesion: 0.18
@@ -205,9 +208,9 @@ Nodes (14): offer(), pricing_api(), fixture, parametrize, Pricing and real walle
 Cohesion: 0.21
 Nodes (20): test_wallet_budget_can_buy_affordable_time_below_configured_duration(), auth(), gamer(), parametrize, Gamer wallet reads: tenant isolation, safe projection and cursor boundaries., test_balances_are_private_paginated_and_do_not_create_wallets(), test_cursor_validation_and_empty_pages(), test_gamer_cannot_use_staff_topup_or_wallet_routes() (+12 more)
 
-### Community 25 - "link_service.py"
-Cohesion: 0.25
-Nodes (15): get_pcs(), link_pc(), get, post, unlink_pc(), ConsoleLinkSession, ConsoleLinkStatus, vendor_required() (+7 more)
+### Community 25 - "subscription_service.py"
+Cohesion: 0.26
+Nodes (16): Verify Razorpay payment signature and activate subscription Request body: {…, verify_and_activate(), Subscription, change_subscription(), create_subscription(), get_package_price_for_cycle(), get_subscription_duration(), normalize_billing_cycle() (+8 more)
 
 ### Community 26 - "datetime"
 Cohesion: 0.11
@@ -221,9 +224,9 @@ Nodes (5): BaseException, BridgeTests, load(), Run bridge functions with fake I/
 Cohesion: 0.20
 Nodes (9): 1. Credentials and lifetime, 2. Login investigation, 3. Server time and expiry, 4. Socket contract, 5. Redemption and unlink, 6. Response and retry contract, Kiosk backend contract — 22 September 2026, Rollout and validation (+1 more)
 
-### Community 29 - "CafePass"
-Cohesion: 0.20
-Nodes (8): CafePass, create_hash_pass(), create_vendor_pass(), delete_vendor_pass(), Create new pass (date-based or hour-based), Deactivate a pass (soft delete), _sync_cafe_specific_pass_payment_method(), update_vendor_pass()
+### Community 29 - "get_landing_page_vendor"
+Cohesion: 0.29
+Nodes (7): _build_session_identifier(), _derive_booking_outcome(), get_landing_page_vendor(), _normalize_lifecycle(), _normalize_status_key(), Fetches vendor dashboard data including stats, booking stats, upcoming…, A clock boundary never completes a started session.
 
 ### Community 30 - "date"
 Cohesion: 0.21
@@ -233,9 +236,9 @@ Nodes (6): _vendor_slot_availability(), date, test_dated_session_slots_cover_mid
 Cohesion: 0.38
 Nodes (3): cafe_audit_immutable, cafe_ledger_immutable, cafe_reject_history_mutation()
 
-### Community 32 - "route"
-Cohesion: 0.06
-Nodes (35): check_db_connection(), create_category(), create_menu_item(), create_payout(), delete_vendor_profile_image(), get_all_device_for_vendor(), get_booking_details(), get_console() (+27 more)
+### Community 32 - "app/routes.py"
+Cohesion: 0.07
+Nodes (56): add_console(), assign_console_to_multiple_bookings(), _assign_console_to_multiple_bookings_core(), _booking_start_eligibility(), check_db_connection(), create_or_update_console_type_override(), create_payout(), create_vendor_pass() (+48 more)
 
 ### Community 33 - "Self QR sessions, owner-approved continuation and balance due"
 Cohesion: 0.29
@@ -257,21 +260,21 @@ Nodes (7): coerce_duration(), get_extra_services_low_stock_alerts(), get_vendor_
 Cohesion: 0.24
 Nodes (6): CloudinaryMenuImageService, Delete menu item image from Cloudinary, Service for handling menu cover images Images are uploaded to the 'poc' folder, Checking if Cloudinary credentials are available, Initialize Cloudinary configuration, Upload menu item image to Cloudinary
 
-### Community 38 - "console_catalog_service.py"
-Cohesion: 0.21
-Nodes (20): _resolve_squad_group_for_game_name(), ConsoleCatalog, VendorConsoleOverride, get_console_pricing(), get_console_type_overrides(), get_console_types(), get_consoles(), update_console_pricing() (+12 more)
+### Community 38 - "get_vendor_notification_preferences"
+Cohesion: 0.40
+Nodes (6): _coerce_bool(), _default_vendor_notification_preferences(), _ensure_vendor_notification_preferences_table(), get_vendor_notification_preferences(), Any, upsert_vendor_notification_preferences()
 
 ### Community 39 - "ConsoleService"
-Cohesion: 0.18
+Cohesion: 0.20
 Nodes (4): ConsoleService, Prefer cloning existing vendor slot date-coverage from other console types.…, Clear slot templates and dynamic vendor rows for one game type. Used when a…, Align new slot generation to the vendor's existing slot horizon. - If vendor…
 
 ### Community 40 - "Cafe wallets: read-only mobile app APIs"
 Cohesion: 0.11
 Nodes (16): 1. List my cafe wallets, 2. Balance at a specific cafe, 3. Cafe wallet transaction history, App screen flow, Authentication and hosts, Backend release, Cafe wallets: read-only mobile app APIs, Errors (+8 more)
 
-### Community 41 - "subscription_service.py"
-Cohesion: 0.12
-Nodes (33): Immutable commercial snapshot for each subscription purchase., SubscriptionCheckout, Subscription, SubscriptionStatus, activate(), billing_datetime(), check_base(), paise() (+25 more)
+### Community 41 - "subscription_commerce.py"
+Cohesion: 0.17
+Nodes (17): Immutable commercial snapshot for each subscription purchase., SubscriptionCheckout, SubscriptionStatus, activate(), billing_datetime(), check_base(), paise(), preview() (+9 more)
 
 ### Community 42 - "vendor_console_overrides"
 Cohesion: 0.67
@@ -281,17 +284,17 @@ Nodes (3): console_catalog, vendors, vendor_console_overrides
 Cohesion: 0.50
 Nodes (3): Set/increment/decrement stock for a menu item., update_menu_inventory(), Set or increment stock quantity for a menu item.
 
-### Community 44 - "_invalidate_vendor_caches"
-Cohesion: 0.13
-Nodes (20): add_console(), assign_console_to_multiple_bookings(), _assign_console_to_multiple_bookings_core(), _booking_start_eligibility(), create_or_update_console_type_override(), deactivate_console_type_override(), delete_console(), get_device_for_console_type() (+12 more)
+### Community 44 - "get_vendor_passes"
+Cohesion: 0.33
+Nodes (6): get_vendor_passes(), get_vendor_passes_by_mode(), _parse_bool_flag(), Get vendor passes grouped for frontend (hour/date based)., Backward-compatible alias of /vendor/<vendor_id>/passes., _vendor_exists()
 
-### Community 63 - "verify_and_activate"
-Cohesion: 0.16
-Nodes (16): Verify Razorpay payment signature and activate subscription Request body: {…, verify_and_activate(), create_order(), get_order_details(), get_order_payments(), get_payment_details(), get_razorpay_client(), get_test_price() (+8 more)
+### Community 63 - "razorpay_service.py"
+Cohesion: 0.17
+Nodes (14): create_order(), get_order_details(), get_order_payments(), get_payment_details(), get_razorpay_client(), get_test_price(), Get order details from Razorpay Args: order_id: Razorpay order ID Returns:…, Get payments attached to an order from Razorpay. Returns list of payment items. (+6 more)
 
 ### Community 65 - "CloudinaryProfileImageService"
-Cohesion: 0.21
-Nodes (7): CloudinaryProfileImageService, Cloudinary service for handling vendor profile images Images are uploaded to…, Delete profile image from Cloudinary, Service to handle vendor profile image uploads. Images are stored in…, Check if Cloudinary credentials are available, Initialize Cloudinary configuration, Upload profile image to Cloudinary in individual vendor folder
+Cohesion: 0.15
+Nodes (11): delete_vendor_profile_image(), Upload profile image to Cloudinary and update VendorProfileImage table. Creates…, Delete vendor's profile image, update_profile_image(), CloudinaryProfileImageService, Cloudinary service for handling vendor profile images Images are uploaded to…, Delete profile image from Cloudinary, Service to handle vendor profile image uploads. Images are stored in… (+3 more)
 
 ### Community 66 - "test_cafe_continuations.py"
 Cohesion: 0.29
@@ -332,17 +335,17 @@ Nodes (3): get_extra_services(), Get all categories and menu items, Get all acti
 ## Knowledge Gaps
 - **41 isolated node(s):** `ConsoleLinkStatus`, `ProvisionalResult`, `VerificationCheck`, `cafe_booking_claims`, `graphify` (+36 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **9 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **12 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `GameService` connect `GameService` to `vendor_games.py`, `VendorGame`, `extensions.py`?**
-  _High betweenness centrality (0.027) - this node is a cross-community bridge._
-- **Why does `ConsoleService` connect `ConsoleService` to `vendor.py`, `extensions.py`, `app/routes.py`?**
-  _High betweenness centrality (0.026) - this node is a cross-community bridge._
 - **Why does `KioskTests` connect `KioskTests` to `date`, `test_kiosk_runtime.py`?**
-  _High betweenness centrality (0.022) - this node is a cross-community bridge._
+  _High betweenness centrality (0.042) - this node is a cross-community bridge._
+- **Why does `GameService` connect `AvailableGame` to `vendor_games.py`?**
+  _High betweenness centrality (0.027) - this node is a cross-community bridge._
+- **Why does `ConsoleService` connect `ConsoleService` to `app/routes.py`, `vendor.py`, `AvailableGame`, `extensions.py`?**
+  _High betweenness centrality (0.026) - this node is a cross-community bridge._
 - **Are the 10 inferred relationships involving `datetime` (e.g. with `debug_force_expire()` and `test_collections_date_boundaries_and_activity_scope()`) actually correct?**
   _`datetime` has 10 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 13 inferred relationships involving `CafeError` (e.g. with `CafeAudit` and `CafeContinuation`) actually correct?**

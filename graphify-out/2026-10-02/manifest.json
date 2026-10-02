@@ -690,13 +690,13 @@
     "semantic_hash": ""
   },
   "app/services/kiosk_runtime.py": {
-    "mtime": 1790049526.4876075,
-    "ast_hash": "5cb5046b93fd7a8806e9bf3083aa9a76",
+    "mtime": 1790947550.5310419,
+    "ast_hash": "9efe3b1ba1856da2745fcbc318bc60ab",
     "semantic_hash": ""
   },
   "app/services/kiosk_security.py": {
-    "mtime": 1790023766.1072612,
-    "ast_hash": "455aa55b393896de28e62aafef922d8d",
+    "mtime": 1790947617.1836689,
+    "ast_hash": "92817f679938f8224e8995507d8d38b0",
     "semantic_hash": ""
   },
   "sql/20260919_performance_audit_read_only.sql": {
@@ -720,8 +720,8 @@
     "semantic_hash": ""
   },
   "tests/test_kiosk_runtime.py": {
-    "mtime": 1790049480.3234072,
-    "ast_hash": "f4964c33ca88e0d5d474db93f1cc6e10",
+    "mtime": 1790947617.1843185,
+    "ast_hash": "16bd97d8a193ac4cb725ae981ed9fc81",
     "semantic_hash": ""
   },
   "tests/test_websocket_bridge.py": {
@@ -730,8 +730,8 @@
     "semantic_hash": ""
   },
   "docs/kiosk-api-2026-09-22.md": {
-    "mtime": 1790049639.377474,
-    "ast_hash": "44754002bd63f63f6c0311b14b5feadb",
+    "mtime": 1790947576.2214184,
+    "ast_hash": "f7fb7ebfe89534c545322b3080443d3f",
     "semantic_hash": ""
   },
   "app/services/cafe_audit_hooks.py": {

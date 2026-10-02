@@ -2725,6 +2725,7 @@ def get_landing_page_vendor(vendor_id):
                 ag.single_slot_price,
                 d.slot_id,
                 d.squad_details,
+                access.access_code AS gamer_access_code,
                 d.status AS canonical_booking_status,
                 ca.is_available AS console_is_available,
                 c.model_number AS console_name,
@@ -2734,6 +2735,7 @@ def get_landing_page_vendor(vendor_id):
             FROM {table_name} b
             JOIN available_games ag ON b.game_id = ag.id
             JOIN bookings d ON b.book_id = d.id
+            LEFT JOIN access_booking_codes access ON access.id = d.access_code_id
             LEFT JOIN users u ON b.user_id = u.id
             LEFT JOIN contact_info uc
               ON uc.parent_id = b.user_id
@@ -2861,6 +2863,7 @@ def get_landing_page_vendor(vendor_id):
             booking_data = {
                 "slotId": row.slot_id,
                 "bookingId": row.book_id,
+                "access_code": row.gamer_access_code if booking_record_status not in terminal_booking_statuses else None,
                 "username": row.username,
                 "userId":row.user_id,
                 "customer_email": row.customer_email,
