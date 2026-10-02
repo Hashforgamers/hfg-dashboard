@@ -69,10 +69,25 @@ def signer():
 
 
 def resolve_qr(token):
+    # Native scanners may submit the full checkout URL instead of its qr value.
+    from urllib.parse import urlsplit, parse_qs
+    if not isinstance(token, str) or not token.strip() or len(token) > 8192:
+        raise CafeError('Scan the current checkout QR displayed on the PC.', 400)
+    token = token.strip()
+    if token.startswith(('https://', 'http://')):
+        try:
+            values = parse_qs(urlsplit(token).query).get('qr', [])
+        except ValueError:
+            values = []
+        if len(values) != 1 or not values[0]:
+            raise CafeError('This is not a checkout QR. Refresh the QR on the PC.', 400)
+        token = values[0]
     try:
         data = signer().loads(token, max_age=120)
     except (BadSignature, SignatureExpired, TypeError):
         raise CafeError('QR expired. Scan the current code on the PC.', 410)
+    if not isinstance(data, dict) or type(data.get('link_id')) is not int:
+        raise CafeError('Invalid checkout QR.', 400)
     link = db.session.get(ConsoleLinkSession, data.get('link_id'))
     if not link or link.status != 'active':
         raise CafeError('PC is no longer linked', 410)
