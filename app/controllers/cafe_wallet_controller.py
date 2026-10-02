@@ -18,6 +18,8 @@ from app.services.cafe_wallet_service import (
     acknowledge, expire_sessions, serialize, integer,
 )
 
+QR_VALIDITY_SECONDS = 30 * 60
+
 bp_cafe = Blueprint('cafe_wallet', __name__, url_prefix='/api/cafe')
 
 
@@ -83,7 +85,7 @@ def resolve_qr(token):
             raise CafeError('This is not a checkout QR. Refresh the QR on the PC.', 400)
         token = values[0]
     try:
-        data = signer().loads(token, max_age=120)
+        data = signer().loads(token, max_age=QR_VALIDITY_SECONDS)
     except (BadSignature, SignatureExpired, TypeError):
         raise CafeError('QR expired. Scan the current code on the PC.', 410)
     if not isinstance(data, dict) or type(data.get('link_id')) is not int:
@@ -395,7 +397,7 @@ def agent_qr():
     base = current_app.config.get('CAFE_CHECKOUT_URL')
     if not base:
         raise CafeError('Cafe checkout URL has not been configured', 503)
-    return jsonify(token=token, checkout_url=base + '?' + urlencode({'qr': token}), expires_in=120,
+    return jsonify(token=token, checkout_url=base + '?' + urlencode({'qr': token}), expires_in=QR_VALIDITY_SECONDS,
                    console_id=link.console_id, vendor_id=link.vendor_id)
 
 
