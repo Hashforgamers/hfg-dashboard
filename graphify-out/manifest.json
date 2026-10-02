@@ -460,8 +460,8 @@
     "semantic_hash": "51bdcca2e0986a849528ec83e4f54ff5"
   },
   "app/routes.py": {
-    "mtime": 1790954599.181722,
-    "ast_hash": "78449801b3a07e9daf7002f37b574628",
+    "mtime": 1790958179.5111158,
+    "ast_hash": "a59d7b66f6040c19a4840ae4e4e0f218",
     "semantic_hash": ""
   },
   "app/services/add_game_images.py": {
@@ -685,13 +685,13 @@
     "semantic_hash": ""
   },
   "app/services/cafe_wallet_service.py": {
-    "mtime": 1790944588.070249,
-    "ast_hash": "363cd8c880d5f02f3a75b0ad701d0af0",
+    "mtime": 1790958125.0241928,
+    "ast_hash": "a67ca3773455f8d2239f1a25964baa6e",
     "semantic_hash": ""
   },
   "app/services/kiosk_runtime.py": {
-    "mtime": 1790947550.5310419,
-    "ast_hash": "9efe3b1ba1856da2745fcbc318bc60ab",
+    "mtime": 1790958125.0216644,
+    "ast_hash": "afc40825e44d283da6509de8d7fd52e4",
     "semantic_hash": ""
   },
   "app/services/kiosk_security.py": {
@@ -715,13 +715,13 @@
     "semantic_hash": ""
   },
   "tests/test_cafe_wallet.py": {
-    "mtime": 1790948165.385697,
-    "ast_hash": "8c13d41943cd7725466b424996015092",
+    "mtime": 1790958420.3651843,
+    "ast_hash": "0d4c3dda89e602e44cbf53d4918f3c07",
     "semantic_hash": ""
   },
   "tests/test_kiosk_runtime.py": {
-    "mtime": 1790947617.1843185,
-    "ast_hash": "16bd97d8a193ac4cb725ae981ed9fc81",
+    "mtime": 1790958296.3755343,
+    "ast_hash": "3d8e18f63b587cdd104d4bb3b1e8cef8",
     "semantic_hash": ""
   },
   "tests/test_websocket_bridge.py": {
@@ -730,8 +730,8 @@
     "semantic_hash": ""
   },
   "docs/kiosk-api-2026-09-22.md": {
-    "mtime": 1790947576.2214184,
-    "ast_hash": "f7fb7ebfe89534c545322b3080443d3f",
+    "mtime": 1790958179.515661,
+    "ast_hash": "8f6ab960512ab1bc4e89e78fff4561ec",
     "semantic_hash": ""
   },
   "app/services/cafe_audit_hooks.py": {
@@ -745,8 +745,8 @@
     "semantic_hash": ""
   },
   "app/services/cafe_booking_service.py": {
-    "mtime": 1790942060.4839659,
-    "ast_hash": "9a74983870bd111553d6f3033812ed5e",
+    "mtime": 1790958125.0225053,
+    "ast_hash": "8259b6de08047daaab520ebae08691b3",
     "semantic_hash": ""
   },
   "sql/20260923_unified_kiosk_qr.sql": {
@@ -850,8 +850,8 @@
     "semantic_hash": ""
   },
   "app/services/cafe_slot_reservations.py": {
-    "mtime": 1790943702.178403,
-    "ast_hash": "86813a21662bf34889aa6a4c107f1b42",
+    "mtime": 1790958125.0246892,
+    "ast_hash": "460bd33b442faad724b3d2180785f18c",
     "semantic_hash": ""
   },
   "app/services/slot_capacity.py": {
@@ -875,8 +875,8 @@
     "semantic_hash": ""
   },
   "app/services/cafe_continuation_service.py": {
-    "mtime": 1790954599.1830342,
-    "ast_hash": "d0f170d95345b1876d631efc10548f3b",
+    "mtime": 1790958533.11836,
+    "ast_hash": "b1e3c02d39be49b627fc0c24a1e988f1",
     "semantic_hash": ""
   },
   "app/services/cafe_owner_email.py": {
@@ -890,13 +890,18 @@
     "semantic_hash": ""
   },
   "tests/test_cafe_continuations.py": {
-    "mtime": 1790944588.1064339,
-    "ast_hash": "aca01c64d1382a3d25824e6528544eda",
+    "mtime": 1790959248.5439541,
+    "ast_hash": "32ec18df2fdaaa16d04a98db136a2a30",
     "semantic_hash": ""
   },
   "docs/cafe-continuation-api.md": {
     "mtime": 1790944588.1023073,
     "ast_hash": "6e9b7972600588c5e68b48a82d395936",
+    "semantic_hash": ""
+  },
+  "sql/20261002_overtime_assignment.sql": {
+    "mtime": 1790958420.3637757,
+    "ast_hash": "ee5188e985f4259ebe2f32873b0b048d",
     "semantic_hash": ""
   }
 }

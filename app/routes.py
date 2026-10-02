@@ -733,10 +733,13 @@ def get_consoles(vendor_id):
                 SELECT ps.id,ps.user_id,u.name AS gamer_name,
                     (ps.started_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata')::time AS local_start,
                     (ps.ends_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata')::time AS local_end,
-                    CASE WHEN ps.settled_at IS NULL THEN ps.due_amount ELSE 0 END AS payment_due
+                    CASE WHEN ps.settled_at IS NULL THEN
+                        (CASE WHEN ps.kind='owner_credit' THEN ps.amount ELSE 0 END)
+                        + ceil(ps.amount * ceil(GREATEST(extract(epoch FROM (timezone('UTC',now())-ps.ends_at)),0)/60) / NULLIF(ps.minutes,0))
+                        ELSE 0 END AS payment_due
                 FROM cafe_play_sessions ps LEFT JOIN users u ON u.id=ps.user_id
                 WHERE ps.vendor_id=:vendor_id AND ps.console_id=c.id
-                  AND ((ps.state='active' AND ps.ends_at>timezone('UTC',now()))
+                  AND (ps.state='active'
                     OR (ps.state='reserved' AND ps.deadline>timezone('UTC',now())))
                 ORDER BY ps.created_at DESC LIMIT 1
             ) qr ON TRUE

@@ -211,8 +211,8 @@ def reconcile_booking(session):
     cancelled = (len(rows) != len(session.booking_ids)
         or any(r['status'] in ('cancelled','canceled') or r['book_status'] in ('cancelled','canceled') for r in rows)
         or not _payment_verified(rows, session.vendor_id, session.user_id, lock=True))
-    elapsed = session.ends_at <= datetime.utcnow()
-    if not cancelled and not elapsed:
+    released = all(r['book_status']=='completed' for r in rows)
+    if not cancelled and not released:
         return False
     session.state = 'cancelled' if cancelled else 'completed'
     update = text(f"UPDATE VENDOR_{int(session.vendor_id)}_DASHBOARD SET book_status=:state WHERE book_id IN :ids AND book_status='current'").bindparams(bindparam('ids', expanding=True))

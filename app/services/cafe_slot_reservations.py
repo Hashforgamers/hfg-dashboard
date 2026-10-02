@@ -116,3 +116,22 @@ def notify_slot_changes(session):
             socketio.emit('console_availability',dict(payload,is_available=bool(available)),room=room)
     except Exception:
         current_app.logger.exception('Could not notify QR slot change session=%s',session.id)
+
+
+def extend_overtime_slots(session, now):
+    """Hold newly occupied dated slots while ongoing play runs beyond funded time."""
+    from types import SimpleNamespace
+    from datetime import timedelta
+    link=SimpleNamespace(vendor_id=session.vendor_id,console_id=session.console_id)
+    start,end=local_window(session.ends_at,now+timedelta(seconds=45))
+    rows=scheduled_slots(link,start,end,lock=True)
+    held={(r.date,r.slot_id) for r in CafeSlotReservation.query.filter_by(session_id=session.id,released_at=None).all()}
+    for row in rows:
+        if (_day(row['date']),row['slot_id']) in held:
+            continue
+        if row['available_slot']<1:
+            from flask import current_app
+            current_app.logger.warning('Overtime capacity conflict vendor=%s console=%s slot=%s',session.vendor_id,session.console_id,row['slot_id'])
+            continue
+        hold_slots(session,[row])
+    notify_slot_changes(session)

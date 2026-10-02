@@ -326,7 +326,11 @@ def expire_sessions():
                 if not reconcile_booking(session):
                     continue
             else:
-                session.state = 'completed'
+                # Funded duration ending starts overtime; staff explicitly release play.
+                from app.services.cafe_slot_reservations import extend_overtime_slots
+                extend_overtime_slots(session,now)
+                changed.append(session)
+                continue
             session.ended_at = now
             release_console(session)
             changed.append(session)
