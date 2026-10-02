@@ -5,7 +5,7 @@ Implemented in the dashboard service, booking service and Hash dashboard. This i
 ## Deployment order
 
 1. Apply `sql/20260922_cafe_wallet.sql` to the shared PostgreSQL database before deploying either service, then apply `sql/20260923_unified_kiosk_qr.sql` for unified booking starts. Apply `hfg-booking/sql/20260922_cafe_login.sql` to the booking service's database (the same user/vendor database).
-2. Deploy both services. They must use the same strong `JWT_SECRET_KEY`. Configure the dashboard service's `CAFE_CHECKOUT_URL` to the full HTTPS gamer page URL, e.g. `https://dashboard.example.com/play`. Keep `CAFE_RECONCILER_ENABLED=true` on at least one live dashboard process; it runs every five seconds. The `flask cafe-reconcile` command provides an external scheduler alternative.
+2. Deploy both services. They must use the same strong `JWT_SECRET_KEY`. Configure the dashboard service's `CAFE_CHECKOUT_URL` to the full HTTPS gamer page URL, production: `https://dashboard.hashforgamers.com/play` (no `?qr=` suffix; the QR API adds the signed token). Keep `CAFE_RECONCILER_ENABLED=true` on at least one live dashboard process; it runs every five seconds. The `flask cafe-reconcile` command provides an external scheduler alternative.
 3. Configure the booking service's existing Flask-Mail SMTP settings and `MAIL_DEFAULT_SENDER`. Gamer sign-in sends a single-use six-digit email code to an existing Hash account; no new account is silently created. Codes expire in ten minutes, have five verification attempts, and requests are limited by email and IP.
 4. Deploy `hash-dashboard`, with its existing `NEXT_PUBLIC_DASHBOARD_URL` and `NEXT_PUBLIC_BOOKING_URL` pointing to those services. `/play` is public and does not initialize staff dashboard authentication or sockets. `/cafe-wallet` is the staff workspace.
 5. Re-unlock staff sessions after deployment to create their auditable session records. Owners can enable the new wallet permissions in Employee Access for customized role matrices. Default staff can top up; managers can also reverse; manual adjustments default to owners.
@@ -21,7 +21,7 @@ This workspace does not contain a native PC agent. The backend and web checkout 
 
 1. An authorized cafe staff/vendor credential links a PC using `POST /api/vendors/{vendor_id}/pcs/link` with `console_id`. Store the returned opaque `session_token` securely on that PC. Never put this credential in a QR code, URL or gamer page.
 2. Connect Socket.IO to namespace `/cafe-agent`, with `auth: {token: session_token}`. The server joins only that credential's private PC room.
-3. Call `POST /api/cafe/agent/qr` with `Authorization: Bearer <session_token>`. Render `checkout_url` as the **only gamer QR** on the locked PC. This same QR supports existing paid bookings and new wallet sessions; do not display a separate booking/payment QR. Refresh every 60–90 seconds; QR validity is 120 seconds. Scanning does not unlock anything.
+3. Call `POST /api/cafe/agent/qr` with `Authorization: Bearer <session_token>`. Render `checkout_url` as the **only gamer QR** on the locked PC. This same QR supports existing paid bookings and new wallet sessions; do not display a separate booking/payment QR. Refresh before the returned `expires_in` elapses (recommended: every 25 minutes); QR validity is 30 minutes (1800 seconds). Scanning does not unlock anything.
 4. Listen for `session.prepare`. Persist the command/session ID and process it idempotently. Also poll `GET /api/cafe/agent/session` on reconnect and periodically; this durable recovery path handles missed WebSocket messages and server restarts.
 5. Prepare the local session and verify that the PC can run it. Send `POST /api/cafe/agent/ack` with `session_id`, `command_token` and boolean `success`. Do not expose the desktop while waiting for server confirmation. A failure or an acknowledgement after the 45-second deadline releases the reservation. The same acknowledgement may be retried safely.
 6. Only an `active` server response authorizes play. Enforce its `ends_at` locally, including while offline. On restart, remain locked until the authenticated recovery endpoint confirms an active session. Ignore duplicated or expired commands. A failed/cancelled/completed/missing session must leave the PC locked. A PC must not remain unlocked after its deadline even if the network or server is unavailable.
@@ -68,3 +68,16 @@ CAFE_TEST_DATABASE_URL=postgresql://localhost/test_database python -m pytest tes
 ```
 
 Do not point tests at production. Tests create/drop dedicated random schemas. The browser workflow was exercised against an isolated PostgreSQL fixture with email delivery mocked and a simulated PC acknowledgement. Real SMTP delivery and native PC control need environment integration validation.
+
+
+### QR endpoint returns 503: checkout URL missing
+
+On Render, open the dashboard backend service (`hfg-dashboard`) → Environment and set:
+
+```env
+CAFE_CHECKOUT_URL=https://dashboard.hashforgamers.com/play
+```
+
+Save and redeploy the service. This is a backend environment variable, not a frontend variable.
+Verify `POST /api/cafe/agent/qr` using the linked PC session token returns HTTP 200 with `checkout_url`, `token`, and `expires_in: 1800`. Never paste the device token into logs or tickets.
+The kiosk must display the returned `checkout_url` and refresh it before expiry. Legacy booking fallback codes are not signed checkout codes and cannot be used for cafe-wallet checkout.
