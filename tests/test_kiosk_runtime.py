@@ -130,6 +130,13 @@ class KioskTests(unittest.TestCase):
                      _invalidate_vendor_caches=Mock())
         exec(compile(ast.Module(body=[fn], type_ignores=[]), '<unlink>', 'exec'), scope)
         self.app.add_url_rule('/unlink', view_func=scope['kiosk_unlink'], methods=['POST'])
+        @self.app.route('/assign', methods=['POST'])
+        @security['vendor_assignment']
+        def assign():
+            db.session.execute(text("UPDATE vendor_1_dashboard SET book_status='current' WHERE book_id=5"))
+            if request.get_json().get('fail'):
+                return jsonify(error='failed'), 409
+            return jsonify(assigned_console_ids=[10]), 200
         self.client = self.app.test_client()
 
     def tearDown(self):
@@ -294,6 +301,42 @@ class KioskTests(unittest.TestCase):
         db.session.execute(text("UPDATE bookings SET status='cancelled' WHERE id=5"))
         db.session.commit()
         self.assertEqual(runtime['booking_window'](1,5,10)['status'],'cancelled')
+
+    def test_dashboard_assignment_notifies_only_on_success(self):
+        body = dict(vendor_id=1,game_id=100,console_id=10,booking_ids=[5])
+        with patch.dict(security, vendor_identity=lambda token: {'kind':'vendor','vendor_id':1},
+                        check_scope=lambda *args: None):
+            failed = self.post('/assign',dict(body,fail=True))
+            self.assertEqual(failed.status_code,409)
+            self.ws._emit_to_kiosk.assert_not_called()
+            success = self.post('/assign',body)
+            self.assertEqual(success.status_code,200)
+            self.ws._emit_to_kiosk.assert_called_once()
+            self.assertEqual(self.ws._emit_to_kiosk.call_args.args[:2],(10,'unlock_request'))
+
+    def test_dashboard_state_unlocks_each_assigned_squad_pc(self):
+        db.session.execute(text("UPDATE bookings SET squad_details=' {\"assigned_console_ids\":[10,11]}'::jsonb WHERE id=5"))
+        db.session.commit()
+        with self.app.test_request_context():
+            runtime['notify_console_runtime'](1, [10,11])
+        calls = self.ws._emit_to_kiosk.call_args_list
+        self.assertEqual([c.args[:2] for c in calls], [(10,'unlock_request'),(11,'unlock_request')])
+        self.assertTrue(all(c.args[2]['status']=='active' for c in calls))
+
+    def test_partial_release_locks_only_released_squad_pc(self):
+        db.session.execute(text("UPDATE bookings SET squad_details=' {\"assigned_console_ids\":[11],\"released_console_ids\":[10]}'::jsonb WHERE id=5"))
+        db.session.commit()
+        with self.app.test_request_context():
+            runtime['notify_console_runtime'](1, [10,11])
+        self.assertEqual([c.args[:2] for c in self.ws._emit_to_kiosk.call_args_list],
+                         [(10,'session_expired'),(11,'unlock_request')])
+
+    def test_release_notifies_lock_after_commit(self):
+        result = self.post('/release/100/10/1', {'booking_id':5})
+        self.assertEqual(result.status_code,200)
+        self.ws._emit_to_kiosk.assert_called_once()
+        self.assertEqual(self.ws._emit_to_kiosk.call_args.args[:2],(10,'session_expired'))
+        self.assertEqual(db.session.execute(text('SELECT book_status FROM vendor_1_dashboard WHERE book_id=5')).scalar(),'completed')
 
     def test_code_bound_to_console_and_single_use_after_end(self):
         first = self.post('/start',{'console_id':10,'access_code':'123456'})

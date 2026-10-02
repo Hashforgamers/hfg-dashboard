@@ -670,8 +670,8 @@
     "semantic_hash": ""
   },
   "app/controllers/cafe_wallet_controller.py": {
-    "mtime": 1790944197.1129026,
-    "ast_hash": "6c4dcb77f7c7ac755637789065444522",
+    "mtime": 1790944733.4628434,
+    "ast_hash": "1403a3fc6aa6239b94a98a5042d42625",
     "semantic_hash": ""
   },
   "app/controllers/kiosk_controller.py": {
@@ -680,13 +680,13 @@
     "semantic_hash": ""
   },
   "app/models/cafe_wallet.py": {
-    "mtime": 1790943595.7275503,
-    "ast_hash": "1d15730d1aaa8791b0e1bc0040545f41",
+    "mtime": 1790944465.5638802,
+    "ast_hash": "004307b599217c10ea559414905e6a21",
     "semantic_hash": ""
   },
   "app/services/cafe_wallet_service.py": {
-    "mtime": 1790944197.113395,
-    "ast_hash": "9d2f008ea3a24f89dea3c6e2d68b9daa",
+    "mtime": 1790944588.070249,
+    "ast_hash": "363cd8c880d5f02f3a75b0ad701d0af0",
     "semantic_hash": ""
   },
   "app/services/kiosk_runtime.py": {
@@ -775,8 +775,8 @@
     "semantic_hash": ""
   },
   "app/services/cafe_session_pricing.py": {
-    "mtime": 1790943783.9440382,
-    "ast_hash": "219f7e16e36e9f36c72d33026980b575",
+    "mtime": 1790944733.463283,
+    "ast_hash": "b4f0a4473bd75fea9035778b164d3be4",
     "semantic_hash": ""
   },
   "app/services/payment_methods.py": {
@@ -875,8 +875,8 @@
     "semantic_hash": ""
   },
   "app/services/cafe_continuation_service.py": {
-    "mtime": 1790944197.1139383,
-    "ast_hash": "7d2d5ef4d71965e0fa768960589c4cdd",
+    "mtime": 1790944733.4622526,
+    "ast_hash": "b051bbc6a1ea8f4078db441d38134cd5",
     "semantic_hash": ""
   },
   "app/services/cafe_owner_email.py": {
@@ -890,8 +890,13 @@
     "semantic_hash": ""
   },
   "tests/test_cafe_continuations.py": {
-    "mtime": 1790943963.2009292,
-    "ast_hash": "057226730bd2d24761ba9c03ca3be822",
+    "mtime": 1790944588.1064339,
+    "ast_hash": "aca01c64d1382a3d25824e6528544eda",
+    "semantic_hash": ""
+  },
+  "docs/cafe-continuation-api.md": {
+    "mtime": 1790944588.1023073,
+    "ast_hash": "6e9b7972600588c5e68b48a82d395936",
     "semantic_hash": ""
   }
 }
