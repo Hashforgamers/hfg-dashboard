@@ -87,6 +87,40 @@ def booking_window(vendor_id, booking_id, console_id):
     }
 
 
+def notify_console_runtime(vendor_id, console_ids):
+    """Publish committed dashboard state to each linked PC, including squad PCs."""
+    from app.services.websocket_service import _emit_to_kiosk
+    try:
+        rows = db.session.execute(text(f"""
+            SELECT d.*, b.squad_details FROM VENDOR_{positive_id(vendor_id)}_DASHBOARD d
+            JOIN bookings b ON b.id=d.book_id
+            WHERE d.book_status='current'
+              AND b.status NOT IN ('cancelled','canceled')
+            ORDER BY d.date,d.start_time,d.book_id
+        """)).mappings().all()
+        for cid in sorted({positive_id(cid) for cid in console_ids}):
+            active = None
+            for row in rows:
+                if cid not in assigned_consoles(row):
+                    continue
+                window = booking_window(vendor_id, row['book_id'], cid)
+                if window['status'] == 'active':
+                    active = window
+                    break
+            if active:
+                _emit_to_kiosk(cid, 'unlock_request', dict(active, type='unlock_request'))
+            else:
+                _emit_to_kiosk(cid, 'session_expired', {
+                    'console_id': cid, 'vendor_id': int(vendor_id),
+                    'reason': 'dashboard_session_ended',
+                })
+    except Exception:
+        # An event failure must not turn a committed assignment into an API error.
+        current_app.logger.exception('Dashboard kiosk state notification failed')
+    finally:
+        db.session.rollback()
+
+
 def secure_start(fn):
     @wraps(fn)
     def wrapped():

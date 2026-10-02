@@ -161,6 +161,7 @@ def transactional_device(fn):
                     raise KioskError('idempotency_conflict', 409)
                 db.session.rollback()
                 return jsonify(saved['response']), saved['status_code']
+        g.kiosk_transaction = True
         try:
             # Release retries without keys may not terminate a newer booking.
             if identity['kind'] == 'kiosk':
@@ -194,6 +195,9 @@ def transactional_device(fn):
             db.session.commit()
             from app.routes import _invalidate_vendor_caches
             _invalidate_vendor_caches(vendor_id)
+            g.kiosk_transaction = False
+            from app.services.kiosk_runtime import notify_console_runtime
+            notify_console_runtime(vendor_id, [console_id] + additional)
             return response
         except Exception:
             db.session.rollback()
@@ -229,6 +233,10 @@ def vendor_assignment(fn):
                 db.session.commit()
                 from app.routes import _invalidate_vendor_caches
                 _invalidate_vendor_caches(vendor_id)
+                g.kiosk_transaction = False
+                from app.services.kiosk_runtime import notify_console_runtime
+                assigned = (response.get_json() or {}).get('assigned_console_ids')
+                notify_console_runtime(vendor_id, assigned or [console_id] + additional)
             return response
         except Exception:
             db.session.rollback()
