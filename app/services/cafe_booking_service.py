@@ -153,6 +153,12 @@ def reserve_booking(link, user_id, booking_id, idem):
         raise CafeError('PC is unavailable', 409)
     _, finish = utc_window(group[-1])
     now = datetime.utcnow()
+    from app.services.cafe_slot_reservations import ensure_console_window, local_window
+    begin_local, finish_local = local_window(now, finish)
+    try:
+        ensure_console_window(link, begin_local, finish_local, exclude_bookings=ids)
+    except ValueError as error:
+        raise CafeError(str(error), 409)
     session = CafePlaySession(id=str(uuid.uuid4()), vendor_id=link.vendor_id, user_id=user_id,
         console_id=console.id, link_id=link.id, console_claim=console.id, kind='existing_booking',
         booking_ids=ids, booking_end=finish, amount=0, minutes=math.ceil((finish-now).total_seconds()/60),

@@ -103,9 +103,13 @@ def env(monkeypatch):
         model_module(name,model)
     models=load('app.models.cafe_wallet','app/models/cafe_wallet.py')
     load('app.services.pricing_math','app/services/pricing_math.py')
+    load('app.services.slot_capacity','app/services/slot_capacity.py')
+    load('app.services.cafe_slot_reservations','app/services/cafe_slot_reservations.py')
     load('app.services.cafe_session_pricing','app/services/cafe_session_pricing.py')
     methods=load('app.services.payment_methods','app/services/payment_methods.py')
     service=load('app.services.cafe_wallet_service','app/services/cafe_wallet_service.py')
+    load('app.services.cafe_continuation_service','app/services/cafe_continuation_service.py')
+    load('app.services.cafe_owner_email','app/services/cafe_owner_email.py')
     booking_service=load('app.services.cafe_booking_service','app/services/cafe_booking_service.py')
     rbac=load('app.services.rbac_service','app/services/rbac_service.py')
     controller=load('app.controllers.cafe_wallet_controller','app/controllers/cafe_wallet_controller.py')
@@ -133,11 +137,11 @@ def env(monkeypatch):
         db.session.execute(text('CREATE TABLE payment_vendor_map (id serial PRIMARY KEY, vendor_id integer, pay_method_id integer, UNIQUE(vendor_id,pay_method_id))'))
         db.session.execute(text("INSERT INTO payment_method VALUES (1,'cafe_wallet'),(2,'payment_gateway'),(3,'hash_wallet'),(4,'hash_global_pass'),(5,'cafe_specific_pass'),(6,'pay_at_cafe')"))
         db.session.execute(text('INSERT INTO payment_vendor_map(vendor_id,pay_method_id) VALUES (1,1),(1,2),(2,2)'))
-        db.session.execute(text('CREATE TABLE bookings (id integer PRIMARY KEY, user_id integer, game_id integer, status varchar, squad_details json, access_code_id integer)'))
+        db.session.execute(text('CREATE TABLE bookings (id serial PRIMARY KEY, user_id integer, game_id integer, slot_id integer, booking_mode varchar, created_at timestamp, updated_at timestamp, status varchar, squad_details json, access_code_id integer)'))
         db.session.execute(text('CREATE TABLE available_games (id integer PRIMARY KEY, vendor_id integer, game_name varchar, single_slot_price integer DEFAULT 50)'))
         db.session.execute(text('CREATE TABLE available_game_console (available_game_id integer, console_id integer)'))
         db.session.execute(text('CREATE TABLE slots (id integer PRIMARY KEY, gaming_type_id integer, start_time time, end_time time)'))
-        db.session.execute(text('CREATE TABLE vendor_1_slot (vendor_id integer, slot_id integer, date date)'))
+        db.session.execute(text('CREATE TABLE vendor_1_slot (vendor_id integer, slot_id integer, date date, available_slot integer DEFAULT 2, is_available boolean DEFAULT true)'))
         db.session.execute(text('CREATE TABLE console_pricing_offers (id serial PRIMARY KEY, vendor_id integer, available_game_id integer, default_price numeric, offered_price numeric, start_date date, start_time time, end_date date, end_time time, offer_name varchar, offer_description varchar, is_active boolean, created_at timestamp, updated_at timestamp)'))
         db.session.execute(text("INSERT INTO available_games(id,vendor_id,game_name,single_slot_price) VALUES (100,1,'Gaming PC',50)"))
         db.session.execute(text('INSERT INTO available_game_console VALUES (100,1),(100,2)'))
@@ -149,7 +153,7 @@ def env(monkeypatch):
         today = datetime.now(ZoneInfo('Asia/Kolkata')).date()
         for offset in (-1, 0, 1):
             for i in range(48):
-                db.session.execute(text('INSERT INTO vendor_1_slot VALUES (1,:id,:day)'),
+                db.session.execute(text('INSERT INTO vendor_1_slot(vendor_id,slot_id,date) VALUES (1,:id,:day)'),
                     {'id':100+i, 'day':today+timedelta(days=offset)})
         db.session.execute(text('CREATE TABLE transactions (id integer PRIMARY KEY, booking_id integer, vendor_id integer, user_id integer, booking_type varchar, amount numeric, settlement_status varchar)'))
         if not url.startswith('postgresql'):
@@ -157,6 +161,11 @@ def env(monkeypatch):
         db.session.add_all([Vendor(id=1),Vendor(id=2),User(id=1),User(id=2),Console(id=1,vendor_id=1),Console(id=2,vendor_id=1),ConsoleLinkSession(id=1,vendor_id=1,console_id=1,status='active',session_token='agent-secret'),ConsoleLinkSession(id=2,vendor_id=1,console_id=2,status='active',session_token='agent-other'),VendorStaff(id=1,vendor_id=1,name='Sam',role='staff'),ExtraServiceCategory(id=1,vendor_id=1),ExtraServiceMenu(id=1,category_id=1)])
         db.session.add(models.CafePaymentPolicy(vendor_id=1,settings=dict(service.DEFAULT_POLICY,self_service=True)))
         db.session.commit()
+        if url.startswith('postgresql'):
+            raw=db.engine.raw_connection()
+            try:
+                raw.cursor().execute((ROOT/'sql/20261002_shared_slot_reservations.sql').read_text());raw.commit()
+            finally:raw.close()
     result=types.SimpleNamespace(app=app,db=db,m=models,s=service,c=controller,rbac=rbac,b=booking_service,Link=ConsoleLinkSession,pg=url.startswith('postgresql'))
     yield result
     with app.app_context():
@@ -467,7 +476,7 @@ def seed_booking(e, *, paid=True, contiguous=False):
     e.db.session.execute(text("INSERT INTO available_games(id,vendor_id,game_name) VALUES (1,1,'Gaming PC')"))
     e.db.session.execute(text('INSERT INTO available_game_console VALUES (1,1),(1,2)'))
     for bid,begin,finish in [(101,start,end)]+([(102,end,end+timedelta(minutes=30))] if contiguous else []):
-        e.db.session.execute(text("INSERT INTO bookings VALUES (:id,1,1,'confirmed','{}',99)"),{'id':bid})
+        e.db.session.execute(text("INSERT INTO bookings(id,user_id,game_id,status,squad_details,access_code_id) VALUES (:id,1,1,'confirmed','{}',99)"),{'id':bid})
         e.db.session.execute(text("INSERT INTO vendor_1_dashboard (book_id,book_status,date,start_time,end_time) VALUES (:id,'upcoming',:day,:start,:end)"),{'id':bid,'day':begin.date(),'start':begin.time(),'end':finish.time()})
         e.db.session.execute(text("INSERT INTO transactions VALUES (:id,:id,1,1,'booking',100,:status)"),{'id':bid,'status':'completed' if paid else 'pending'})
     e.db.session.commit()

@@ -15,8 +15,8 @@
     "semantic_hash": "b141e74135e037c90c3e0b441c223ad2"
   },
   "app/config.py": {
-    "mtime": 1790049384.1776156,
-    "ast_hash": "e70cb893727dc03316edad7b351b2b60",
+    "mtime": 1790943783.990568,
+    "ast_hash": "2bc2a7327287a806f659ac27c3c80dd0",
     "semantic_hash": ""
   },
   "app/controllers/access_controller.py": {
@@ -670,8 +670,8 @@
     "semantic_hash": ""
   },
   "app/controllers/cafe_wallet_controller.py": {
-    "mtime": 1790936225.666188,
-    "ast_hash": "5ae1044e0b124b8031646b68a832c463",
+    "mtime": 1790944733.4628434,
+    "ast_hash": "1403a3fc6aa6239b94a98a5042d42625",
     "semantic_hash": ""
   },
   "app/controllers/kiosk_controller.py": {
@@ -680,13 +680,13 @@
     "semantic_hash": ""
   },
   "app/models/cafe_wallet.py": {
-    "mtime": 1790068738.1600368,
-    "ast_hash": "d3879e52046ee2fb1d6fc4ce98682354",
+    "mtime": 1790944465.5638802,
+    "ast_hash": "004307b599217c10ea559414905e6a21",
     "semantic_hash": ""
   },
   "app/services/cafe_wallet_service.py": {
-    "mtime": 1790775371.092814,
-    "ast_hash": "4771d9cedcbf22cbc9027334fa108238",
+    "mtime": 1790944588.070249,
+    "ast_hash": "363cd8c880d5f02f3a75b0ad701d0af0",
     "semantic_hash": ""
   },
   "app/services/kiosk_runtime.py": {
@@ -715,8 +715,8 @@
     "semantic_hash": ""
   },
   "tests/test_cafe_wallet.py": {
-    "mtime": 1790939241.0999873,
-    "ast_hash": "fec0a4b31bc93f95c6a1bd27b87c9f9f",
+    "mtime": 1790943807.3296235,
+    "ast_hash": "8c13d41943cd7725466b424996015092",
     "semantic_hash": ""
   },
   "tests/test_kiosk_runtime.py": {
@@ -745,8 +745,8 @@
     "semantic_hash": ""
   },
   "app/services/cafe_booking_service.py": {
-    "mtime": 1790069275.5797017,
-    "ast_hash": "20fcfb3227dca01af802048b1efdb016",
+    "mtime": 1790942060.4839659,
+    "ast_hash": "9a74983870bd111553d6f3033812ed5e",
     "semantic_hash": ""
   },
   "sql/20260923_unified_kiosk_qr.sql": {
@@ -775,8 +775,8 @@
     "semantic_hash": ""
   },
   "app/services/cafe_session_pricing.py": {
-    "mtime": 1790939241.096856,
-    "ast_hash": "7b167ba27007f9016af5ff1c3927869e",
+    "mtime": 1790944733.463283,
+    "ast_hash": "b4f0a4473bd75fea9035778b164d3be4",
     "semantic_hash": ""
   },
   "app/services/payment_methods.py": {
@@ -815,8 +815,8 @@
     "semantic_hash": ""
   },
   "tests/test_console_pricing.py": {
-    "mtime": 1790939300.4968996,
-    "ast_hash": "ce1feabbedc11b2fcac62d34e4bcb40e",
+    "mtime": 1790941475.374901,
+    "ast_hash": "30e1b71a216637d24b10b65606864141",
     "semantic_hash": ""
   },
   "tests/test_payment_methods.py": {
@@ -847,6 +847,56 @@
   "docs/subscription-commerce.md": {
     "mtime": 1790851145.4457176,
     "ast_hash": "0bc32ad43df7856edd9cdb14e645b643",
+    "semantic_hash": ""
+  },
+  "app/services/cafe_slot_reservations.py": {
+    "mtime": 1790943702.178403,
+    "ast_hash": "86813a21662bf34889aa6a4c107f1b42",
+    "semantic_hash": ""
+  },
+  "app/services/slot_capacity.py": {
+    "mtime": 1790941397.0785313,
+    "ast_hash": "9e1a13582525d928620a73c5e6d6563d",
+    "semantic_hash": ""
+  },
+  "sql/20261002_shared_slot_reservations.sql": {
+    "mtime": 1790943129.3514545,
+    "ast_hash": "a7341a0ba7468ae126c9d0eb2670c39e",
+    "semantic_hash": ""
+  },
+  "tests/test_shared_slot_capacity.py": {
+    "mtime": 1790943213.6253052,
+    "ast_hash": "2437b0f562ee66eb22b4eb006253be33",
+    "semantic_hash": ""
+  },
+  "docs/shared-booking-slot-capacity.md": {
+    "mtime": 1790942894.6344583,
+    "ast_hash": "1552158c433cf40dbaa8df37891d3d42",
+    "semantic_hash": ""
+  },
+  "app/services/cafe_continuation_service.py": {
+    "mtime": 1790944733.4622526,
+    "ast_hash": "b051bbc6a1ea8f4078db441d38134cd5",
+    "semantic_hash": ""
+  },
+  "app/services/cafe_owner_email.py": {
+    "mtime": 1790943783.9607604,
+    "ast_hash": "951ea5e4aaed20e9602bd86003e509a2",
+    "semantic_hash": ""
+  },
+  "sql/20261002_cafe_continuations.sql": {
+    "mtime": 1790943807.2801652,
+    "ast_hash": "30ecff6913f27fb6289c674d36fc3928",
+    "semantic_hash": ""
+  },
+  "tests/test_cafe_continuations.py": {
+    "mtime": 1790944588.1064339,
+    "ast_hash": "aca01c64d1382a3d25824e6528544eda",
+    "semantic_hash": ""
+  },
+  "docs/cafe-continuation-api.md": {
+    "mtime": 1790944588.1023073,
+    "ast_hash": "6e9b7972600588c5e68b48a82d395936",
     "semantic_hash": ""
   }
 }
