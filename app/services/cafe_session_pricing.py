@@ -7,6 +7,35 @@ from app.extension.extensions import db
 from app.services.pricing_math import session_amount
 
 
+def console_durations(link, now=None):
+    """Use the current dated console schedule as the only duration configuration."""
+    from app.services.pricing_math import slot_window
+    now = now or datetime.now(ZoneInfo('Asia/Kolkata')).replace(tzinfo=None, second=0, microsecond=0)
+    rows = db.session.execute(text(f'''SELECT DISTINCT v.date,s.start_time,s.end_time
+        FROM VENDOR_{int(link.vendor_id)}_SLOT v JOIN slots s ON s.id=v.slot_id
+        JOIN available_game_console ac ON ac.available_game_id=s.gaming_type_id
+        WHERE v.vendor_id=:vid AND ac.console_id=:cid AND v.date BETWEEN :first AND :last'''),
+        {'vid':link.vendor_id,'cid':link.console_id,'first':now.date()-timedelta(days=1),
+         'last':(now+timedelta(minutes=720,seconds=45)).date()}).all()
+    windows = sorted(slot_window(date.fromisoformat(r.date) if isinstance(r.date,str) else r.date,
+        time.fromisoformat(r.start_time) if isinstance(r.start_time,str) else r.start_time,
+        time.fromisoformat(r.end_time) if isinstance(r.end_time,str) else r.end_time) for r in rows)
+    current = [(left,right) for left,right in windows if left <= now < right]
+    if len(current) != 1:
+        return []
+    left, end = current[0]
+    step = int((end-left).total_seconds()//60)
+    if step <= 0:
+        return []
+    for next_start,next_end in windows:
+        if next_start == end:
+            end = next_end
+        elif next_start > end:
+            break
+    limit = min(720, int((end-now).total_seconds()//60)-1)
+    return [{'minutes':minutes} for minutes in range(step,limit+1,step)]
+
+
 def session_prices(link, durations, now=None, *, check_capacity=True):
     now = now or datetime.now(ZoneInfo('Asia/Kolkata')).replace(tzinfo=None, second=0, microsecond=0)
     games = db.session.execute(text('''SELECT ag.id,ag.single_slot_price FROM available_games ag

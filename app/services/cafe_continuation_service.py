@@ -88,7 +88,7 @@ def request_continuation(session_id, user_id, body):
     if CafePlaySession.query.filter_by(vendor_id=session.vendor_id,user_id=user_id).filter(
         CafePlaySession.due_amount>0,CafePlaySession.settled_at.is_(None)).first():
         raise CafeError('Settle the previous approved duration before requesting more time',409)
-    from app.services.cafe_session_pricing import session_prices
+    from app.services.cafe_session_pricing import session_prices, console_durations
     link = db.session.get(ConsoleLinkSession,session.link_id)
     # Quote the requested extension at funded expiry. Own claims already cover
     # the tail of that slot; approval will release and reserve transactionally.
@@ -96,7 +96,7 @@ def request_continuation(session_id, user_id, body):
     start = max(now,session.ends_at)
     local,_ = local_window(start,start)
     local=local.replace(second=0,microsecond=0)
-    durations = policy(session.vendor_id)['durations']
+    durations = console_durations(link, now=local)
     if minutes not in [d['minutes'] for d in durations]:
         raise CafeError('Choose a configured duration',409)
     quotes = session_prices(link,[{'minutes':minutes}],now=local,check_capacity=False)

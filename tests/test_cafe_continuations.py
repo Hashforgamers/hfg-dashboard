@@ -26,7 +26,7 @@ def request_more(e,parent):
     client=e.app.test_client()
     quote=client.get(f'/api/cafe/sessions/{parent.id}/continuation/quote',headers=auth(gamer(e)))
     assert quote.status_code==200
-    amount=quote.json['durations'][0]['amount']
+    amount=next(d['amount'] for d in quote.json['durations'] if d['minutes']==60)
     assert amount is not None
     return c.request_continuation(parent.id,1,{'minutes':60,'expected_amount':amount,'idempotency_key':'continue-request-key'})
 
@@ -266,11 +266,11 @@ def test_wallet_budget_can_buy_affordable_time_below_configured_duration(env):
         assert w.balance==3750-duration['amount'] and w.reserved==0
 
 
-def test_budget_duration_cannot_exceed_cafe_limit_or_turn_missing_price_into_zero(env):
+def test_budget_duration_ignores_legacy_policy_limit_but_never_accepts_zero_price(env):
     e=env
     with e.app.app_context():
         fund(e)
-        with pytest.raises(e.s.CafeError,match='session limit'):
+        with pytest.raises(e.s.CafeError,match='Price changed'):
             e.s.reserve(1,1,e.db.session.get(e.Link,1),61,'budget-invalid-key',expected_amount=0,use_available_balance=True)
         e.db.session.rollback()
         with pytest.raises(e.s.CafeError,match='Price changed'):

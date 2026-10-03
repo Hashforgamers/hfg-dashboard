@@ -181,11 +181,11 @@ def reserve(vendor_id, user_id, link, minutes, idem, expected_amount=None, *, ow
     settings = policy(vendor_id)
     if not settings['self_service']:
         raise CafeError('Self-service is disabled at this cafe', 403)
-    from app.services.cafe_session_pricing import session_prices
+    from app.services.cafe_session_pricing import session_prices, console_durations
     try:
-        durations = settings['durations']
+        durations = console_durations(link)
         if use_available_balance:
-            if minutes > max(d['minutes'] for d in durations):
+            if not durations or minutes > max(d['minutes'] for d in durations):
                 raise CafeError('This duration exceeds the cafe session limit',409)
             durations = [{'minutes':minutes}]
         quote = next((d for d in session_prices(link, durations) if d['minutes'] == minutes), None)
