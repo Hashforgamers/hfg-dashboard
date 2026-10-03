@@ -389,17 +389,53 @@ def audit_history(vendor_id):
 @jwt_required()
 def desk_activity(vendor_id):
     staff_actor(vendor_id, 'transactions.view')
+    paged = 'page' in request.args
+    try:
+        page = integer(int(request.args.get('page', 1)), 1, 100000)
+        size = integer(int(request.args.get('page_size', 25)), 1, 100)
+    except (ValueError, TypeError):
+        raise CafeError('Invalid activity page or page size',400)
+    offset = (page-1)*size
+    queries = [CafeAudit.query.filter_by(vendor_id=vendor_id), CafeLedger.query.filter_by(vendor_id=vendor_id)]
+    models = [CafeAudit, CafeLedger]
+    for index, model in enumerate(models):
+        query = queries[index]
+        if request.args.get('staff'):
+            query = query.filter(model.actor_name == request.args['staff'])
+        if request.args.get('action'):
+            query = query.filter((model.action if index == 0 else model.kind) == request.args['action'])
+        for parameter, upper in [('from',False),('to',True)]:
+            if request.args.get(parameter):
+                try:
+                    boundary = datetime.strptime(request.args[parameter], '%Y-%m-%d') - timedelta(hours=5, minutes=30)
+                except ValueError:
+                    raise CafeError('Dates must use YYYY-MM-DD',400)
+                query = query.filter(model.created_at < boundary+timedelta(days=1)) if upper else query.filter(model.created_at >= boundary)
+        if request.args.get('search','').strip():
+            from sqlalchemy import String, cast
+            term = '%' + request.args['search'].strip().replace('%',r'\%').replace('_',r'\_') + '%'
+            query = query.filter(or_(model.actor_name.ilike(term,escape='\\'),
+                (model.action if index == 0 else model.kind).ilike(term,escape='\\'),
+                cast(model.details if index == 0 else model.reason,String).ilike(term,escape='\\')))
+        queries[index] = query
+    total = sum(query.count() for query in queries) if paged else 0
+    limit = offset+size if paged else 100
     records = []
-    for row in CafeAudit.query.filter_by(vendor_id=vendor_id).order_by(CafeAudit.id.desc()).limit(100).all():
+    for row in queries[0].order_by(CafeAudit.created_at.desc(),CafeAudit.id.desc()).limit(limit).all():
         item = serialize(row)
         item['id'] = f'audit-{row.id}'
         records.append(item)
-    for row in CafeLedger.query.filter_by(vendor_id=vendor_id).order_by(CafeLedger.id.desc()).limit(100).all():
+    for row in queries[1].order_by(CafeLedger.created_at.desc(),CafeLedger.id.desc()).limit(limit).all():
         records.append(dict(id=f'payment-{row.id}', actor_name=row.actor_name, action=row.kind,
             created_at=serialize(row)['created_at'], details=dict(user_id=row.user_id, amount=row.amount,
             method=row.method, reason=row.reason, transaction_id=row.id)))
     records.sort(key=lambda item: (item['created_at'], item['id']), reverse=True)
-    return jsonify(records[:100])
+    if not paged:
+        return jsonify(records[:100])
+    staff = sorted(set(name for model in models for (name,) in db.session.query(model.actor_name).filter_by(vendor_id=vendor_id).distinct().all() if name))
+    actions = sorted(set(name for model,field in [(CafeAudit,CafeAudit.action),(CafeLedger,CafeLedger.kind)] for (name,) in db.session.query(field).filter(model.vendor_id==vendor_id).distinct().all() if name))
+    return jsonify(items=records[offset:offset+size],total=total,page=page,page_size=size,staff=staff,actions=actions)
+
 
 
 @bp_cafe.get('/<int:vendor_id>/report')

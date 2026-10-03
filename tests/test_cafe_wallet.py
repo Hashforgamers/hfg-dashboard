@@ -718,3 +718,28 @@ def test_disabled_wallet_hides_qr_payment_but_keeps_history_and_refunds(env):
         with pytest.raises(e.s.CafeError,match='disabled'):
             e.s.topup(1,1,{'amount':1000,'method':'cash','idempotency_key':'disabled-topup'},ACTOR)
         e.db.session.rollback()
+
+
+def test_activity_pages_filters_and_older_records(env):
+    e=env
+    with e.app.app_context():
+        token=staff_token(e,role='owner')
+        for i in range(120):
+            e.db.session.add(e.m.CafeAudit(vendor_id=1,actor_id='1',actor_name='Sam' if i%2 else 'Alex',
+                action='wallet.review',details={'reason':'review'},created_at=datetime(2026,10,3,6,0)+timedelta(minutes=i)))
+        e.db.session.add(e.m.CafeAudit(vendor_id=2,actor_id='2',actor_name='Private',action='wallet.review',details={}))
+        e.db.session.commit()
+    client=e.app.test_client()
+    first=client.get('/api/cafe/1/activity?page=1&page_size=25',headers=auth(token))
+    second=client.get('/api/cafe/1/activity?page=2&page_size=25',headers=auth(token))
+    assert first.status_code==second.status_code==200
+    assert first.json['total']>=120
+    assert len(first.json['items'])==len(second.json['items'])==25
+    assert not {r['id'] for r in first.json['items']} & {r['id'] for r in second.json['items']}
+    filtered=client.get('/api/cafe/1/activity?page=1&page_size=100&staff=Sam&action=wallet.review&search=review&from=2026-10-03&to=2026-10-03',headers=auth(token))
+    assert filtered.status_code==200
+    assert filtered.json['total']==60
+    assert all(r['actor_name']=='Sam' for r in filtered.json['items'])
+    assert 'Private' not in first.json['staff']
+    assert client.get('/api/cafe/2/activity?page=1',headers=auth(token)).status_code==403
+    assert client.get('/api/cafe/1/activity?page=1&from=invalid',headers=auth(token)).status_code==400
