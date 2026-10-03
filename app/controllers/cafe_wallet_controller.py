@@ -443,9 +443,9 @@ def checkout_details(link, user_id, include_bookings=False):
         console_number=db.session.get(Console, link.console_id).console_number,
         vendor_id=link.vendor_id, console_id=link.console_id, policy=policy(link.vendor_id),
         available_balance=(row.balance-row.reserved) if row else 0)
-    from app.services.cafe_session_pricing import session_prices
+    from app.services.cafe_session_pricing import session_prices, console_durations
     try:
-        result['policy']['durations'] = session_prices(link, result['policy']['durations'])
+        result['policy']['durations'] = session_prices(link, console_durations(link))
     except ValueError as error:
         result['policy']['durations'] = []
         result['pricing_error'] = str(error)
@@ -762,13 +762,13 @@ def live_qr_sessions(vendor_id):
 def continuation_quote(session_id):
     row=CafePlaySession.query.filter_by(id=session_id,user_id=g.cafe_user_id).first()
     if not row: raise CafeError('Session not found',404)
-    from app.services.cafe_session_pricing import session_prices
+    from app.services.cafe_session_pricing import session_prices, console_durations
     from app.services.cafe_slot_reservations import local_window
     start=max(datetime.utcnow(),row.ends_at or datetime.utcnow())
     local,_=local_window(start,start)
     local=local.replace(second=0,microsecond=0)
     return jsonify(durations=session_prices(db.session.get(ConsoleLinkSession,row.link_id),
-        policy(row.vendor_id)['durations'],now=local,check_capacity=False),billing='fixed_duration',
+        console_durations(db.session.get(ConsoleLinkSession,row.link_id),now=local),now=local,check_capacity=False),billing='fixed_duration',
         owner_approval_required=True,slots_reserved_on_approval=True)
 
 
@@ -866,11 +866,11 @@ def agent_continuation_quote():
     row=CafePlaySession.query.filter_by(id=request.args.get('session_id'),link_id=link.id).first()
     if not row or not secrets.compare_digest(row.command_token,str(request.headers.get('X-Session-Command'))):
         raise CafeError('Invalid PC session',403)
-    from app.services.cafe_session_pricing import session_prices
+    from app.services.cafe_session_pricing import session_prices, console_durations
     from app.services.cafe_slot_reservations import local_window
     start=max(datetime.utcnow(),row.ends_at or datetime.utcnow());local,_=local_window(start,start)
     local=local.replace(second=0,microsecond=0)
-    return jsonify(durations=session_prices(link,policy(row.vendor_id)['durations'],now=local,check_capacity=False),
+    return jsonify(durations=session_prices(link,console_durations(db.session.get(ConsoleLinkSession,row.link_id),now=local),now=local,check_capacity=False),
                    billing='fixed_duration',owner_approval_required=True)
 
 
@@ -878,9 +878,9 @@ def agent_continuation_quote():
 @gamer_required
 def wallet_affordable_checkout():
     link=resolve_qr(request.args.get('qr'))
-    from app.services.cafe_session_pricing import affordable_duration
+    from app.services.cafe_session_pricing import affordable_duration, console_durations
     row=CafeWallet.query.filter_by(vendor_id=link.vendor_id,user_id=g.cafe_user_id).first()
     balance=row.balance-row.reserved if row else 0
-    quote=affordable_duration(link,balance,policy(link.vendor_id)['durations'])
+    quote=affordable_duration(link,balance,console_durations(link))
     return jsonify(duration=quote,available_balance=balance,currency='INR',
                    reason=None if quote else 'Balance or slots do not cover a five-minute session. Visit the desk.')

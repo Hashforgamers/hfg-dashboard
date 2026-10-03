@@ -670,8 +670,8 @@
     "semantic_hash": ""
   },
   "app/controllers/cafe_wallet_controller.py": {
-    "mtime": 1790948089.5238194,
-    "ast_hash": "6aba5b5e23656d5e57005b6e3ff849b8",
+    "mtime": 1790961612.793846,
+    "ast_hash": "2264b9257beff4784b3d3a545732aa01",
     "semantic_hash": ""
   },
   "app/controllers/kiosk_controller.py": {
@@ -685,8 +685,8 @@
     "semantic_hash": ""
   },
   "app/services/cafe_wallet_service.py": {
-    "mtime": 1790958125.0241928,
-    "ast_hash": "a67ca3773455f8d2239f1a25964baa6e",
+    "mtime": 1790961612.7928536,
+    "ast_hash": "b83e55cef77bb262352dd0bc49251b79",
     "semantic_hash": ""
   },
   "app/services/kiosk_runtime.py": {
@@ -775,8 +775,8 @@
     "semantic_hash": ""
   },
   "app/services/cafe_session_pricing.py": {
-    "mtime": 1790944733.463283,
-    "ast_hash": "b4f0a4473bd75fea9035778b164d3be4",
+    "mtime": 1790961612.7916324,
+    "ast_hash": "48b260d6d19acf620797fc6656119523",
     "semantic_hash": ""
   },
   "app/services/payment_methods.py": {
@@ -875,8 +875,8 @@
     "semantic_hash": ""
   },
   "app/services/cafe_continuation_service.py": {
-    "mtime": 1790958533.11836,
-    "ast_hash": "b1e3c02d39be49b627fc0c24a1e988f1",
+    "mtime": 1790961612.7943811,
+    "ast_hash": "16c73e20726799af85c07dbe9eaf8b42",
     "semantic_hash": ""
   },
   "app/services/cafe_owner_email.py": {
@@ -890,8 +890,8 @@
     "semantic_hash": ""
   },
   "tests/test_cafe_continuations.py": {
-    "mtime": 1790959248.5439541,
-    "ast_hash": "32ec18df2fdaaa16d04a98db136a2a30",
+    "mtime": 1790961699.5046875,
+    "ast_hash": "c36d221dbf6fdc6d0cf603ae14e9535f",
     "semantic_hash": ""
   },
   "docs/cafe-continuation-api.md": {
@@ -902,6 +902,11 @@
   "sql/20261002_overtime_assignment.sql": {
     "mtime": 1790958420.3637757,
     "ast_hash": "ee5188e985f4259ebe2f32873b0b048d",
+    "semantic_hash": ""
+  },
+  "tests/test_console_checkout_durations.py": {
+    "mtime": 1790961654.4615226,
+    "ast_hash": "bf8944dafcfc42524f5f0783888a2908",
     "semantic_hash": ""
   }
 }
