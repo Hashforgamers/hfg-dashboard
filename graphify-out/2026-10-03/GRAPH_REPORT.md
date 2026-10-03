@@ -1,7 +1,7 @@
 # Graph Report - hfg-dashboard-service  (2026-10-03)
 
 ## Corpus Check
-- 179 files · ~88,354 words
+- 179 files · ~88,343 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
