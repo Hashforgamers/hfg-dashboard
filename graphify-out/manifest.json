@@ -775,8 +775,8 @@
     "semantic_hash": ""
   },
   "app/services/cafe_session_pricing.py": {
-    "mtime": 1790961612.7916324,
-    "ast_hash": "48b260d6d19acf620797fc6656119523",
+    "mtime": 1791140474.5480824,
+    "ast_hash": "2ce402315f735ddac919b488ee8e6ef3",
     "semantic_hash": ""
   },
   "app/services/payment_methods.py": {
@@ -905,8 +905,8 @@
     "semantic_hash": ""
   },
   "tests/test_console_checkout_durations.py": {
-    "mtime": 1790961654.4615226,
-    "ast_hash": "bf8944dafcfc42524f5f0783888a2908",
+    "mtime": 1791140474.5486398,
+    "ast_hash": "df290e50cf975a13e2093d8441643553",
     "semantic_hash": ""
   }
 }
