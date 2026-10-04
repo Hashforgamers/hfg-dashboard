@@ -21,19 +21,23 @@ def console_durations(link, now=None):
         time.fromisoformat(r.start_time) if isinstance(r.start_time,str) else r.start_time,
         time.fromisoformat(r.end_time) if isinstance(r.end_time,str) else r.end_time) for r in rows)
     current = [(left,right) for left,right in windows if left <= now < right]
+    if not current:
+        raise ValueError('No operating-hours slots cover this console now. Update the console schedule before starting play.')
     if len(current) != 1:
-        return []
+        raise ValueError('Console slots overlap; update the console schedule before starting play.')
     left, end = current[0]
     step = int((end-left).total_seconds()//60)
-    if step <= 0:
-        return []
+    if step <= 0 or step > 720:
+        raise ValueError('Console slot duration must be between 1 and 720 minutes.')
     for next_start,next_end in windows:
         if next_start == end:
             end = next_end
         elif next_start > end:
             break
     limit = min(720, int((end-now).total_seconds()//60)-1)
-    return [{'minutes':minutes} for minutes in range(step,limit+1,step)]
+    # Keep the configured base duration visible even near a gap/closing time.
+    # session_prices validates coverage and supplies its unavailable reason.
+    return [{'minutes':minutes} for minutes in range(step,max(step,limit)+1,step)]
 
 
 def session_prices(link, durations, now=None, *, check_capacity=True):

@@ -1,7 +1,7 @@
-# Graph Report - hfg-dashboard-service  (2026-10-03)
+# Graph Report - hfg-dashboard-service  (2026-10-04)
 
 ## Corpus Check
-- 179 files · ~88,354 words
+- 179 files · ~88,362 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `f2599381`
+- Built from commit: `75c053ab`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -18,7 +18,7 @@
 - event_controller.py
 - access_controller.py
 - vendor.py
-- test_console_pricing.py
+- staff_token
 - tournament_engine_service.py
 - add_or_update_bank_details
 - ExtraServiceService
@@ -125,9 +125,9 @@ Nodes (66): expire_subscriptions_command(), fix_expired_subscriptions_command(),
 Cohesion: 0.07
 Nodes (28): BankTransferDetails, PayoutTransaction, Return masked account number for UI display, Return masked UPI ID for UI display (mask first 4 characters), BusinessRegistration, Document, DocumentSubmitted, OpeningDay (+20 more)
 
-### Community 3 - "test_console_pricing.py"
-Cohesion: 0.16
-Nodes (10): offer(), pricing_api(), fixture, parametrize, Pricing and real wallet quote/reservation/capture regression tests., test_console_price_drives_quote_reservation_and_capture(), test_invalid_prices_rejected(), test_offer_window_midnight_boundaries_lowest_price_and_lowered_base() (+2 more)
+### Community 3 - "staff_token"
+Cohesion: 0.12
+Nodes (18): staff_token(), test_expired_jwt_cannot_renew_live_staff_session(), test_staff_renewal_preserves_session_and_logout_revokes_renewals(), test_staff_renewal_rechecks_scope_role_and_expiry(), offer(), pricing_api(), fixture, parametrize (+10 more)
 
 ### Community 4 - "tournament_engine_service.py"
 Cohesion: 0.11
@@ -150,8 +150,8 @@ Cohesion: 0.18
 Nodes (12): PaymentVendorMap, _build_payment_method_response(), _ensure_payment_method_catalog(), get_all_payment_methods_for_vendor(), get_payment_method_stats(), _method_ids_for_canonical(), _normalize_payment_method_name(), Get supported payment methods and vendor enablement state. (+4 more)
 
 ### Community 10 - "auth"
-Cohesion: 0.16
-Nodes (28): ContactInfo, test_wallet_budget_can_buy_affordable_time_below_configured_duration(), auth(), gamer(), parametrize, Gamer wallet reads: tenant isolation, safe projection and cursor boundaries., test_balances_are_private_paginated_and_do_not_create_wallets(), test_cursor_validation_and_empty_pages() (+20 more)
+Cohesion: 0.25
+Nodes (17): ContactInfo, test_wallet_budget_can_buy_affordable_time_below_configured_duration(), auth(), gamer(), parametrize, Gamer wallet reads: tenant isolation, safe projection and cursor boundaries., test_balances_are_private_paginated_and_do_not_create_wallets(), test_cursor_validation_and_empty_pages() (+9 more)
 
 ### Community 11 - "VendorGame"
 Cohesion: 0.12
@@ -294,8 +294,8 @@ Cohesion: 0.08
 Nodes (40): change(), check_payment_status(), check_subscription_status(), create_payment_order(), debug_force_expire(), get_limit(), get_subscription(), get_subscription_history() (+32 more)
 
 ### Community 65 - "datetime"
-Cohesion: 0.14
-Nodes (6): PassRedemptionLog, PayAtCafeNotification, _get_next_slot_for_today(), datetime, EarlyStartTests, Check the dashboard's production eligibility rule without booting services.
+Cohesion: 0.13
+Nodes (8): PassRedemptionLog, PayAtCafeNotification, _get_next_slot_for_today(), datetime, test_activity_pages_filters_and_older_records(), test_collections_date_boundaries_and_activity_scope(), EarlyStartTests, Check the dashboard's production eligibility rule without booting services.
 
 ### Community 67 - "test_qr_input.py"
 Cohesion: 0.22
@@ -314,8 +314,8 @@ Cohesion: 0.29
 Nodes (7): _build_session_identifier(), _derive_booking_outcome(), get_landing_page_vendor(), _normalize_lifecycle(), _normalize_status_key(), Fetches vendor dashboard data including stats, booking stats, upcoming…, A clock boundary never completes a started session.
 
 ### Community 72 - "test_payment_methods.py"
-Cohesion: 0.40
-Nodes (3): methods(), fixture, Exercise the production payment-settings handlers in a disposable DB.
+Cohesion: 0.33
+Nodes (4): methods(), fixture, Exercise the production payment-settings handlers in a disposable DB., test_all_six_methods_and_authenticated_idempotent_selection()
 
 ### Community 73 - "Subscription packages, purchases and kiosk licences"
 Cohesion: 0.25
