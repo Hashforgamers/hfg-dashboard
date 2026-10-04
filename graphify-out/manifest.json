@@ -500,9 +500,9 @@
     "semantic_hash": "113a4af301bb2d12dd2c4b37ab35fd39"
   },
   "app/services/console_service.py": {
-    "mtime": 1774729963.0681033,
-    "ast_hash": "d446fef7a4e315feee13e9afc8775d08",
-    "semantic_hash": "d446fef7a4e315feee13e9afc8775d08"
+    "mtime": 1791142205.5063887,
+    "ast_hash": "816638291345ccf839175f61305a387c",
+    "semantic_hash": ""
   },
   "app/services/event_service.py": {
     "mtime": 1783873542.5592222,
@@ -865,8 +865,8 @@
     "semantic_hash": ""
   },
   "tests/test_shared_slot_capacity.py": {
-    "mtime": 1790943213.6253052,
-    "ast_hash": "2437b0f562ee66eb22b4eb006253be33",
+    "mtime": 1791141824.2393763,
+    "ast_hash": "8b45d5679cd330e809fd98b4d5bdd4fc",
     "semantic_hash": ""
   },
   "docs/shared-booking-slot-capacity.md": {
@@ -907,6 +907,11 @@
   "tests/test_console_checkout_durations.py": {
     "mtime": 1791140474.5486398,
     "ast_hash": "df290e50cf975a13e2093d8441643553",
+    "semantic_hash": ""
+  },
+  "tests/test_console_schedule_bootstrap.py": {
+    "mtime": 1791142205.5069585,
+    "ast_hash": "d2410c03b5219097ecae08cae1e97c8d",
     "semantic_hash": ""
   }
 }

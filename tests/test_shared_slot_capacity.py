@@ -120,6 +120,13 @@ def test_qr_reservation_retry_failure_and_completion_release_once(flows):
         active.ends_at=datetime.utcnow()-timedelta(seconds=1)
         e.db.session.commit()
         e.s.expire_sessions();e.s.expire_sessions()
+        # Funded time ending does not free a PC while the gamer continues.
+        assert active.state == 'active'
+        assert e.db.session.execute(text('SELECT MIN(available_slot) FROM vendor_1_slot')).scalar()==1
+        from app.services.cafe_slot_reservations import release_slots
+        release_slots(active)
+        release_slots(active)
+        e.db.session.commit()
         assert e.db.session.execute(text('SELECT MIN(available_slot) FROM vendor_1_slot')).scalar()==2
 
 

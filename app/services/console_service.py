@@ -295,7 +295,7 @@ class ConsoleService:
         return True
 
     @staticmethod
-    def _bootstrap_new_game_slots(vendor_id, available_game_id, total_slots):
+    def _bootstrap_new_game_slots(vendor_id, available_game_id, total_slots, *, preserve_capacity=False):
         window_end_date = ConsoleService._resolve_slot_window_end_date(vendor_id=vendor_id, fallback_days=60)
 
         config_rows = db.session.execute(
@@ -307,41 +307,23 @@ class ConsoleService:
             {"vendor_id": vendor_id},
         ).fetchall()
 
-        if config_rows:
-            normalized_days = {
-                ConsoleService._normalize_day_key(ConsoleService._row_value(cfg, "day"))
-                for cfg in config_rows
-            }
-            normalized_days.discard(None)
-            if len(normalized_days) == 1:
-                # Avoid sparse "single day only" generation by expanding
-                # the same hours/duration across the full week.
-                base = config_rows[0]
-                base_open = ConsoleService._row_value(base, "opening_time")
-                base_close = ConsoleService._row_value(base, "closing_time")
-                base_duration = ConsoleService._row_value(base, "slot_duration")
-                config_rows = [
-                    {
-                        "day": day,
-                        "opening_time": base_open,
-                        "closing_time": base_close,
-                        "slot_duration": base_duration,
-                    }
-                    for day in ConsoleService.WEEKDAY_ORDER
-                ]
-        else:
-            # No existing slots and no day-wise config:
-            # create a straight daily schedule for next 2 months.
-            config_rows = ConsoleService._load_schedule_from_vendor_hours(vendor_id, include_all_days=True)
+        if not config_rows:
+            config_rows = ConsoleService._load_schedule_from_vendor_hours(vendor_id)
             if not config_rows:
                 return
+        opening_rows = db.session.execute(
+            text('SELECT day,is_open FROM opening_days WHERE vendor_id=:vendor_id'),
+            {'vendor_id': vendor_id},
+        ).fetchall()
+        enabled_days = {ConsoleService._normalize_day_key(ConsoleService._row_value(row, 'day'))
+                        for row in opening_rows if ConsoleService._row_value(row, 'is_open')}
 
         slot_table_name = f"VENDOR_{vendor_id}_SLOT"
         anchor = date.today()
 
         for cfg in config_rows:
             day_key = ConsoleService._normalize_day_key(ConsoleService._row_value(cfg, "day"))
-            if not day_key:
+            if not day_key or (opening_rows and day_key not in enabled_days):
                 continue
 
             try:
@@ -405,16 +387,17 @@ class ConsoleService:
                   AND v.date BETWEEN CURRENT_DATE AND :window_end_date
                   AND EXTRACT(DOW FROM v.date) = :target_dow;
             """)
-            db.session.execute(
-                reopen_vendor_rows_sql,
-                {
-                    "vendor_id": vendor_id,
-                    "slot_ids": slot_ids,
-                    "available_slot": int(total_slots or 1),
-                    "target_dow": ConsoleService.WEEKDAY_MAP[day_key],
-                    "window_end_date": window_end_date,
-                },
-            )
+            if not preserve_capacity:
+                db.session.execute(
+                    reopen_vendor_rows_sql,
+                    {
+                        "vendor_id": vendor_id,
+                        "slot_ids": slot_ids,
+                        "available_slot": int(total_slots or 1),
+                        "target_dow": ConsoleService.WEEKDAY_MAP[day_key],
+                        "window_end_date": window_end_date,
+                    },
+                )
 
             insert_vendor_rows_sql = text(f"""
                 INSERT INTO {slot_table_name} (vendor_id, slot_id, date, available_slot, is_available)
@@ -425,13 +408,17 @@ class ConsoleService:
                     :available_slot,
                     TRUE
                 FROM (SELECT unnest(:slot_ids) AS slot_id) s_id
+                JOIN slots template ON template.id=s_id.slot_id
                 CROSS JOIN generate_series(CURRENT_DATE, CAST(:window_end_date AS date), '1 day'::INTERVAL) gs
                 WHERE EXTRACT(DOW FROM gs.date) = :target_dow
                   AND NOT EXISTS (
                       SELECT 1
                       FROM {slot_table_name} v
+                      JOIN slots existing_template ON existing_template.id=v.slot_id
                       WHERE v.vendor_id = :vendor_id
-                        AND v.slot_id = s_id.slot_id
+                        AND existing_template.gaming_type_id=:available_game_id
+                        AND existing_template.start_time=template.start_time
+                        AND existing_template.end_time=template.end_time
                         AND v.date = gs.date::date
                   );
             """)
@@ -439,6 +426,7 @@ class ConsoleService:
                 insert_vendor_rows_sql,
                 {
                     "vendor_id": vendor_id,
+                    "available_game_id": available_game_id,
                     "slot_ids": slot_ids,
                     "available_slot": int(total_slots or 1),
                     "target_dow": ConsoleService.WEEKDAY_MAP[day_key],
@@ -758,32 +746,11 @@ class ConsoleService:
                     },
                 )
 
-                insert_missing_slots_sql = text(f"""
-                    INSERT INTO {slot_table_name} (vendor_id, date, slot_id, is_available, available_slot)
-                    SELECT
-                        :vendor_id AS vendor_id,
-                        gs.date::date AS date,
-                        s.id AS slot_id,
-                        TRUE AS is_available,
-                        1 AS available_slot
-                    FROM generate_series(CURRENT_DATE, CAST(:window_end_date AS date), '1 day'::INTERVAL) gs
-                    CROSS JOIN slots s
-                    WHERE s.gaming_type_id = :available_game_id
-                      AND NOT EXISTS (
-                        SELECT 1
-                        FROM {slot_table_name} v
-                        WHERE v.vendor_id = :vendor_id
-                          AND v.date = gs.date::date
-                          AND v.slot_id = s.id
-                      );
-                """)
-                db.session.execute(
-                    insert_missing_slots_sql,
-                    {
-                        "vendor_id": vendor_id,
-                        "available_game_id": available_game.id,
-                        "window_end_date": window_end_date,
-                    },
+                # Generate only the saved weekday grid. Historical templates can
+                # contain obsolete durations and must not be cross-joined here.
+                ConsoleService._bootstrap_new_game_slots(
+                    vendor_id, available_game.id, available_game.total_slot,
+                    preserve_capacity=True,
                 )
 
 
