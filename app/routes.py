@@ -3324,7 +3324,9 @@ def get_vendor_dashboard(vendor_id):
         "lowStockAlerts": low_stock_alerts,
     }
 
-    return jsonify(payload), 200
+    response = jsonify(payload)
+    response.headers["Cache-Control"] = "private, no-store, max-age=0"
+    return response, 200
 
 
 @dashboard_service.route('/vendor/<int:vendor_id>/documents/<int:document_id>', methods=['PUT'])

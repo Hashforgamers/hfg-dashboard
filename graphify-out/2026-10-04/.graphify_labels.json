@@ -2,7 +2,7 @@
   "0": "event_controller.py",
   "1": "access_controller.py",
   "2": "vendor.py",
-  "3": "staff_token",
+  "3": "test_console_pricing.py",
   "4": "tournament_engine_service.py",
   "5": "add_or_update_bank_details",
   "6": "ExtraServiceService",
