@@ -25,7 +25,7 @@ def test_balances_are_private_paginated_and_do_not_create_wallets(env):
     first = response.json
     assert first['next_cursor'] == 1
     assert first['items'] == [dict(vendor_id=1, cafe_name='Test Cafe', currency='INR',
-        balance=20000, reserved=5000, available_balance=15000, topup_at_cafe_only=True)]
+        balance=20000, reserved=5000, available_balance=15000, credit_due_paise=0, net_balance_paise=20000, topup_at_cafe_only=True)]
     second = client.get('/api/cafe/wallets?limit=1&after=1', headers=headers).json
     assert second['next_cursor'] is None
     assert [item['vendor_id'] for item in second['items']] == [2]

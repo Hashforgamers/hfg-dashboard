@@ -127,7 +127,9 @@ def wallet_page_integer(name, default=None, maximum=2147483647):
 def gamer_wallet_summary(vendor, row):
     balance = row.balance if row else 0
     reserved = row.reserved if row else 0
-    return dict(vendor_id=vendor.id, cafe_name=vendor.cafe_name, currency='INR',
+    from app.services.session_extensions import ready, debt
+    due=debt(vendor.id,row.user_id) if row and ready() else 0
+    return dict(credit_due_paise=due,net_balance_paise=balance-due,vendor_id=vendor.id, cafe_name=vendor.cafe_name, currency='INR',
                 balance=balance, reserved=reserved, available_balance=balance-reserved,
                 topup_at_cafe_only=True)
 
@@ -303,7 +305,10 @@ def get_wallet(vendor_id, user_id):
     staff_actor(vendor_id, 'wallet.topup')
     row = CafeWallet.query.filter_by(vendor_id=vendor_id, user_id=user_id).first()
     entries = CafeLedger.query.filter_by(vendor_id=vendor_id, user_id=user_id).order_by(CafeLedger.id.desc()).limit(100).all()
+    from app.services.session_extensions import ready, debt
+    due=debt(vendor_id,user_id) if ready() else 0
     return jsonify(balance=row.balance if row else 0, reserved=row.reserved if row else 0,
+                   credit_due_paise=due,net_balance_paise=(row.balance if row else 0)-due,
                    ledger=[serialize(e) for e in entries])
 
 
@@ -551,6 +556,11 @@ def session_status(session_id):
 def agent_session():
     link = agent_link()
     row = CafePlaySession.query.filter_by(link_id=link.id).filter(CafePlaySession.state.in_(['reserved', 'active'])).first()
+    from app.services.session_extensions import ready, RuntimeSession, seen, dispatch
+    if row and ready():
+        runtime=RuntimeSession.query.filter_by(source_kind='self_qr',source_id=row.id,ended_at=None).first()
+        if runtime:
+            seen(runtime);db.session.commit();dispatch()
     return jsonify(command(row) if row else None)
 
 

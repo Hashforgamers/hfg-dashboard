@@ -2722,6 +2722,11 @@ def get_landing_page_vendor(vendor_id):
         pending_amount = float(transaction_summary.pending_amount or 0)
         today_app_fees = float(transaction_summary.today_app_fees or 0)
         pending_app_fees = float(transaction_summary.pending_app_fees or 0)
+        from app.services.session_extensions import ready as extensions_ready, financial_totals
+        if extensions_ready():
+            extension_totals=financial_totals(vendor_id,today)
+            today_earnings+=extension_totals['earned_paise']/100
+            pending_amount+=extension_totals['pending_paise']/100
         cleared_amount = today_earnings - pending_amount
         net_earnings = max(today_earnings - today_app_fees, 0.0)
         net_pending_amount = max(pending_amount - pending_app_fees, 0.0)
@@ -2837,6 +2842,14 @@ def get_landing_page_vendor(vendor_id):
             meals_lookup = set()
             squad_members_by_booking = defaultdict(list)
         
+        managed_by_booking={}
+        from app.services.session_extensions import ready as extensions_ready, RuntimeSession, snapshot as extension_snapshot
+        if extensions_ready():
+            for runtime in RuntimeSession.query.filter_by(vendor_id=vendor_id,source_kind='booking').filter(
+                    RuntimeSession.ended_at.is_(None)).all():
+                for bid in runtime.booking_ids:
+                    managed_by_booking.setdefault(int(bid),{})[str(runtime.console_id)]=extension_snapshot(runtime)
+
         for row in result:
             has_meals = row.book_id in meals_lookup
             is_console_occupied = bool(row.console_id is not None and row.console_is_available is False)
@@ -2950,6 +2963,14 @@ def get_landing_page_vendor(vendor_id):
                 "squadMemberNames": squad_member_names,
                 "squadDetails": squad_details,
             }
+
+            runtime_by_console=managed_by_booking.get(int(row.book_id),{})
+            managed=runtime_by_console.get(str(row.console_id))
+            slot_data['runtimeByConsole']=runtime_by_console
+            if managed:
+                slot_data['runtime']=managed
+                finish=datetime.fromisoformat(managed['reserved_until'].replace('Z','+00:00')).astimezone(ZoneInfo('Asia/Kolkata'))
+                slot_data['endTime']=finish.strftime('%I:%M %p')
 
             is_terminal = booking_record_status in terminal_booking_statuses
 

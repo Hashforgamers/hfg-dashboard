@@ -22,3 +22,6 @@ python-dateutil
 pytz
 setuptools==57.5.0
 razorpay==1.4.2
+
+# Cross-worker delivery of private kiosk/dashboard session events.
+redis>=5,<6

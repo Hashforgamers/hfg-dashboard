@@ -13,6 +13,10 @@ def remaining(booking_id):
     check_scope(identity, identity['vendor_id'], console_id)
     expire_vendor(identity['vendor_id'])
     window = booking_window(identity['vendor_id'], booking_id, console_id)
+    if identity['kind']=='kiosk' and window.get('runtime'):
+        from app.services.session_extensions import lock_row,seen,dispatch
+        seen(lock_row(window['runtime']['runtime_id'],link_id=identity['id']))
+        db.session.commit();dispatch()
     return jsonify({'status': 'success', 'data': window}), 200
 
 

@@ -40,7 +40,7 @@ def console_durations(link, now=None):
     return [{'minutes':minutes} for minutes in range(step,max(step,limit)+1,step)]
 
 
-def session_prices(link, durations, now=None, *, check_capacity=True):
+def session_prices(link, durations, now=None, *, check_capacity=True, startup_buffer_seconds=45, check_console=True, allow_short_duration=False):
     now = now or datetime.now(ZoneInfo('Asia/Kolkata')).replace(tzinfo=None, second=0, microsecond=0)
     games = db.session.execute(text('''SELECT ag.id,ag.single_slot_price FROM available_games ag
         JOIN available_game_console ac ON ac.available_game_id=ag.id
@@ -78,12 +78,13 @@ def session_prices(link, durations, now=None, *, check_capacity=True):
     for duration in durations:
         try:
             from app.services.cafe_slot_reservations import covered_slots, ensure_console_window
-            window_end = now + timedelta(minutes=duration['minutes'], seconds=45)
+            window_end = now + timedelta(minutes=duration['minutes'], seconds=startup_buffer_seconds)
             covered = covered_slots(schedule_rows, now, window_end)
             if check_capacity and any(not row['is_available'] or row['available_slot'] < 1 for row in covered):
                 raise ValueError('Slot is no longer available. Refresh and choose another duration.')
-            ensure_console_window(link, now, window_end)
-            amount = session_amount(game.single_slot_price, slots, offers, now, duration['minutes'])
+            if check_console:
+                ensure_console_window(link, now, window_end)
+            amount = session_amount(game.single_slot_price, slots, offers, now, duration['minutes'], minimum_minutes=1 if allow_short_duration else 5)
             rows.append({'minutes':duration['minutes'], 'amount':amount})
         except ValueError as error:
             rows.append({'minutes':duration['minutes'], 'amount':None, 'unavailable_reason':str(error)})
