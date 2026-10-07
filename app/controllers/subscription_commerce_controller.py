@@ -45,6 +45,10 @@ def pay(vendor_id,checkout_id):
     commerce.lock_vendor(vendor_id);row=owned(vendor_id,checkout_id)
     if row.state in {'paid','paid_unapplied'}: return jsonify(commerce.public_quote(row))
     if row.order_id:
+        # Resume checks provider capture first: never reopen an already-paid order.
+        for payment in gateway.get_order_payments(row.order_id):
+            if payment.get('status')=='captured':
+                return jsonify(commerce.public_quote(commerce.activate(row,payment)))
         return jsonify(**commerce.public_quote(row),key_id=current_app.config['RAZORPAY_KEY_ID'])
     if commerce._as_utc(row.expires_at)<=commerce.utcnow(): raise ValueError('Preview expired; review a fresh preview')
     commerce.check_base(row)

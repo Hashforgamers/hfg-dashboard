@@ -765,8 +765,8 @@
     "semantic_hash": ""
   },
   "app/controllers/subscription_commerce_controller.py": {
-    "mtime": 1790849920.446303,
-    "ast_hash": "db139e4407d22dd6445d8f2213c1b843",
+    "mtime": 1791406973.3519866,
+    "ast_hash": "c3a7bbc3d25d6787a14344515481881e",
     "semantic_hash": ""
   },
   "app/models/subscription_checkout.py": {
@@ -830,8 +830,8 @@
     "semantic_hash": ""
   },
   "tests/test_subscription_commerce.py": {
-    "mtime": 1790864713.2377563,
-    "ast_hash": "50076b9ae27a2cf3bc5a82ab8df442bb",
+    "mtime": 1791406973.3548574,
+    "ast_hash": "50f6edff072ad34066108bb34755d59c",
     "semantic_hash": ""
   },
   "docs/cafe-wallet-app-api.md": {
@@ -947,6 +947,11 @@
   "docs/kiosk-session-extension-api.md": {
     "mtime": 1791399117.532399,
     "ast_hash": "578ed8828a95fb9baebabb16a1775a7f",
+    "semantic_hash": ""
+  },
+  "docs/kiosk-session-extension-integration-detailed.md": {
+    "mtime": 1791400543.999487,
+    "ast_hash": "9952d5cc395c84a6740ffcbdf35ab738",
     "semantic_hash": ""
   }
 }

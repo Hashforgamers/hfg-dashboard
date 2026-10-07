@@ -3079,7 +3079,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_controllers_subscription_controller",
-      "community": 35,
+      "community": 65,
       "community_name": "subscription_controller.py",
       "norm_label": "subscription_controller.py"
     },
@@ -3091,7 +3091,7 @@
       "_origin": "ast",
       "id": "app_controllers_subscription_controller_py_before_request",
       "community": 35,
-      "community_name": "subscription_controller.py",
+      "community_name": "is_subscription_active",
       "norm_label": "before_request"
     },
     {
@@ -3102,7 +3102,7 @@
       "_origin": "ast",
       "id": "app_controllers_subscription_controller_authorize_subscription",
       "community": 35,
-      "community_name": "subscription_controller.py",
+      "community_name": "is_subscription_active",
       "norm_label": "authorize_subscription()"
     },
     {
@@ -3113,7 +3113,7 @@
       "_origin": "ast",
       "id": "app_controllers_subscription_controller_parse_period_datetime",
       "community": 35,
-      "community_name": "subscription_controller.py",
+      "community_name": "is_subscription_active",
       "norm_label": "_parse_period_datetime()"
     },
     {
@@ -3124,7 +3124,7 @@
       "_origin": "ast",
       "id": "app_controllers_subscription_controller_invoice_number",
       "community": 35,
-      "community_name": "subscription_controller.py",
+      "community_name": "is_subscription_active",
       "norm_label": "_invoice_number()"
     },
     {
@@ -3135,7 +3135,7 @@
       "_origin": "ast",
       "id": "app_controllers_subscription_controller_subscription_status_snapshot",
       "community": 35,
-      "community_name": "subscription_controller.py",
+      "community_name": "is_subscription_active",
       "norm_label": "_subscription_status_snapshot()"
     },
     {
@@ -3146,7 +3146,7 @@
       "_origin": "ast",
       "id": "app_controllers_subscription_controller_py_get",
       "community": 35,
-      "community_name": "subscription_controller.py",
+      "community_name": "is_subscription_active",
       "norm_label": "get"
     },
     {
@@ -3157,7 +3157,7 @@
       "_origin": "ast",
       "id": "app_controllers_subscription_controller_get_subscription",
       "community": 35,
-      "community_name": "subscription_controller.py",
+      "community_name": "is_subscription_active",
       "norm_label": "get_subscription()"
     },
     {
@@ -3168,7 +3168,7 @@
       "_origin": "ast",
       "id": "app_controllers_subscription_controller_check_subscription_status",
       "community": 35,
-      "community_name": "subscription_controller.py",
+      "community_name": "is_subscription_active",
       "norm_label": "check_subscription_status()"
     },
     {
@@ -3179,7 +3179,7 @@
       "_origin": "ast",
       "id": "app_controllers_subscription_controller_py_post",
       "community": 35,
-      "community_name": "subscription_controller.py",
+      "community_name": "is_subscription_active",
       "norm_label": "post"
     },
     {
@@ -3189,7 +3189,7 @@
       "source_location": "L152",
       "_origin": "ast",
       "id": "app_controllers_subscription_controller_provision_default",
-      "community": 35,
+      "community": 65,
       "community_name": "subscription_controller.py",
       "norm_label": "provision_default()"
     },
@@ -3201,7 +3201,7 @@
       "_origin": "ast",
       "id": "app_controllers_subscription_controller_change",
       "community": 35,
-      "community_name": "subscription_controller.py",
+      "community_name": "is_subscription_active",
       "norm_label": "change()"
     },
     {
@@ -3212,7 +3212,7 @@
       "_origin": "ast",
       "id": "app_controllers_subscription_controller_get_limit",
       "community": 35,
-      "community_name": "subscription_controller.py",
+      "community_name": "is_subscription_active",
       "norm_label": "get_limit()"
     },
     {
@@ -3223,7 +3223,7 @@
       "_origin": "ast",
       "id": "app_controllers_subscription_controller_create_payment_order",
       "community": 35,
-      "community_name": "subscription_controller.py",
+      "community_name": "is_subscription_active",
       "norm_label": "create_payment_order()"
     },
     {
@@ -3234,7 +3234,7 @@
       "_origin": "ast",
       "id": "app_controllers_subscription_controller_verify_and_activate",
       "community": 65,
-      "community_name": "subscription_service.py",
+      "community_name": "subscription_controller.py",
       "norm_label": "verify_and_activate()"
     },
     {
@@ -3245,7 +3245,7 @@
       "_origin": "ast",
       "id": "app_controllers_subscription_controller_get_subscription_history",
       "community": 35,
-      "community_name": "subscription_controller.py",
+      "community_name": "is_subscription_active",
       "norm_label": "get_subscription_history()"
     },
     {
@@ -3256,7 +3256,7 @@
       "_origin": "ast",
       "id": "app_controllers_subscription_controller_get_subscription_invoice",
       "community": 35,
-      "community_name": "subscription_controller.py",
+      "community_name": "is_subscription_active",
       "norm_label": "get_subscription_invoice()"
     },
     {
@@ -3267,7 +3267,7 @@
       "_origin": "ast",
       "id": "app_controllers_subscription_controller_debug_force_expire",
       "community": 35,
-      "community_name": "subscription_controller.py",
+      "community_name": "is_subscription_active",
       "norm_label": "debug_force_expire()"
     },
     {
@@ -3277,7 +3277,7 @@
       "source_location": "L532",
       "_origin": "ast",
       "id": "app_controllers_subscription_controller_check_payment_status",
-      "community": 35,
+      "community": 65,
       "community_name": "subscription_controller.py",
       "norm_label": "check_payment_status()"
     },
@@ -3289,7 +3289,7 @@
       "_origin": "ast",
       "id": "app_controllers_subscription_controller_rationale_92",
       "community": 35,
-      "community_name": "subscription_controller.py",
+      "community_name": "is_subscription_active",
       "norm_label": "get current subscription status for vendor"
     },
     {
@@ -3300,7 +3300,7 @@
       "_origin": "ast",
       "id": "app_controllers_subscription_controller_rationale_125",
       "community": 35,
-      "community_name": "subscription_controller.py",
+      "community_name": "is_subscription_active",
       "norm_label": "check if vendor subscription is active (for dashboard lock)"
     },
     {
@@ -3310,7 +3310,7 @@
       "source_location": "L153",
       "_origin": "ast",
       "id": "app_controllers_subscription_controller_rationale_153",
-      "community": 35,
+      "community": 65,
       "community_name": "subscription_controller.py",
       "norm_label": "provision default subscription for new vendor"
     },
@@ -3322,7 +3322,7 @@
       "_origin": "ast",
       "id": "app_controllers_subscription_controller_rationale_164",
       "community": 35,
-      "community_name": "subscription_controller.py",
+      "community_name": "is_subscription_active",
       "norm_label": "change subscription package (admin use)"
     },
     {
@@ -3333,7 +3333,7 @@
       "_origin": "ast",
       "id": "app_controllers_subscription_controller_rationale_206",
       "community": 35,
-      "community_name": "subscription_controller.py",
+      "community_name": "is_subscription_active",
       "norm_label": "get pc limit for vendor"
     },
     {
@@ -3344,7 +3344,7 @@
       "_origin": "ast",
       "id": "app_controllers_subscription_controller_rationale_214",
       "community": 35,
-      "community_name": "subscription_controller.py",
+      "community_name": "is_subscription_active",
       "norm_label": "create razorpay order for subscription purchase"
     },
     {
@@ -3355,7 +3355,7 @@
       "_origin": "ast",
       "id": "app_controllers_subscription_controller_rationale_220",
       "community": 65,
-      "community_name": "subscription_service.py",
+      "community_name": "subscription_controller.py",
       "norm_label": "verify razorpay payment signature and activate subscription request body: {..."
     },
     {
@@ -3366,7 +3366,7 @@
       "_origin": "ast",
       "id": "app_controllers_subscription_controller_rationale_402",
       "community": 35,
-      "community_name": "subscription_controller.py",
+      "community_name": "is_subscription_active",
       "norm_label": "get subscription history for vendor"
     },
     {
@@ -3377,7 +3377,7 @@
       "_origin": "ast",
       "id": "app_controllers_subscription_controller_rationale_435",
       "community": 35,
-      "community_name": "subscription_controller.py",
+      "community_name": "is_subscription_active",
       "norm_label": "render a print-ready invoice for a subscription purchase."
     },
     {
@@ -3388,7 +3388,7 @@
       "_origin": "ast",
       "id": "app_controllers_subscription_controller_rationale_515",
       "community": 35,
-      "community_name": "subscription_controller.py",
+      "community_name": "is_subscription_active",
       "norm_label": "force expire subscription for testing - remove in production"
     },
     {
@@ -3398,7 +3398,7 @@
       "source_location": "L533",
       "_origin": "ast",
       "id": "app_controllers_subscription_controller_rationale_533",
-      "community": 35,
+      "community": 65,
       "community_name": "subscription_controller.py",
       "norm_label": "check if a payment has been made for an order used for qr code payments where..."
     },
@@ -3904,8 +3904,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_controllers_vendor_pc_controller",
-      "community": 72,
-      "community_name": "link_service.py",
+      "community": 20,
+      "community_name": "test_subscription_commerce.py",
       "norm_label": "vendor_pc_controller.py"
     },
     {
@@ -3915,8 +3915,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "app_controllers_vendor_pc_controller_py_get",
-      "community": 72,
-      "community_name": "link_service.py",
+      "community": 20,
+      "community_name": "test_subscription_commerce.py",
       "norm_label": "get"
     },
     {
@@ -3926,8 +3926,8 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "app_controllers_vendor_pc_controller_get_pcs",
-      "community": 72,
-      "community_name": "link_service.py",
+      "community": 20,
+      "community_name": "test_subscription_commerce.py",
       "norm_label": "get_pcs()"
     },
     {
@@ -3937,8 +3937,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "app_controllers_vendor_pc_controller_py_post",
-      "community": 72,
-      "community_name": "link_service.py",
+      "community": 20,
+      "community_name": "test_subscription_commerce.py",
       "norm_label": "post"
     },
     {
@@ -3948,8 +3948,8 @@
       "source_location": "L68",
       "_origin": "ast",
       "id": "app_controllers_vendor_pc_controller_link_pc",
-      "community": 72,
-      "community_name": "link_service.py",
+      "community": 20,
+      "community_name": "test_subscription_commerce.py",
       "norm_label": "link_pc()"
     },
     {
@@ -3959,8 +3959,8 @@
       "source_location": "L95",
       "_origin": "ast",
       "id": "app_controllers_vendor_pc_controller_unlink_pc",
-      "community": 72,
-      "community_name": "link_service.py",
+      "community": 20,
+      "community_name": "test_subscription_commerce.py",
       "norm_label": "unlink_pc()"
     },
     {
@@ -4070,7 +4070,7 @@
       "_origin": "ast",
       "id": "app_middleware_subscription_guard",
       "community": 35,
-      "community_name": "subscription_controller.py",
+      "community_name": "is_subscription_active",
       "norm_label": "subscription_guard.py"
     },
     {
@@ -4081,7 +4081,7 @@
       "_origin": "ast",
       "id": "app_middleware_subscription_guard_subscription_required",
       "community": 35,
-      "community_name": "subscription_controller.py",
+      "community_name": "is_subscription_active",
       "norm_label": "subscription_required()"
     },
     {
@@ -4092,7 +4092,7 @@
       "_origin": "ast",
       "id": "app_middleware_subscription_guard_check_subscription_or_warn",
       "community": 35,
-      "community_name": "subscription_controller.py",
+      "community_name": "is_subscription_active",
       "norm_label": "check_subscription_or_warn()"
     },
     {
@@ -4103,7 +4103,7 @@
       "_origin": "ast",
       "id": "app_middleware_subscription_guard_rationale_7",
       "community": 35,
-      "community_name": "subscription_controller.py",
+      "community_name": "is_subscription_active",
       "norm_label": "decorator to protect routes that require active subscription usage:..."
     },
     {
@@ -4114,7 +4114,7 @@
       "_origin": "ast",
       "id": "app_middleware_subscription_guard_rationale_50",
       "community": 35,
-      "community_name": "subscription_controller.py",
+      "community_name": "is_subscription_active",
       "norm_label": "soft check decorator - warns but doesn't block access useful for non-critical..."
     },
     {
@@ -5763,8 +5763,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_models_physicaladdress",
-      "community": 92,
-      "community_name": "Website",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": "physicaladdress.py"
     },
     {
@@ -5774,8 +5774,8 @@
       "source_location": "L5",
       "_origin": "ast",
       "id": "app_models_physicaladdress_physicaladdress",
-      "community": 92,
-      "community_name": "Website",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": "physicaladdress"
     },
     {
@@ -5785,8 +5785,8 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "app_models_physicaladdress_physicaladdress_str",
-      "community": 92,
-      "community_name": "Website",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": ".__str__()"
     },
     {
@@ -6281,7 +6281,7 @@
       "_origin": "ast",
       "id": "app_models_subscription_subscription",
       "community": 65,
-      "community_name": "subscription_service.py",
+      "community_name": "subscription_controller.py",
       "norm_label": "subscription"
     },
     {
@@ -6445,7 +6445,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_models_transaction",
-      "community": 32,
+      "community": 5,
       "community_name": "app/routes.py",
       "norm_label": "transaction.py"
     },
@@ -6456,7 +6456,7 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "app_models_transaction_transaction",
-      "community": 32,
+      "community": 5,
       "community_name": "app/routes.py",
       "norm_label": "transaction"
     },
@@ -6467,7 +6467,7 @@
       "source_location": "L51",
       "_origin": "ast",
       "id": "app_models_transaction_transaction_repr",
-      "community": 32,
+      "community": 5,
       "community_name": "app/routes.py",
       "norm_label": ".__repr__()"
     },
@@ -6676,7 +6676,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_models_vendordayslotconfig",
-      "community": 32,
+      "community": 5,
       "community_name": "app/routes.py",
       "norm_label": "vendordayslotconfig.py"
     },
@@ -6687,7 +6687,7 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "app_models_vendordayslotconfig_vendordayslotconfig",
-      "community": 32,
+      "community": 5,
       "community_name": "app/routes.py",
       "norm_label": "vendordayslotconfig"
     },
@@ -6698,7 +6698,7 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "app_models_vendordayslotconfig_vendordayslotconfig_repr",
-      "community": 32,
+      "community": 5,
       "community_name": "app/routes.py",
       "norm_label": ".__repr__()"
     },
@@ -6808,8 +6808,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_models_vendorprofileimage",
-      "community": 43,
-      "community_name": "VendorProfileImage",
+      "community": 2,
+      "community_name": "vendor.py",
       "norm_label": "vendorprofileimage.py"
     },
     {
@@ -6819,8 +6819,8 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "app_models_vendorprofileimage_vendorprofileimage",
-      "community": 43,
-      "community_name": "VendorProfileImage",
+      "community": 2,
+      "community_name": "vendor.py",
       "norm_label": "vendorprofileimage"
     },
     {
@@ -6830,8 +6830,8 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "app_models_vendorprofileimage_vendorprofileimage_str",
-      "community": 43,
-      "community_name": "VendorProfileImage",
+      "community": 2,
+      "community_name": "vendor.py",
       "norm_label": ".__str__()"
     },
     {
@@ -6841,8 +6841,8 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "app_models_vendorprofileimage_vendorprofileimage_repr",
-      "community": 43,
-      "community_name": "VendorProfileImage",
+      "community": 2,
+      "community_name": "vendor.py",
       "norm_label": ".__repr__()"
     },
     {
@@ -6918,7 +6918,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_models_vendortaxprofile",
-      "community": 32,
+      "community": 5,
       "community_name": "app/routes.py",
       "norm_label": "vendortaxprofile.py"
     },
@@ -6929,7 +6929,7 @@
       "source_location": "L8",
       "_origin": "ast",
       "id": "app_models_vendortaxprofile_vendortaxprofile",
-      "community": 32,
+      "community": 5,
       "community_name": "app/routes.py",
       "norm_label": "vendortaxprofile"
     },
@@ -6940,7 +6940,7 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "app_models_vendortaxprofile_vendortaxprofile_to_dict",
-      "community": 32,
+      "community": 5,
       "community_name": "app/routes.py",
       "norm_label": ".to_dict()"
     },
@@ -6973,8 +6973,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_models_website",
-      "community": 92,
-      "community_name": "Website",
+      "community": 2,
+      "community_name": "vendor.py",
       "norm_label": "website.py"
     },
     {
@@ -6984,8 +6984,8 @@
       "source_location": "L5",
       "_origin": "ast",
       "id": "app_models_website_website",
-      "community": 92,
-      "community_name": "Website",
+      "community": 2,
+      "community_name": "vendor.py",
       "norm_label": "website"
     },
     {
@@ -6995,8 +6995,8 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "app_models_website_website_str",
-      "community": 92,
-      "community_name": "Website",
+      "community": 2,
+      "community_name": "vendor.py",
       "norm_label": ".__str__()"
     },
     {
@@ -7006,8 +7006,8 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "app_models_website_website_repr",
-      "community": 92,
-      "community_name": "Website",
+      "community": 2,
+      "community_name": "vendor.py",
       "norm_label": ".__repr__()"
     },
     {
@@ -7039,7 +7039,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_routes",
-      "community": 32,
+      "community": 5,
       "community_name": "app/routes.py",
       "norm_label": "app/routes.py"
     },
@@ -7061,7 +7061,7 @@
       "source_location": "L118",
       "_origin": "ast",
       "id": "app_routes_parse_bool_flag",
-      "community": 32,
+      "community": 5,
       "community_name": "app/routes.py",
       "norm_label": "_parse_bool_flag()"
     },
@@ -7072,7 +7072,7 @@
       "source_location": "L128",
       "_origin": "ast",
       "id": "app_routes_vendor_exists",
-      "community": 32,
+      "community": 5,
       "community_name": "app/routes.py",
       "norm_label": "_vendor_exists()"
     },
@@ -7083,7 +7083,7 @@
       "source_location": "L150",
       "_origin": "ast",
       "id": "app_routes_ensure_vendor_notification_preferences_table",
-      "community": 32,
+      "community": 5,
       "community_name": "app/routes.py",
       "norm_label": "_ensure_vendor_notification_preferences_table()"
     },
@@ -7094,7 +7094,7 @@
       "source_location": "L168",
       "_origin": "ast",
       "id": "app_routes_default_vendor_notification_preferences",
-      "community": 32,
+      "community": 5,
       "community_name": "app/routes.py",
       "norm_label": "_default_vendor_notification_preferences()"
     },
@@ -7105,7 +7105,7 @@
       "source_location": "",
       "_origin": "ast",
       "id": "app_routes_py_any",
-      "community": 32,
+      "community": 5,
       "community_name": "app/routes.py",
       "norm_label": "any"
     },
@@ -7116,7 +7116,7 @@
       "source_location": "L179",
       "_origin": "ast",
       "id": "app_routes_coerce_bool",
-      "community": 32,
+      "community": 5,
       "community_name": "app/routes.py",
       "norm_label": "_coerce_bool()"
     },
@@ -7183,7 +7183,7 @@
       "_origin": "ast",
       "id": "app_routes_build_session_identifier",
       "community": 5,
-      "community_name": "get_landing_page_vendor",
+      "community_name": "app/routes.py",
       "norm_label": "_build_session_identifier()"
     },
     {
@@ -7194,7 +7194,7 @@
       "_origin": "ast",
       "id": "app_routes_normalize_lifecycle",
       "community": 5,
-      "community_name": "get_landing_page_vendor",
+      "community_name": "app/routes.py",
       "norm_label": "_normalize_lifecycle()"
     },
     {
@@ -7205,7 +7205,7 @@
       "_origin": "ast",
       "id": "app_routes_normalize_status_key",
       "community": 5,
-      "community_name": "get_landing_page_vendor",
+      "community_name": "app/routes.py",
       "norm_label": "_normalize_status_key()"
     },
     {
@@ -7216,7 +7216,7 @@
       "_origin": "ast",
       "id": "app_routes_derive_booking_outcome",
       "community": 5,
-      "community_name": "get_landing_page_vendor",
+      "community_name": "app/routes.py",
       "norm_label": "_derive_booking_outcome()"
     },
     {
@@ -7227,7 +7227,7 @@
       "_origin": "ast",
       "id": "app_routes_py_route",
       "community": 32,
-      "community_name": "app/routes.py",
+      "community_name": "route",
       "norm_label": "route"
     },
     {
@@ -7238,7 +7238,7 @@
       "_origin": "ast",
       "id": "app_routes_get_transaction_report",
       "community": 32,
-      "community_name": "app/routes.py",
+      "community_name": "route",
       "norm_label": "get_transaction_report()"
     },
     {
@@ -7248,7 +7248,7 @@
       "source_location": "L431",
       "_origin": "ast",
       "id": "app_routes_vendor_tax_profile",
-      "community": 32,
+      "community": 5,
       "community_name": "app/routes.py",
       "norm_label": "vendor_tax_profile()"
     },
@@ -7260,7 +7260,7 @@
       "_origin": "ast",
       "id": "app_routes_check_db_connection",
       "community": 32,
-      "community_name": "app/routes.py",
+      "community_name": "route",
       "norm_label": "check_db_connection()"
     },
     {
@@ -7270,8 +7270,8 @@
       "source_location": "L512",
       "_origin": "ast",
       "id": "app_routes_add_console",
-      "community": 32,
-      "community_name": "app/routes.py",
+      "community": 44,
+      "community_name": "_invalidate_vendor_caches",
       "norm_label": "add_console()"
     },
     {
@@ -7282,7 +7282,7 @@
       "_origin": "ast",
       "id": "app_routes_get_console",
       "community": 32,
-      "community_name": "app/routes.py",
+      "community_name": "route",
       "norm_label": "get_console()"
     },
     {
@@ -7293,7 +7293,7 @@
       "_origin": "ast",
       "id": "app_routes_get_console_pricing",
       "community": 32,
-      "community_name": "app/routes.py",
+      "community_name": "route",
       "norm_label": "get_console_pricing()"
     },
     {
@@ -7304,7 +7304,7 @@
       "_origin": "ast",
       "id": "app_routes_update_console_pricing",
       "community": 32,
-      "community_name": "app/routes.py",
+      "community_name": "route",
       "norm_label": "update_console_pricing()"
     },
     {
@@ -7326,7 +7326,7 @@
       "_origin": "ast",
       "id": "app_routes_get_console_types",
       "community": 32,
-      "community_name": "app/routes.py",
+      "community_name": "route",
       "norm_label": "get_console_types()"
     },
     {
@@ -7369,8 +7369,8 @@
       "source_location": "L914",
       "_origin": "ast",
       "id": "app_routes_delete_console",
-      "community": 32,
-      "community_name": "app/routes.py",
+      "community": 44,
+      "community_name": "_invalidate_vendor_caches",
       "norm_label": "delete_console()"
     },
     {
@@ -7380,8 +7380,8 @@
       "source_location": "L1045",
       "_origin": "ast",
       "id": "app_routes_update_console",
-      "community": 32,
-      "community_name": "app/routes.py",
+      "community": 44,
+      "community_name": "_invalidate_vendor_caches",
       "norm_label": "update_console()"
     },
     {
@@ -7469,7 +7469,7 @@
       "_origin": "ast",
       "id": "app_routes_get_all_device_for_vendor",
       "community": 32,
-      "community_name": "app/routes.py",
+      "community_name": "route",
       "norm_label": "get_all_device_for_vendor()"
     },
     {
@@ -7480,7 +7480,7 @@
       "_origin": "ast",
       "id": "app_routes_get_landing_page_vendor",
       "community": 5,
-      "community_name": "get_landing_page_vendor",
+      "community_name": "app/routes.py",
       "norm_label": "get_landing_page_vendor()"
     },
     {
@@ -7524,7 +7524,7 @@
       "_origin": "ast",
       "id": "app_routes_update_vendor_document",
       "community": 32,
-      "community_name": "app/routes.py",
+      "community_name": "route",
       "norm_label": "update_vendor_document()"
     },
     {
@@ -7535,7 +7535,7 @@
       "_origin": "ast",
       "id": "app_routes_upload_vendor_document_by_type",
       "community": 32,
-      "community_name": "app/routes.py",
+      "community_name": "route",
       "norm_label": "upload_vendor_document_by_type()"
     },
     {
@@ -7546,7 +7546,7 @@
       "_origin": "ast",
       "id": "app_routes_get_your_gamers",
       "community": 32,
-      "community_name": "app/routes.py",
+      "community_name": "route",
       "norm_label": "get_your_gamers()"
     },
     {
@@ -7557,7 +7557,7 @@
       "_origin": "ast",
       "id": "app_routes_get_your_gamers_stats",
       "community": 32,
-      "community_name": "app/routes.py",
+      "community_name": "route",
       "norm_label": "get_your_gamers_stats()"
     },
     {
@@ -7568,7 +7568,7 @@
       "_origin": "ast",
       "id": "app_routes_get_master_stats",
       "community": 32,
-      "community_name": "app/routes.py",
+      "community_name": "route",
       "norm_label": "get_master_stats()"
     },
     {
@@ -7579,7 +7579,7 @@
       "_origin": "ast",
       "id": "app_routes_list_categories_with_menus",
       "community": 32,
-      "community_name": "app/routes.py",
+      "community_name": "route",
       "norm_label": "list_categories_with_menus()"
     },
     {
@@ -7589,8 +7589,8 @@
       "source_location": "L3846",
       "_origin": "ast",
       "id": "app_routes_add_extra_service_category",
-      "community": 32,
-      "community_name": "app/routes.py",
+      "community": 6,
+      "community_name": "ExtraServiceService",
       "norm_label": "add_extra_service_category()"
     },
     {
@@ -7612,7 +7612,7 @@
       "_origin": "ast",
       "id": "app_routes_update_extra_service_category",
       "community": 32,
-      "community_name": "app/routes.py",
+      "community_name": "route",
       "norm_label": "update_extra_service_category()"
     },
     {
@@ -7622,8 +7622,8 @@
       "source_location": "L3931",
       "_origin": "ast",
       "id": "app_routes_delete_extra_service_category",
-      "community": 32,
-      "community_name": "app/routes.py",
+      "community": 6,
+      "community_name": "ExtraServiceService",
       "norm_label": "delete_extra_service_category()"
     },
     {
@@ -7634,7 +7634,7 @@
       "_origin": "ast",
       "id": "app_routes_update_extra_service_menu",
       "community": 32,
-      "community_name": "app/routes.py",
+      "community_name": "route",
       "norm_label": "update_extra_service_menu()"
     },
     {
@@ -7644,8 +7644,8 @@
       "source_location": "L4000",
       "_origin": "ast",
       "id": "app_routes_delete_extra_service_menu",
-      "community": 32,
-      "community_name": "app/routes.py",
+      "community": 6,
+      "community_name": "ExtraServiceService",
       "norm_label": "delete_extra_service_menu()"
     },
     {
@@ -7656,7 +7656,7 @@
       "_origin": "ast",
       "id": "app_routes_list_pass_types",
       "community": 32,
-      "community_name": "app/routes.py",
+      "community_name": "route",
       "norm_label": "list_pass_types()"
     },
     {
@@ -7666,8 +7666,8 @@
       "source_location": "L4071",
       "_origin": "ast",
       "id": "app_routes_add_pass_type",
-      "community": 32,
-      "community_name": "app/routes.py",
+      "community": 13,
+      "community_name": "passModels.py",
       "norm_label": "add_pass_type()"
     },
     {
@@ -7689,7 +7689,7 @@
       "_origin": "ast",
       "id": "app_routes_create_category",
       "community": 32,
-      "community_name": "app/routes.py",
+      "community_name": "route",
       "norm_label": "create_category()"
     },
     {
@@ -7700,7 +7700,7 @@
       "_origin": "ast",
       "id": "app_routes_create_menu_item",
       "community": 32,
-      "community_name": "app/routes.py",
+      "community_name": "route",
       "norm_label": "create_menu_item()"
     },
     {
@@ -7710,8 +7710,8 @@
       "source_location": "L4169",
       "_origin": "ast",
       "id": "app_routes_delete_category",
-      "community": 32,
-      "community_name": "app/routes.py",
+      "community": 6,
+      "community_name": "ExtraServiceService",
       "norm_label": "delete_category()"
     },
     {
@@ -7721,8 +7721,8 @@
       "source_location": "L4178",
       "_origin": "ast",
       "id": "app_routes_delete_menu_item",
-      "community": 32,
-      "community_name": "app/routes.py",
+      "community": 6,
+      "community_name": "ExtraServiceService",
       "norm_label": "delete_menu_item()"
     },
     {
@@ -7743,8 +7743,8 @@
       "source_location": "L4199",
       "_origin": "ast",
       "id": "app_routes_update_menu_item_status",
-      "community": 32,
-      "community_name": "app/routes.py",
+      "community": 6,
+      "community_name": "ExtraServiceService",
       "norm_label": "update_menu_item_status()"
     },
     {
@@ -7765,8 +7765,8 @@
       "source_location": "L4224",
       "_origin": "ast",
       "id": "app_routes_create_hash_pass",
-      "community": 32,
-      "community_name": "app/routes.py",
+      "community": 13,
+      "community_name": "passModels.py",
       "norm_label": "create_hash_pass()"
     },
     {
@@ -7777,7 +7777,7 @@
       "_origin": "ast",
       "id": "app_routes_update_profile_image",
       "community": 43,
-      "community_name": "VendorProfileImage",
+      "community_name": "CloudinaryProfileImageService",
       "norm_label": "update_profile_image()"
     },
     {
@@ -7788,7 +7788,7 @@
       "_origin": "ast",
       "id": "app_routes_get_vendor_profile_image",
       "community": 32,
-      "community_name": "app/routes.py",
+      "community_name": "route",
       "norm_label": "get_vendor_profile_image()"
     },
     {
@@ -7799,7 +7799,7 @@
       "_origin": "ast",
       "id": "app_routes_delete_vendor_profile_image",
       "community": 43,
-      "community_name": "VendorProfileImage",
+      "community_name": "CloudinaryProfileImageService",
       "norm_label": "delete_vendor_profile_image()"
     },
     {
@@ -7809,8 +7809,8 @@
       "source_location": "L4442",
       "_origin": "ast",
       "id": "app_routes_update_business_details",
-      "community": 92,
-      "community_name": "Website",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": "update_business_details()"
     },
     {
@@ -7854,7 +7854,7 @@
       "_origin": "ast",
       "id": "app_routes_get_payout_history",
       "community": 32,
-      "community_name": "app/routes.py",
+      "community_name": "route",
       "norm_label": "get_payout_history()"
     },
     {
@@ -7864,7 +7864,7 @@
       "source_location": "L4891",
       "_origin": "ast",
       "id": "app_routes_get_vendor_notification_preferences",
-      "community": 32,
+      "community": 5,
       "community_name": "app/routes.py",
       "norm_label": "get_vendor_notification_preferences()"
     },
@@ -7875,7 +7875,7 @@
       "source_location": "L4949",
       "_origin": "ast",
       "id": "app_routes_upsert_vendor_notification_preferences",
-      "community": 32,
+      "community": 5,
       "community_name": "app/routes.py",
       "norm_label": "upsert_vendor_notification_preferences()"
     },
@@ -7887,7 +7887,7 @@
       "_origin": "ast",
       "id": "app_routes_get_vendor_settlement_summary",
       "community": 32,
-      "community_name": "app/routes.py",
+      "community_name": "route",
       "norm_label": "get_vendor_settlement_summary()"
     },
     {
@@ -8008,7 +8008,7 @@
       "_origin": "ast",
       "id": "app_routes_get_booking_details",
       "community": 32,
-      "community_name": "app/routes.py",
+      "community_name": "route",
       "norm_label": "get_booking_details()"
     },
     {
@@ -8018,7 +8018,7 @@
       "source_location": "L5550",
       "_origin": "ast",
       "id": "app_routes_get_vendor_passes",
-      "community": 32,
+      "community": 5,
       "community_name": "app/routes.py",
       "norm_label": "get_vendor_passes()"
     },
@@ -8029,7 +8029,7 @@
       "source_location": "L5642",
       "_origin": "ast",
       "id": "app_routes_get_vendor_passes_by_mode",
-      "community": 32,
+      "community": 5,
       "community_name": "app/routes.py",
       "norm_label": "get_vendor_passes_by_mode()"
     },
@@ -8040,8 +8040,8 @@
       "source_location": "L5648",
       "_origin": "ast",
       "id": "app_routes_create_vendor_pass",
-      "community": 44,
-      "community_name": "_invalidate_vendor_caches",
+      "community": 13,
+      "community_name": "passModels.py",
       "norm_label": "create_vendor_pass()"
     },
     {
@@ -8085,7 +8085,7 @@
       "_origin": "ast",
       "id": "app_routes_rationale_290",
       "community": 5,
-      "community_name": "get_landing_page_vendor",
+      "community_name": "app/routes.py",
       "norm_label": "a clock boundary never completes a started session."
     },
     {
@@ -8107,7 +8107,7 @@
       "_origin": "ast",
       "id": "app_routes_rationale_2570",
       "community": 5,
-      "community_name": "get_landing_page_vendor",
+      "community_name": "app/routes.py",
       "norm_label": "fetches vendor dashboard data including stats, booking stats, upcoming..."
     },
     {
@@ -8129,7 +8129,7 @@
       "_origin": "ast",
       "id": "app_routes_rationale_3355",
       "community": 32,
-      "community_name": "app/routes.py",
+      "community_name": "route",
       "norm_label": "proxy document replacement to onboard service so dashboard frontend can use one..."
     },
     {
@@ -8140,7 +8140,7 @@
       "_origin": "ast",
       "id": "app_routes_rationale_3395",
       "community": 32,
-      "community_name": "app/routes.py",
+      "community_name": "route",
       "norm_label": "proxy missing-document upload to onboard service (by document_type)."
     },
     {
@@ -8162,7 +8162,7 @@
       "_origin": "ast",
       "id": "app_routes_rationale_4136",
       "community": 32,
-      "community_name": "app/routes.py",
+      "community_name": "route",
       "norm_label": "create new service category"
     },
     {
@@ -8173,7 +8173,7 @@
       "_origin": "ast",
       "id": "app_routes_rationale_4146",
       "community": 32,
-      "community_name": "app/routes.py",
+      "community_name": "route",
       "norm_label": "create menu item with optional image"
     },
     {
@@ -8194,8 +8194,8 @@
       "source_location": "L4200",
       "_origin": "ast",
       "id": "app_routes_rationale_4200",
-      "community": 32,
-      "community_name": "app/routes.py",
+      "community": 6,
+      "community_name": "ExtraServiceService",
       "norm_label": "activate/deactivate extra service menu item."
     },
     {
@@ -8217,7 +8217,7 @@
       "_origin": "ast",
       "id": "app_routes_rationale_4283",
       "community": 43,
-      "community_name": "VendorProfileImage",
+      "community_name": "CloudinaryProfileImageService",
       "norm_label": "upload profile image to cloudinary and update vendorprofileimage table. creates..."
     },
     {
@@ -8228,7 +8228,7 @@
       "_origin": "ast",
       "id": "app_routes_rationale_4372",
       "community": 32,
-      "community_name": "app/routes.py",
+      "community_name": "route",
       "norm_label": "get vendor profile image information"
     },
     {
@@ -8239,7 +8239,7 @@
       "_origin": "ast",
       "id": "app_routes_rationale_4403",
       "community": 43,
-      "community_name": "VendorProfileImage",
+      "community_name": "CloudinaryProfileImageService",
       "norm_label": "delete vendor's profile image"
     },
     {
@@ -8249,8 +8249,8 @@
       "source_location": "L4443",
       "_origin": "ast",
       "id": "app_routes_rationale_4443",
-      "community": 92,
-      "community_name": "Website",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": "update vendor business details including website, phone, email, and address"
     },
     {
@@ -8294,7 +8294,7 @@
       "_origin": "ast",
       "id": "app_routes_rationale_4850",
       "community": 32,
-      "community_name": "app/routes.py",
+      "community_name": "route",
       "norm_label": "get vendor's payout transaction history"
     },
     {
@@ -8349,7 +8349,7 @@
       "_origin": "ast",
       "id": "app_routes_rationale_5468",
       "community": 32,
-      "community_name": "app/routes.py",
+      "community_name": "route",
       "norm_label": "get detailed booking information including extra services/meals"
     },
     {
@@ -8359,7 +8359,7 @@
       "source_location": "L5551",
       "_origin": "ast",
       "id": "app_routes_rationale_5551",
-      "community": 32,
+      "community": 5,
       "community_name": "app/routes.py",
       "norm_label": "get vendor passes grouped for frontend (hour/date based)."
     },
@@ -8370,7 +8370,7 @@
       "source_location": "L5643",
       "_origin": "ast",
       "id": "app_routes_rationale_5643",
-      "community": 32,
+      "community": 5,
       "community_name": "app/routes.py",
       "norm_label": "backward-compatible alias of /vendor/<vendor_id>/passes."
     },
@@ -8381,8 +8381,8 @@
       "source_location": "L5649",
       "_origin": "ast",
       "id": "app_routes_rationale_5649",
-      "community": 44,
-      "community_name": "_invalidate_vendor_caches",
+      "community": 13,
+      "community_name": "passModels.py",
       "norm_label": "create new pass (date-based or hour-based)"
     },
     {
@@ -9614,7 +9614,7 @@
       "_origin": "ast",
       "id": "app_services_cloudinary_profile_service",
       "community": 43,
-      "community_name": "VendorProfileImage",
+      "community_name": "CloudinaryProfileImageService",
       "norm_label": "cloudinary_profile_service.py"
     },
     {
@@ -9625,7 +9625,7 @@
       "_origin": "ast",
       "id": "app_services_cloudinary_profile_service_cloudinaryprofileimageservice",
       "community": 43,
-      "community_name": "VendorProfileImage",
+      "community_name": "CloudinaryProfileImageService",
       "norm_label": "cloudinaryprofileimageservice"
     },
     {
@@ -9636,7 +9636,7 @@
       "_origin": "ast",
       "id": "app_services_cloudinary_profile_service_cloudinaryprofileimageservice_is_cloudinary_configured",
       "community": 43,
-      "community_name": "VendorProfileImage",
+      "community_name": "CloudinaryProfileImageService",
       "norm_label": ".is_cloudinary_configured()"
     },
     {
@@ -9647,7 +9647,7 @@
       "_origin": "ast",
       "id": "app_services_cloudinary_profile_service_cloudinaryprofileimageservice_configure_cloudinary",
       "community": 43,
-      "community_name": "VendorProfileImage",
+      "community_name": "CloudinaryProfileImageService",
       "norm_label": ".configure_cloudinary()"
     },
     {
@@ -9658,7 +9658,7 @@
       "_origin": "ast",
       "id": "app_services_cloudinary_profile_service_cloudinaryprofileimageservice_upload_profile_image",
       "community": 43,
-      "community_name": "VendorProfileImage",
+      "community_name": "CloudinaryProfileImageService",
       "norm_label": ".upload_profile_image()"
     },
     {
@@ -9669,7 +9669,7 @@
       "_origin": "ast",
       "id": "app_services_cloudinary_profile_service_cloudinaryprofileimageservice_delete_profile_image",
       "community": 43,
-      "community_name": "VendorProfileImage",
+      "community_name": "CloudinaryProfileImageService",
       "norm_label": ".delete_profile_image()"
     },
     {
@@ -9680,7 +9680,7 @@
       "_origin": "ast",
       "id": "app_services_cloudinary_profile_service_rationale_1",
       "community": 43,
-      "community_name": "VendorProfileImage",
+      "community_name": "CloudinaryProfileImageService",
       "norm_label": "cloudinary service for handling vendor profile images images are uploaded to..."
     },
     {
@@ -9691,7 +9691,7 @@
       "_origin": "ast",
       "id": "app_services_cloudinary_profile_service_rationale_13",
       "community": 43,
-      "community_name": "VendorProfileImage",
+      "community_name": "CloudinaryProfileImageService",
       "norm_label": "service to handle vendor profile image uploads. images are stored in..."
     },
     {
@@ -9702,7 +9702,7 @@
       "_origin": "ast",
       "id": "app_services_cloudinary_profile_service_rationale_20",
       "community": 43,
-      "community_name": "VendorProfileImage",
+      "community_name": "CloudinaryProfileImageService",
       "norm_label": "check if cloudinary credentials are available"
     },
     {
@@ -9713,7 +9713,7 @@
       "_origin": "ast",
       "id": "app_services_cloudinary_profile_service_rationale_29",
       "community": 43,
-      "community_name": "VendorProfileImage",
+      "community_name": "CloudinaryProfileImageService",
       "norm_label": "initialize cloudinary configuration"
     },
     {
@@ -9724,7 +9724,7 @@
       "_origin": "ast",
       "id": "app_services_cloudinary_profile_service_rationale_50",
       "community": 43,
-      "community_name": "VendorProfileImage",
+      "community_name": "CloudinaryProfileImageService",
       "norm_label": "upload profile image to cloudinary in individual vendor folder"
     },
     {
@@ -9735,7 +9735,7 @@
       "_origin": "ast",
       "id": "app_services_cloudinary_profile_service_rationale_121",
       "community": 43,
-      "community_name": "VendorProfileImage",
+      "community_name": "CloudinaryProfileImageService",
       "norm_label": "delete profile image from cloudinary"
     },
     {
@@ -9745,8 +9745,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_services_cloudinary_services",
-      "community": 6,
-      "community_name": "ExtraServiceService",
+      "community": 63,
+      "community_name": "CloudinaryMenuImageService",
       "norm_label": "cloudinary_services.py"
     },
     {
@@ -9756,8 +9756,8 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "app_services_cloudinary_services_cloudinarymenuimageservice",
-      "community": 6,
-      "community_name": "ExtraServiceService",
+      "community": 63,
+      "community_name": "CloudinaryMenuImageService",
       "norm_label": "cloudinarymenuimageservice"
     },
     {
@@ -9767,8 +9767,8 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "app_services_cloudinary_services_cloudinarymenuimageservice_is_cloudinary_configured",
-      "community": 6,
-      "community_name": "ExtraServiceService",
+      "community": 63,
+      "community_name": "CloudinaryMenuImageService",
       "norm_label": ".is_cloudinary_configured()"
     },
     {
@@ -9778,8 +9778,8 @@
       "source_location": "L31",
       "_origin": "ast",
       "id": "app_services_cloudinary_services_cloudinarymenuimageservice_configure_cloudinary",
-      "community": 6,
-      "community_name": "ExtraServiceService",
+      "community": 63,
+      "community_name": "CloudinaryMenuImageService",
       "norm_label": ".configure_cloudinary()"
     },
     {
@@ -9789,8 +9789,8 @@
       "source_location": "L52",
       "_origin": "ast",
       "id": "app_services_cloudinary_services_cloudinarymenuimageservice_upload_menu_item_image",
-      "community": 6,
-      "community_name": "ExtraServiceService",
+      "community": 63,
+      "community_name": "CloudinaryMenuImageService",
       "norm_label": ".upload_menu_item_image()"
     },
     {
@@ -9800,8 +9800,8 @@
       "source_location": "L121",
       "_origin": "ast",
       "id": "app_services_cloudinary_services_cloudinarymenuimageservice_delete_menu_image",
-      "community": 6,
-      "community_name": "ExtraServiceService",
+      "community": 63,
+      "community_name": "CloudinaryMenuImageService",
       "norm_label": ".delete_menu_image()"
     },
     {
@@ -9811,8 +9811,8 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "app_services_cloudinary_services_rationale_16",
-      "community": 6,
-      "community_name": "ExtraServiceService",
+      "community": 63,
+      "community_name": "CloudinaryMenuImageService",
       "norm_label": "service for handling menu cover images images are uploaded to the 'poc' folder"
     },
     {
@@ -9822,8 +9822,8 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "app_services_cloudinary_services_rationale_23",
-      "community": 6,
-      "community_name": "ExtraServiceService",
+      "community": 63,
+      "community_name": "CloudinaryMenuImageService",
       "norm_label": "checking if cloudinary credentials are available"
     },
     {
@@ -9833,8 +9833,8 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "app_services_cloudinary_services_rationale_32",
-      "community": 6,
-      "community_name": "ExtraServiceService",
+      "community": 63,
+      "community_name": "CloudinaryMenuImageService",
       "norm_label": "initialize cloudinary configuration"
     },
     {
@@ -9844,8 +9844,8 @@
       "source_location": "L53",
       "_origin": "ast",
       "id": "app_services_cloudinary_services_rationale_53",
-      "community": 6,
-      "community_name": "ExtraServiceService",
+      "community": 63,
+      "community_name": "CloudinaryMenuImageService",
       "norm_label": "upload menu item image to cloudinary"
     },
     {
@@ -9855,8 +9855,8 @@
       "source_location": "L122",
       "_origin": "ast",
       "id": "app_services_cloudinary_services_rationale_122",
-      "community": 6,
-      "community_name": "ExtraServiceService",
+      "community": 63,
+      "community_name": "CloudinaryMenuImageService",
       "norm_label": "delete menu item image from cloudinary"
     },
     {
@@ -11010,8 +11010,8 @@
       "source_location": "L99",
       "_origin": "ast",
       "id": "app_services_kiosk_security_vendor_required",
-      "community": 72,
-      "community_name": "link_service.py",
+      "community": 20,
+      "community_name": "test_subscription_commerce.py",
       "norm_label": "vendor_required()"
     },
     {
@@ -11098,8 +11098,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_services_link_service",
-      "community": 72,
-      "community_name": "link_service.py",
+      "community": 20,
+      "community_name": "test_subscription_commerce.py",
       "norm_label": "link_service.py"
     },
     {
@@ -11109,8 +11109,8 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "app_services_link_service_count_active_links",
-      "community": 72,
-      "community_name": "link_service.py",
+      "community": 20,
+      "community_name": "test_subscription_commerce.py",
       "norm_label": "count_active_links()"
     },
     {
@@ -11120,8 +11120,8 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "app_services_link_service_pc_is_linked",
-      "community": 72,
-      "community_name": "link_service.py",
+      "community": 20,
+      "community_name": "test_subscription_commerce.py",
       "norm_label": "pc_is_linked()"
     },
     {
@@ -11131,8 +11131,8 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "app_services_link_service_list_vendor_pcs",
-      "community": 72,
-      "community_name": "link_service.py",
+      "community": 20,
+      "community_name": "test_subscription_commerce.py",
       "norm_label": "list_vendor_pcs()"
     },
     {
@@ -11142,8 +11142,8 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "app_services_link_service_create_link",
-      "community": 72,
-      "community_name": "link_service.py",
+      "community": 20,
+      "community_name": "test_subscription_commerce.py",
       "norm_label": "create_link()"
     },
     {
@@ -11153,8 +11153,8 @@
       "source_location": "L47",
       "_origin": "ast",
       "id": "app_services_link_service_close_link",
-      "community": 72,
-      "community_name": "link_service.py",
+      "community": 20,
+      "community_name": "test_subscription_commerce.py",
       "norm_label": "close_link()"
     },
     {
@@ -11494,8 +11494,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_services_razorpay_service",
-      "community": 63,
-      "community_name": "razorpay_service.py",
+      "community": 65,
+      "community_name": "subscription_controller.py",
       "norm_label": "razorpay_service.py"
     },
     {
@@ -11505,8 +11505,8 @@
       "source_location": "L8",
       "_origin": "ast",
       "id": "app_services_razorpay_service_get_razorpay_client",
-      "community": 63,
-      "community_name": "razorpay_service.py",
+      "community": 65,
+      "community_name": "subscription_controller.py",
       "norm_label": "get_razorpay_client()"
     },
     {
@@ -11516,8 +11516,8 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "app_services_razorpay_service_create_order",
-      "community": 63,
-      "community_name": "razorpay_service.py",
+      "community": 65,
+      "community_name": "subscription_controller.py",
       "norm_label": "create_order()"
     },
     {
@@ -11527,8 +11527,8 @@
       "source_location": "L52",
       "_origin": "ast",
       "id": "app_services_razorpay_service_verify_payment_signature",
-      "community": 63,
-      "community_name": "razorpay_service.py",
+      "community": 65,
+      "community_name": "subscription_controller.py",
       "norm_label": "verify_payment_signature()"
     },
     {
@@ -11538,8 +11538,8 @@
       "source_location": "L81",
       "_origin": "ast",
       "id": "app_services_razorpay_service_get_payment_details",
-      "community": 63,
-      "community_name": "razorpay_service.py",
+      "community": 65,
+      "community_name": "subscription_controller.py",
       "norm_label": "get_payment_details()"
     },
     {
@@ -11549,8 +11549,8 @@
       "source_location": "L97",
       "_origin": "ast",
       "id": "app_services_razorpay_service_get_test_price",
-      "community": 63,
-      "community_name": "razorpay_service.py",
+      "community": 65,
+      "community_name": "subscription_controller.py",
       "norm_label": "get_test_price()"
     },
     {
@@ -11560,8 +11560,8 @@
       "source_location": "L103",
       "_origin": "ast",
       "id": "app_services_razorpay_service_get_order_details",
-      "community": 63,
-      "community_name": "razorpay_service.py",
+      "community": 65,
+      "community_name": "subscription_controller.py",
       "norm_label": "get_order_details()"
     },
     {
@@ -11571,7 +11571,7 @@
       "source_location": "L119",
       "_origin": "ast",
       "id": "app_services_razorpay_service_get_order_payments",
-      "community": 35,
+      "community": 65,
       "community_name": "subscription_controller.py",
       "norm_label": "get_order_payments()"
     },
@@ -11582,8 +11582,8 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "app_services_razorpay_service_rationale_9",
-      "community": 63,
-      "community_name": "razorpay_service.py",
+      "community": 65,
+      "community_name": "subscription_controller.py",
       "norm_label": "initialize razorpay client with keys from config"
     },
     {
@@ -11593,8 +11593,8 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "app_services_razorpay_service_rationale_19",
-      "community": 63,
-      "community_name": "razorpay_service.py",
+      "community": 65,
+      "community_name": "subscription_controller.py",
       "norm_label": "create a razorpay order for subscription payment args: amount: amount in inr..."
     },
     {
@@ -11604,8 +11604,8 @@
       "source_location": "L53",
       "_origin": "ast",
       "id": "app_services_razorpay_service_rationale_53",
-      "community": 63,
-      "community_name": "razorpay_service.py",
+      "community": 65,
+      "community_name": "subscription_controller.py",
       "norm_label": "verify razorpay payment signature for security args: order_id: razorpay order..."
     },
     {
@@ -11615,8 +11615,8 @@
       "source_location": "L82",
       "_origin": "ast",
       "id": "app_services_razorpay_service_rationale_82",
-      "community": 63,
-      "community_name": "razorpay_service.py",
+      "community": 65,
+      "community_name": "subscription_controller.py",
       "norm_label": "fetch payment details from razorpay args: payment_id: razorpay payment id..."
     },
     {
@@ -11626,8 +11626,8 @@
       "source_location": "L98",
       "_origin": "ast",
       "id": "app_services_razorpay_service_rationale_98",
-      "community": 63,
-      "community_name": "razorpay_service.py",
+      "community": 65,
+      "community_name": "subscription_controller.py",
       "norm_label": "get test price for development mode"
     },
     {
@@ -11637,8 +11637,8 @@
       "source_location": "L104",
       "_origin": "ast",
       "id": "app_services_razorpay_service_rationale_104",
-      "community": 63,
-      "community_name": "razorpay_service.py",
+      "community": 65,
+      "community_name": "subscription_controller.py",
       "norm_label": "get order details from razorpay args: order_id: razorpay order id returns:..."
     },
     {
@@ -11648,7 +11648,7 @@
       "source_location": "L120",
       "_origin": "ast",
       "id": "app_services_razorpay_service_rationale_120",
-      "community": 35,
+      "community": 65,
       "community_name": "subscription_controller.py",
       "norm_label": "get payments attached to an order from razorpay. returns list of payment items."
     },
@@ -11953,7 +11953,7 @@
       "label": "grant()",
       "file_type": "code",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L157",
+      "source_location": "L159",
       "_origin": "ast",
       "id": "app_services_session_extensions_grant",
       "community": 26,
@@ -11964,7 +11964,7 @@
       "label": "accrue()",
       "file_type": "code",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L215",
+      "source_location": "L217",
       "_origin": "ast",
       "id": "app_services_session_extensions_accrue",
       "community": 26,
@@ -11975,7 +11975,7 @@
       "label": "finish()",
       "file_type": "code",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L252",
+      "source_location": "L254",
       "_origin": "ast",
       "id": "app_services_session_extensions_finish",
       "community": 26,
@@ -11986,7 +11986,7 @@
       "label": "continue_session()",
       "file_type": "code",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L293",
+      "source_location": "L295",
       "_origin": "ast",
       "id": "app_services_session_extensions_continue_session",
       "community": 26,
@@ -11997,7 +11997,7 @@
       "label": "receipt()",
       "file_type": "code",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L320",
+      "source_location": "L322",
       "_origin": "ast",
       "id": "app_services_session_extensions_receipt",
       "community": 26,
@@ -12008,7 +12008,7 @@
       "label": "tick()",
       "file_type": "code",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L353",
+      "source_location": "L355",
       "_origin": "ast",
       "id": "app_services_session_extensions_tick",
       "community": 26,
@@ -12019,7 +12019,7 @@
       "label": "dispatch()",
       "file_type": "code",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L412",
+      "source_location": "L414",
       "_origin": "ast",
       "id": "app_services_session_extensions_dispatch",
       "community": 26,
@@ -12030,7 +12030,7 @@
       "label": "stop()",
       "file_type": "code",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L450",
+      "source_location": "L452",
       "_origin": "ast",
       "id": "app_services_session_extensions_stop",
       "community": 26,
@@ -12041,7 +12041,7 @@
       "label": "decide()",
       "file_type": "code",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L468",
+      "source_location": "L470",
       "_origin": "ast",
       "id": "app_services_session_extensions_decide",
       "community": 26,
@@ -12052,7 +12052,7 @@
       "label": "repay_from_topup()",
       "file_type": "code",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L488",
+      "source_location": "L490",
       "_origin": "ast",
       "id": "app_services_session_extensions_repay_from_topup",
       "community": 26,
@@ -12063,7 +12063,7 @@
       "label": "start_worker()",
       "file_type": "code",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L517",
+      "source_location": "L519",
       "_origin": "ast",
       "id": "app_services_session_extensions_start_worker",
       "community": 7,
@@ -12074,7 +12074,7 @@
       "label": "credit_exposure()",
       "file_type": "code",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L531",
+      "source_location": "L533",
       "_origin": "ast",
       "id": "app_services_session_extensions_credit_exposure",
       "community": 26,
@@ -12085,7 +12085,7 @@
       "label": "quoted_amount()",
       "file_type": "code",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L537",
+      "source_location": "L539",
       "_origin": "ast",
       "id": "app_services_session_extensions_quoted_amount",
       "community": 29,
@@ -12096,7 +12096,7 @@
       "label": "seen()",
       "file_type": "code",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L551",
+      "source_location": "L553",
       "_origin": "ast",
       "id": "app_services_session_extensions_seen",
       "community": 26,
@@ -12107,7 +12107,7 @@
       "label": "release_base_booking()",
       "file_type": "code",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L561",
+      "source_location": "L563",
       "_origin": "ast",
       "id": "app_services_session_extensions_release_base_booking",
       "community": 26,
@@ -12118,11 +12118,11 @@
       "label": "financial_totals()",
       "file_type": "code",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L579",
+      "source_location": "L581",
       "_origin": "ast",
       "id": "app_services_session_extensions_financial_totals",
       "community": 5,
-      "community_name": "get_landing_page_vendor",
+      "community_name": "app/routes.py",
       "norm_label": "financial_totals()"
     },
     {
@@ -12140,9 +12140,9 @@
       "label": "Allocate a desk top-up to existing cafe debt before spendable funds.",
       "file_type": "rationale",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L489",
+      "source_location": "L491",
       "_origin": "ast",
-      "id": "app_services_session_extensions_rationale_489",
+      "id": "app_services_session_extensions_rationale_491",
       "community": 26,
       "community_name": "session_extensions.py",
       "norm_label": "allocate a desk top-up to existing cafe debt before spendable funds."
@@ -12151,9 +12151,9 @@
       "label": "Independent of legacy expiry feature flags; multiple workers serialize rows.",
       "file_type": "rationale",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L518",
+      "source_location": "L520",
       "_origin": "ast",
-      "id": "app_services_session_extensions_rationale_518",
+      "id": "app_services_session_extensions_rationale_520",
       "community": 7,
       "community_name": "Flask",
       "norm_label": "independent of legacy expiry feature flags; multiple workers serialize rows."
@@ -12162,9 +12162,9 @@
       "label": "One base capacity release per booking/device, shared with cancellation paths.",
       "file_type": "rationale",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L562",
+      "source_location": "L564",
       "_origin": "ast",
-      "id": "app_services_session_extensions_rationale_562",
+      "id": "app_services_session_extensions_rationale_564",
       "community": 26,
       "community_name": "session_extensions.py",
       "norm_label": "one base capacity release per booking/device, shared with cancellation paths."
@@ -12173,11 +12173,11 @@
       "label": "Extension revenue once at capture/accrual; collections are not new revenue.",
       "file_type": "rationale",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L580",
+      "source_location": "L582",
       "_origin": "ast",
-      "id": "app_services_session_extensions_rationale_580",
+      "id": "app_services_session_extensions_rationale_582",
       "community": 5,
-      "community_name": "get_landing_page_vendor",
+      "community_name": "app/routes.py",
       "norm_label": "extension revenue once at capture/accrual; collections are not new revenue."
     },
     {
@@ -12341,8 +12341,8 @@
       "source_location": "L35",
       "_origin": "ast",
       "id": "app_services_subscription_commerce_terms",
-      "community": 35,
-      "community_name": "subscription_controller.py",
+      "community": 41,
+      "community_name": "subscription_commerce.py",
       "norm_label": "terms()"
     },
     {
@@ -12485,7 +12485,7 @@
       "_origin": "ast",
       "id": "app_services_subscription_service",
       "community": 65,
-      "community_name": "subscription_service.py",
+      "community_name": "subscription_controller.py",
       "norm_label": "subscription_service.py"
     },
     {
@@ -12496,7 +12496,7 @@
       "_origin": "ast",
       "id": "app_services_subscription_service_normalize_billing_cycle",
       "community": 65,
-      "community_name": "subscription_service.py",
+      "community_name": "subscription_controller.py",
       "norm_label": "normalize_billing_cycle()"
     },
     {
@@ -12507,7 +12507,7 @@
       "_origin": "ast",
       "id": "app_services_subscription_service_get_subscription_duration",
       "community": 65,
-      "community_name": "subscription_service.py",
+      "community_name": "subscription_controller.py",
       "norm_label": "get_subscription_duration()"
     },
     {
@@ -12518,7 +12518,7 @@
       "_origin": "ast",
       "id": "app_services_subscription_service_get_package_price_for_cycle",
       "community": 65,
-      "community_name": "subscription_service.py",
+      "community_name": "subscription_controller.py",
       "norm_label": "get_package_price_for_cycle()"
     },
     {
@@ -12551,7 +12551,7 @@
       "_origin": "ast",
       "id": "app_services_subscription_service_is_subscription_active",
       "community": 35,
-      "community_name": "subscription_controller.py",
+      "community_name": "is_subscription_active",
       "norm_label": "is_subscription_active()"
     },
     {
@@ -12562,7 +12562,7 @@
       "_origin": "ast",
       "id": "app_services_subscription_service_purchased_terms",
       "community": 65,
-      "community_name": "subscription_service.py",
+      "community_name": "subscription_controller.py",
       "norm_label": "purchased_terms()"
     },
     {
@@ -12573,7 +12573,7 @@
       "_origin": "ast",
       "id": "app_services_subscription_service_provision_default_subscription",
       "community": 65,
-      "community_name": "subscription_service.py",
+      "community_name": "subscription_controller.py",
       "norm_label": "provision_default_subscription()"
     },
     {
@@ -12584,7 +12584,7 @@
       "_origin": "ast",
       "id": "app_services_subscription_service_create_subscription",
       "community": 65,
-      "community_name": "subscription_service.py",
+      "community_name": "subscription_controller.py",
       "norm_label": "create_subscription()"
     },
     {
@@ -12595,7 +12595,7 @@
       "_origin": "ast",
       "id": "app_services_subscription_service_renew_subscription",
       "community": 65,
-      "community_name": "subscription_service.py",
+      "community_name": "subscription_controller.py",
       "norm_label": "renew_subscription()"
     },
     {
@@ -12606,7 +12606,7 @@
       "_origin": "ast",
       "id": "app_services_subscription_service_change_subscription",
       "community": 65,
-      "community_name": "subscription_service.py",
+      "community_name": "subscription_controller.py",
       "norm_label": "change_subscription()"
     },
     {
@@ -12616,8 +12616,8 @@
       "source_location": "L394",
       "_origin": "ast",
       "id": "app_services_subscription_service_get_vendor_pc_limit",
-      "community": 72,
-      "community_name": "link_service.py",
+      "community": 41,
+      "community_name": "subscription_commerce.py",
       "norm_label": "get_vendor_pc_limit()"
     },
     {
@@ -12639,7 +12639,7 @@
       "_origin": "ast",
       "id": "app_services_subscription_service_get_package_price",
       "community": 65,
-      "community_name": "subscription_service.py",
+      "community_name": "subscription_controller.py",
       "norm_label": "get_package_price()"
     },
     {
@@ -12650,7 +12650,7 @@
       "_origin": "ast",
       "id": "app_services_subscription_service_rationale_27",
       "community": 65,
-      "community_name": "subscription_service.py",
+      "community_name": "subscription_controller.py",
       "norm_label": "get subscription duration based on environment returns: timedelta object"
     },
     {
@@ -12672,7 +12672,7 @@
       "_origin": "ast",
       "id": "app_services_subscription_service_rationale_84",
       "community": 35,
-      "community_name": "subscription_controller.py",
+      "community_name": "is_subscription_active",
       "norm_label": "check if vendor has an active, non-expired subscription returns: tuple: (bool:..."
     },
     {
@@ -12683,7 +12683,7 @@
       "_origin": "ast",
       "id": "app_services_subscription_service_rationale_116",
       "community": 65,
-      "community_name": "subscription_service.py",
+      "community_name": "subscription_controller.py",
       "norm_label": "create default subscription for new vendor used during vendor onboarding"
     },
     {
@@ -12694,7 +12694,7 @@
       "_origin": "ast",
       "id": "app_services_subscription_service_rationale_151",
       "community": 65,
-      "community_name": "subscription_service.py",
+      "community_name": "subscription_controller.py",
       "norm_label": "create a new subscription after successful payment args: vendor_id: vendor id..."
     },
     {
@@ -12705,7 +12705,7 @@
       "_origin": "ast",
       "id": "app_services_subscription_service_rationale_226",
       "community": 65,
-      "community_name": "subscription_service.py",
+      "community_name": "subscription_controller.py",
       "norm_label": "renew existing subscription (keeps same package) args: vendor_id: vendor id..."
     },
     {
@@ -12716,7 +12716,7 @@
       "_origin": "ast",
       "id": "app_services_subscription_service_rationale_313",
       "community": 65,
-      "community_name": "subscription_service.py",
+      "community_name": "subscription_controller.py",
       "norm_label": "change vendor's subscription package (admin function)"
     },
     {
@@ -12726,8 +12726,8 @@
       "source_location": "L395",
       "_origin": "ast",
       "id": "app_services_subscription_service_rationale_395",
-      "community": 72,
-      "community_name": "link_service.py",
+      "community": 41,
+      "community_name": "subscription_commerce.py",
       "norm_label": "get pc limit for vendor based on their subscription expired or missing..."
     },
     {
@@ -12749,7 +12749,7 @@
       "_origin": "ast",
       "id": "app_services_subscription_service_rationale_445",
       "community": 65,
-      "community_name": "subscription_service.py",
+      "community_name": "subscription_controller.py",
       "norm_label": "get price for a package, respecting dev mode args: package_code: package code..."
     },
     {
@@ -37763,7 +37763,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L266",
+      "source_location": "L268",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions",
@@ -38481,7 +38481,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L582",
+      "source_location": "L584",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions",
@@ -38812,7 +38812,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L279",
+      "source_location": "L281",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions",
@@ -42842,7 +42842,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L204",
+      "source_location": "L206",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_grant",
@@ -42866,7 +42866,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L189",
+      "source_location": "L191",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_grant",
@@ -42950,7 +42950,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L340",
+      "source_location": "L342",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_receipt",
@@ -42962,7 +42962,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L505",
+      "source_location": "L507",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_repay_from_topup",
@@ -42974,7 +42974,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L451",
+      "source_location": "L453",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions",
@@ -42986,7 +42986,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L480",
+      "source_location": "L482",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_decide",
@@ -42998,7 +42998,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L459",
+      "source_location": "L461",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_stop",
@@ -43022,7 +43022,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L241",
+      "source_location": "L243",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_accrue",
@@ -43034,7 +43034,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L337",
+      "source_location": "L339",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_receipt",
@@ -43046,7 +43046,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L499",
+      "source_location": "L501",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_repay_from_topup",
@@ -43058,7 +43058,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L563",
+      "source_location": "L565",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions",
@@ -43070,7 +43070,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L576",
+      "source_location": "L578",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_release_base_booking",
@@ -46888,7 +46888,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L423",
+      "source_location": "L425",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions",
@@ -46900,7 +46900,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L424",
+      "source_location": "L426",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_dispatch",
@@ -50576,7 +50576,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L438",
+      "source_location": "L440",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions",
@@ -50588,7 +50588,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L440",
+      "source_location": "L442",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_dispatch",
@@ -51420,7 +51420,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L545",
+      "source_location": "L547",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_quoted_amount",
@@ -51864,7 +51864,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L169",
+      "source_location": "L171",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_grant",
@@ -51984,7 +51984,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L168",
+      "source_location": "L170",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_grant",
@@ -52056,7 +52056,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L202",
+      "source_location": "L204",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_grant",
@@ -52116,7 +52116,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L258",
+      "source_location": "L260",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_finish",
@@ -52200,7 +52200,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L166",
+      "source_location": "L168",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_grant",
@@ -52224,7 +52224,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L544",
+      "source_location": "L546",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_quoted_amount",
@@ -52863,7 +52863,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L297",
+      "source_location": "L299",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_continue_session",
@@ -52875,7 +52875,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L473",
+      "source_location": "L475",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_decide",
@@ -52887,7 +52887,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L158",
+      "source_location": "L160",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_grant",
@@ -52935,7 +52935,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L325",
+      "source_location": "L327",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_receipt",
@@ -52947,7 +52947,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L573",
+      "source_location": "L575",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_release_base_booking",
@@ -52959,7 +52959,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L455",
+      "source_location": "L457",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_stop",
@@ -53019,7 +53019,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L321",
+      "source_location": "L323",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_receipt",
@@ -53079,7 +53079,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L231",
+      "source_location": "L233",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_accrue",
@@ -53091,7 +53091,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L294",
+      "source_location": "L296",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_continue_session",
@@ -53103,7 +53103,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L470",
+      "source_location": "L472",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_decide",
@@ -53115,7 +53115,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L209",
+      "source_location": "L211",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_grant",
@@ -53127,7 +53127,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L322",
+      "source_location": "L324",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_receipt",
@@ -53139,7 +53139,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L500",
+      "source_location": "L502",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_repay_from_topup",
@@ -53151,7 +53151,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L452",
+      "source_location": "L454",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_stop",
@@ -53211,7 +53211,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L294",
+      "source_location": "L296",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_continue_session",
@@ -53223,7 +53223,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L470",
+      "source_location": "L472",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_decide",
@@ -53235,7 +53235,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L321",
+      "source_location": "L323",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_receipt",
@@ -53247,7 +53247,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L452",
+      "source_location": "L454",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_stop",
@@ -53343,7 +53343,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L306",
+      "source_location": "L308",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_continue_session",
@@ -53355,7 +53355,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L485",
+      "source_location": "L487",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_decide",
@@ -53367,7 +53367,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L349",
+      "source_location": "L351",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_receipt",
@@ -53451,7 +53451,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L217",
+      "source_location": "L219",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_accrue",
@@ -53475,7 +53475,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L160",
+      "source_location": "L162",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_grant",
@@ -53511,7 +53511,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L339",
+      "source_location": "L341",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_receipt",
@@ -53523,7 +53523,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L381",
+      "source_location": "L383",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_tick",
@@ -53595,7 +53595,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L230",
+      "source_location": "L232",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_accrue",
@@ -53607,7 +53607,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L208",
+      "source_location": "L210",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_grant",
@@ -53619,7 +53619,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L343",
+      "source_location": "L345",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_receipt",
@@ -53631,7 +53631,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L503",
+      "source_location": "L505",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_repay_from_topup",
@@ -53763,7 +53763,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L262",
+      "source_location": "L264",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions",
@@ -53775,7 +53775,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L263",
+      "source_location": "L265",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_finish",
@@ -56504,7 +56504,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L265",
+      "source_location": "L267",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions",
@@ -58577,7 +58577,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L215",
+      "source_location": "L217",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions",
@@ -58610,7 +58610,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L293",
+      "source_location": "L295",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions",
@@ -58621,7 +58621,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L531",
+      "source_location": "L533",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions",
@@ -58643,7 +58643,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L468",
+      "source_location": "L470",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions",
@@ -58654,7 +58654,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L412",
+      "source_location": "L414",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions",
@@ -58665,7 +58665,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L579",
+      "source_location": "L581",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions",
@@ -58676,7 +58676,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L252",
+      "source_location": "L254",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions",
@@ -58687,7 +58687,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L157",
+      "source_location": "L159",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions",
@@ -58742,7 +58742,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L537",
+      "source_location": "L539",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions",
@@ -58764,7 +58764,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L320",
+      "source_location": "L322",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions",
@@ -58775,7 +58775,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L561",
+      "source_location": "L563",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions",
@@ -58786,7 +58786,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L488",
+      "source_location": "L490",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions",
@@ -58797,7 +58797,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L551",
+      "source_location": "L553",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions",
@@ -58852,7 +58852,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L517",
+      "source_location": "L519",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions",
@@ -58863,7 +58863,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L450",
+      "source_location": "L452",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions",
@@ -58874,7 +58874,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L353",
+      "source_location": "L355",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions",
@@ -58897,7 +58897,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L354",
+      "source_location": "L356",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions",
@@ -58909,7 +58909,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L564",
+      "source_location": "L566",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions",
@@ -58921,7 +58921,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L564",
+      "source_location": "L566",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions",
@@ -58956,7 +58956,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L241",
+      "source_location": "L243",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_accrue",
@@ -58992,7 +58992,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L189",
+      "source_location": "L191",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_grant",
@@ -59028,7 +59028,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L337",
+      "source_location": "L339",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_receipt",
@@ -59040,7 +59040,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L499",
+      "source_location": "L501",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_repay_from_topup",
@@ -59052,7 +59052,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L427",
+      "source_location": "L429",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_dispatch",
@@ -59064,7 +59064,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L186",
+      "source_location": "L188",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_grant",
@@ -59100,7 +59100,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L413",
+      "source_location": "L415",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_dispatch",
@@ -59112,7 +59112,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L490",
+      "source_location": "L492",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_repay_from_topup",
@@ -59124,7 +59124,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L356",
+      "source_location": "L358",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_tick",
@@ -59148,7 +59148,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L174",
+      "source_location": "L176",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_grant",
@@ -59160,7 +59160,19 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L381",
+      "source_location": "L155",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "app_services_session_extensions_quote",
+      "target": "app_services_session_extensions_settings",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "app/services/session_extensions.py",
+      "source_location": "L383",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_tick",
@@ -59172,7 +59184,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L240",
+      "source_location": "L242",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_accrue",
@@ -59184,7 +59196,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L317",
+      "source_location": "L319",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_continue_session",
@@ -59196,7 +59208,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L482",
+      "source_location": "L484",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_decide",
@@ -59208,7 +59220,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L290",
+      "source_location": "L292",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_finish",
@@ -59220,7 +59232,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L196",
+      "source_location": "L198",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_grant",
@@ -59232,7 +59244,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L378",
+      "source_location": "L380",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_tick",
@@ -59256,7 +59268,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L218",
+      "source_location": "L220",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_accrue",
@@ -59268,7 +59280,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L263",
+      "source_location": "L265",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_finish",
@@ -59280,7 +59292,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L332",
+      "source_location": "L334",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_receipt",
@@ -59292,7 +59304,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L495",
+      "source_location": "L497",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_repay_from_topup",
@@ -59316,7 +59328,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L361",
+      "source_location": "L363",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_tick",
@@ -59352,7 +59364,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L317",
+      "source_location": "L319",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_continue_session",
@@ -59364,7 +59376,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L482",
+      "source_location": "L484",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_decide",
@@ -59376,7 +59388,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L290",
+      "source_location": "L292",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_finish",
@@ -59388,7 +59400,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L197",
+      "source_location": "L199",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_grant",
@@ -59400,7 +59412,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L349",
+      "source_location": "L351",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_receipt",
@@ -59412,7 +59424,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L512",
+      "source_location": "L514",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_repay_from_topup",
@@ -59424,7 +59436,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L558",
+      "source_location": "L560",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_seen",
@@ -59436,7 +59448,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L464",
+      "source_location": "L466",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_stop",
@@ -59448,7 +59460,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L378",
+      "source_location": "L380",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_tick",
@@ -59472,7 +59484,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L360",
+      "source_location": "L362",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_tick",
@@ -59496,7 +59508,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L390",
+      "source_location": "L392",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_tick",
@@ -59508,7 +59520,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L310",
+      "source_location": "L312",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_continue_session",
@@ -59520,7 +59532,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L484",
+      "source_location": "L486",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_decide",
@@ -59532,7 +59544,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L179",
+      "source_location": "L181",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_grant",
@@ -59544,7 +59556,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L161",
+      "source_location": "L163",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_grant",
@@ -59556,7 +59568,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L384",
+      "source_location": "L386",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_tick",
@@ -59568,7 +59580,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L255",
+      "source_location": "L257",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_finish",
@@ -59580,7 +59592,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L362",
+      "source_location": "L364",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_tick",
@@ -59592,7 +59604,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L274",
+      "source_location": "L276",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_finish",
@@ -59604,7 +59616,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L460",
+      "source_location": "L462",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_stop",
@@ -59616,7 +59628,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L365",
+      "source_location": "L367",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_tick",
@@ -59628,7 +59640,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L382",
+      "source_location": "L384",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_tick",
@@ -59640,7 +59652,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L409",
+      "source_location": "L411",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_tick",
@@ -59652,7 +59664,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L355",
+      "source_location": "L357",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_tick",
@@ -59675,10 +59687,10 @@
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L489",
+      "source_location": "L491",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "app_services_session_extensions_rationale_489",
+      "source": "app_services_session_extensions_rationale_491",
       "target": "app_services_session_extensions_repay_from_topup",
       "confidence_score": 1.0
     },
@@ -59686,10 +59698,10 @@
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L518",
+      "source_location": "L520",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "app_services_session_extensions_rationale_518",
+      "source": "app_services_session_extensions_rationale_520",
       "target": "app_services_session_extensions_start_worker",
       "confidence_score": 1.0
     },
@@ -59697,10 +59709,10 @@
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L562",
+      "source_location": "L564",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "app_services_session_extensions_rationale_562",
+      "source": "app_services_session_extensions_rationale_564",
       "target": "app_services_session_extensions_release_base_booking",
       "confidence_score": 1.0
     },
@@ -59709,7 +59721,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L567",
+      "source_location": "L569",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_release_base_booking",
@@ -59721,7 +59733,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L574",
+      "source_location": "L576",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_services_session_extensions_release_base_booking",
@@ -59732,10 +59744,10 @@
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "app/services/session_extensions.py",
-      "source_location": "L580",
+      "source_location": "L582",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "app_services_session_extensions_rationale_580",
+      "source": "app_services_session_extensions_rationale_582",
       "target": "app_services_session_extensions_financial_totals",
       "confidence_score": 1.0
     },
