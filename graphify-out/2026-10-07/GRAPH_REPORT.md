@@ -1,11 +1,11 @@
 # Graph Report - hfg-dashboard-service  (2026-10-07)
 
 ## Corpus Check
-- 187 files · ~95,271 words
+- 187 files · ~95,273 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1592 nodes · 4548 edges · 102 communities (89 shown, 13 thin omitted)
+- 1592 nodes · 4549 edges · 100 communities (87 shown, 13 thin omitted)
 - Extraction: 98% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 105 edges (avg confidence: 0.6)
 - Token cost: 0 input · 0 output
 
@@ -20,7 +20,7 @@
 - vendor.py
 - test_console_pricing.py
 - tournament_engine_service.py
-- get_landing_page_vendor
+- app/routes.py
 - ExtraServiceService
 - Flask
 - KioskTests
@@ -47,10 +47,10 @@
 - local_window
 - date
 - 20260922_cafe_wallet.sql
-- app/routes.py
+- route
 - Self QR sessions, owner-approved continuation and balance due
 - tournament_matches
-- subscription_controller.py
+- is_subscription_active
 - get_vendor_dashboard
 - session_extensions_controller.py
 - CafeError
@@ -58,22 +58,21 @@
 - Cafe wallets: read-only mobile app APIs
 - subscription_commerce.py
 - vendor_console_overrides
-- VendorProfileImage
+- CloudinaryProfileImageService
 - _invalidate_vendor_caches
 - vendor_notification_preferences
 - AGENTS.md
 - extra_service_menus
 - registrations
-- razorpay_service.py
+- CloudinaryMenuImageService
 - cafePass.py
-- subscription_service.py
+- subscription_controller.py
 - UserPass
 - test_qr_input.py
 - booking_bridge_controller.py
 - 20260923_unified_kiosk_qr.sql
 - 20261002_shared_slot_reservations.sql
 - route
-- link_service.py
 - Subscription packages, purchases and kiosk licences
 - route
 - Console and cafe-wallet pricing
@@ -89,7 +88,6 @@
 - RAWGSyncService
 - BankTransferDetails
 - datetime
-- Website
 - get_ist_now
 - Kiosk session extensions v1 — implemented backend contract
 - get_all_games
@@ -125,7 +123,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (102 total, 13 thin omitted)
+## Communities (100 total, 13 thin omitted)
 
 ### Community 0 - "event_controller.py"
 Cohesion: 0.06
@@ -136,8 +134,8 @@ Cohesion: 0.10
 Nodes (39): _auth_debug(), create_staff_member(), delete_staff_member(), _ensure_vendor_exists(), get_permissions(), issue_owner_session(), list_staff(), delete (+31 more)
 
 ### Community 2 - "vendor.py"
-Cohesion: 0.12
-Nodes (21): BusinessRegistration, Document, DocumentSubmitted, OpeningDay, add_console(), check_db_connection(), delete_console(), get_all_device_for_vendor() (+13 more)
+Cohesion: 0.10
+Nodes (23): BusinessRegistration, Document, DocumentSubmitted, OpeningDay, add_console(), check_db_connection(), delete_console(), get_all_device_for_vendor() (+15 more)
 
 ### Community 3 - "test_console_pricing.py"
 Cohesion: 0.12
@@ -147,13 +145,13 @@ Nodes (14): offer(), pricing_api(), fixture, parametrize, Pricing and real walle
 Cohesion: 0.11
 Nodes (47): admin_match_result(), close_event_check_in(), _emit(), _event_for_vendor(), generate_bracket(), get_event_bracket(), get_event_matches(), open_event_check_in() (+39 more)
 
-### Community 5 - "get_landing_page_vendor"
-Cohesion: 0.22
-Nodes (9): _build_session_identifier(), _derive_booking_outcome(), get_landing_page_vendor(), _normalize_lifecycle(), _normalize_status_key(), Fetches vendor dashboard data including stats, booking stats, upcoming…, A clock boundary never completes a started session., financial_totals() (+1 more)
+### Community 5 - "app/routes.py"
+Cohesion: 0.08
+Nodes (28): PhysicalAddress, Transaction, VendorDaySlotConfig, VendorTaxProfile, _build_session_identifier(), _coerce_bool(), _default_vendor_notification_preferences(), _derive_booking_outcome() (+20 more)
 
 ### Community 6 - "ExtraServiceService"
-Cohesion: 0.08
-Nodes (20): Amenity, ExtraServiceCategory, ExtraServiceMenu, ExtraServiceMenuImage, add_extra_service_menu(), CloudinaryMenuImageService, Delete menu item image from Cloudinary, Service for handling menu cover images Images are uploaded to the 'poc' folder (+12 more)
+Cohesion: 0.09
+Nodes (21): Amenity, ExtraServiceCategory, ExtraServiceMenu, ExtraServiceMenuImage, add_extra_service_category(), add_extra_service_menu(), delete_category(), delete_extra_service_category() (+13 more)
 
 ### Community 7 - "Flask"
 Cohesion: 0.05
@@ -176,8 +174,8 @@ Cohesion: 0.13
 Nodes (57): adjust_wallet(), agent_qr(), audit_history(), cafe_customer_ids(), cafe_error(), checkout(), checkout_details(), checkout_info() (+49 more)
 
 ### Community 13 - "passModels.py"
-Cohesion: 0.14
-Nodes (5): CafePass, PassRedemptionLog, PassType, Generate unique pass UID for hour-based passes, UserPass
+Cohesion: 0.11
+Nodes (9): CafePass, PassRedemptionLog, PassType, Generate unique pass UID for hour-based passes, UserPass, add_pass_type(), create_hash_pass(), create_vendor_pass() (+1 more)
 
 ### Community 14 - "review_controller.py"
 Cohesion: 0.32
@@ -204,8 +202,8 @@ Cohesion: 0.12
 Nodes (12): AvailableGame, Console, Game, ProvisionalResult, Serialize VendorGame — price is always dynamically computed, Dynamically compute price from parent AvailableGame. - If an active…, Returns full pricing context: base price, offer price, offer details. Useful…, VendorGame (+4 more)
 
 ### Community 20 - "test_subscription_commerce.py"
-Cohesion: 0.24
-Nodes (26): auth(), captured(), commerce(), finish(), pay(), preview(), fixture, parametrize (+18 more)
+Cohesion: 0.14
+Nodes (37): get_pcs(), link_pc(), get, post, unlink_pc(), vendor_required(), close_link(), count_active_links() (+29 more)
 
 ### Community 21 - "CloudinaryGameImageService"
 Cohesion: 0.11
@@ -251,9 +249,9 @@ Nodes (6): _vendor_slot_availability(), date, test_dated_session_slots_cover_mid
 Cohesion: 0.38
 Nodes (3): cafe_audit_immutable, cafe_ledger_immutable, cafe_reject_history_mutation()
 
-### Community 32 - "app/routes.py"
-Cohesion: 0.05
-Nodes (58): Transaction, VendorDaySlotConfig, VendorTaxProfile, add_console(), add_extra_service_category(), add_pass_type(), check_db_connection(), _coerce_bool() (+50 more)
+### Community 32 - "route"
+Cohesion: 0.07
+Nodes (30): check_db_connection(), create_category(), create_menu_item(), get_all_device_for_vendor(), get_booking_details(), get_console(), get_console_pricing(), get_console_types() (+22 more)
 
 ### Community 33 - "Self QR sessions, owner-approved continuation and balance due"
 Cohesion: 0.29
@@ -263,9 +261,9 @@ Nodes (6): Billing and availability, Gamer / web QR endpoints, Kiosk / PC agent 
 Cohesion: 0.58
 Nodes (8): events, map_veto_actions, match_disputes, match_participants, match_result_submissions, tournament_matches, tournament_seeds, teams
 
-### Community 35 - "subscription_controller.py"
-Cohesion: 0.09
-Nodes (36): authorize_subscription(), change(), check_payment_status(), check_subscription_status(), create_payment_order(), debug_force_expire(), get_limit(), get_subscription() (+28 more)
+### Community 35 - "is_subscription_active"
+Cohesion: 0.08
+Nodes (29): authorize_subscription(), change(), check_subscription_status(), create_payment_order(), debug_force_expire(), get_limit(), get_subscription(), get_subscription_history() (+21 more)
 
 ### Community 36 - "get_vendor_dashboard"
 Cohesion: 0.25
@@ -288,28 +286,28 @@ Cohesion: 0.11
 Nodes (16): 1. List my cafe wallets, 2. Balance at a specific cafe, 3. Cafe wallet transaction history, App screen flow, Authentication and hosts, Backend release, Cafe wallets: read-only mobile app APIs, Errors (+8 more)
 
 ### Community 41 - "subscription_commerce.py"
-Cohesion: 0.19
-Nodes (16): SubscriptionCheckout, activate(), billing_datetime(), check_base(), paise(), preview(), public_quote(), Server-priced subscription quotes, prorated upgrades and immutable invoices. (+8 more)
+Cohesion: 0.18
+Nodes (19): SubscriptionCheckout, activate(), billing_datetime(), check_base(), paise(), preview(), public_quote(), Server-priced subscription quotes, prorated upgrades and immutable invoices. (+11 more)
 
 ### Community 42 - "vendor_console_overrides"
 Cohesion: 0.67
 Nodes (3): console_catalog, vendors, vendor_console_overrides
 
-### Community 43 - "VendorProfileImage"
-Cohesion: 0.12
-Nodes (12): VendorProfileImage, delete_vendor_profile_image(), Upload profile image to Cloudinary and update VendorProfileImage table. Creates…, Delete vendor's profile image, update_profile_image(), CloudinaryProfileImageService, Cloudinary service for handling vendor profile images Images are uploaded to…, Delete profile image from Cloudinary (+4 more)
+### Community 43 - "CloudinaryProfileImageService"
+Cohesion: 0.15
+Nodes (11): delete_vendor_profile_image(), Upload profile image to Cloudinary and update VendorProfileImage table. Creates…, Delete vendor's profile image, update_profile_image(), CloudinaryProfileImageService, Cloudinary service for handling vendor profile images Images are uploaded to…, Delete profile image from Cloudinary, Service to handle vendor profile image uploads. Images are stored in… (+3 more)
 
 ### Community 44 - "_invalidate_vendor_caches"
-Cohesion: 0.13
-Nodes (21): assign_console_to_multiple_bookings(), _assign_console_to_multiple_bookings_core(), _booking_start_eligibility(), create_vendor_pass(), delete_vendor_pass(), get_device_for_console_type(), _invalidate_vendor_caches(), kiosk_start_session() (+13 more)
+Cohesion: 0.12
+Nodes (22): add_console(), assign_console_to_multiple_bookings(), _assign_console_to_multiple_bookings_core(), _booking_start_eligibility(), delete_console(), delete_vendor_pass(), get_device_for_console_type(), _invalidate_vendor_caches() (+14 more)
 
-### Community 63 - "razorpay_service.py"
-Cohesion: 0.19
-Nodes (12): create_order(), get_order_details(), get_payment_details(), get_razorpay_client(), get_test_price(), Get order details from Razorpay Args: order_id: Razorpay order ID Returns:…, Create a Razorpay order for subscription payment Args: amount: Amount in INR…, Verify Razorpay payment signature for security Args: order_id: Razorpay order… (+4 more)
+### Community 63 - "CloudinaryMenuImageService"
+Cohesion: 0.24
+Nodes (6): CloudinaryMenuImageService, Delete menu item image from Cloudinary, Service for handling menu cover images Images are uploaded to the 'poc' folder, Checking if Cloudinary credentials are available, Initialize Cloudinary configuration, Upload menu item image to Cloudinary
 
-### Community 65 - "subscription_service.py"
-Cohesion: 0.22
-Nodes (18): Verify Razorpay payment signature and activate subscription Request body: {…, verify_and_activate(), Subscription, change_subscription(), create_subscription(), get_package_price(), get_package_price_for_cycle(), get_subscription_duration() (+10 more)
+### Community 65 - "subscription_controller.py"
+Cohesion: 0.11
+Nodes (36): check_payment_status(), provision_default(), Provision default subscription for new vendor, Verify Razorpay payment signature and activate subscription Request body: {…, Check if a payment has been made for an order Used for QR code payments where…, verify_and_activate(), Subscription, create_order() (+28 more)
 
 ### Community 67 - "test_qr_input.py"
 Cohesion: 0.22
@@ -326,10 +324,6 @@ Nodes (4): pg_tables, cafe_guard_assignment(), cafe_install_console_guards(), ca
 ### Community 71 - "route"
 Cohesion: 0.15
 Nodes (16): add_game_to_consoles(), bulk_delete_game(), delete_vendor_game(), get_available_games(), get_consoles_by_platform(), get_game_details(), list_vendor_games(), _offer_is_active_now() (+8 more)
-
-### Community 72 - "link_service.py"
-Cohesion: 0.30
-Nodes (13): get_pcs(), link_pc(), get, post, unlink_pc(), vendor_required(), close_link(), count_active_links() (+5 more)
 
 ### Community 73 - "Subscription packages, purchases and kiosk licences"
 Cohesion: 0.25
@@ -383,10 +377,6 @@ Nodes (15): BankTransferDetails, PayoutTransaction, Return masked account number
 Cohesion: 0.26
 Nodes (5): _get_next_slot_for_today(), datetime, Adding hardware must not revive historical schedules or reset held capacity., EarlyStartTests, Check the dashboard's production eligibility rule without booting services.
 
-### Community 92 - "Website"
-Cohesion: 0.25
-Nodes (4): PhysicalAddress, Website, Update vendor business details including website, phone, email, and address, update_business_details()
-
 ### Community 94 - "get_ist_now"
 Cohesion: 0.33
 Nodes (6): delete_pricing_offer(), get_ist_now(), Returns current datetime in IST, Update an existing pricing offer, Soft delete — deactivates the pricing offer, update_pricing_offer()
@@ -411,7 +401,7 @@ Nodes (3): accepted_methods(), canonical_method(), require_method()
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `Vendor` connect `vendor.py` to `access_controller.py`, `ExtraServiceService`, `Flask`, `auth`, `cafe_wallet_controller.py`, `cafe_wallet_service.py`, `test_subscription_checkout.py`, `extensions.py`, `test_subscription_commerce.py`, `commands.py`, `app/routes.py`, `session_extensions_controller.py`, `CafeError`, `subscription_commerce.py`, `VendorProfileImage`, `subscription_service.py`, `link_service.py`, `pricingController.py`, `BankTransferDetails`, `Website`?**
+- **Why does `Vendor` connect `vendor.py` to `access_controller.py`, `subscription_controller.py`, `session_extensions_controller.py`, `ExtraServiceService`, `Flask`, `app/routes.py`, `CafeError`, `auth`, `subscription_commerce.py`, `cafe_wallet_controller.py`, `cafe_wallet_service.py`, `test_subscription_checkout.py`, `pricingController.py`, `extensions.py`, `test_subscription_commerce.py`, `commands.py`, `BankTransferDetails`?**
   _High betweenness centrality (0.033) - this node is a cross-community bridge._
 - **Why does `KioskTests` connect `KioskTests` to `date`, `test_kiosk_runtime.py`?**
   _High betweenness centrality (0.032) - this node is a cross-community bridge._

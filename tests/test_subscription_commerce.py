@@ -268,3 +268,18 @@ def test_add_pc_quote_with_five_digit_fractional_billing_dates(commerce, monkeyp
     assert response.status_code==201,response.json
     assert response.json['amount_paise']==1000
     assert service.billing_datetime(response.json['period_end'])==service._as_utc(sub.current_period_end)
+
+
+def test_resume_reconciles_captured_order_without_creating_another(commerce):
+    a=commerce;q=preview(a);assert pay(a,q).status_code==200
+    routes.gateway.get_order_payments.return_value=[captured(a,q)]
+    response=pay(a,q)
+    assert response.status_code==200 and response.json['state']=='paid'
+    routes.gateway.create_order.assert_called_once()
+    assert SubscriptionCheckout.query.get(q['id']).payment_id=='pay_'+q['id']
+
+def test_resume_unpaid_order_reuses_same_order(commerce):
+    a=commerce;q=preview(a);first=pay(a,q);second=pay(a,q)
+    assert first.json['order_id']==second.json['order_id']=='order_new'
+    assert second.json['state']=='ordered'
+    routes.gateway.create_order.assert_called_once()

@@ -925,8 +925,8 @@
     "semantic_hash": ""
   },
   "app/services/session_extensions.py": {
-    "mtime": 1791399197.672641,
-    "ast_hash": "46a351680c3dc809d2d61e1c963313d6",
+    "mtime": 1791399309.3631616,
+    "ast_hash": "65ced12d9edbe1606dee6474ec777b0c",
     "semantic_hash": ""
   },
   "app/services/session_realtime.py": {
