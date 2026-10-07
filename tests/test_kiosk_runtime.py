@@ -247,7 +247,7 @@ class KioskTests(unittest.TestCase):
 
     def test_expiry_preserves_contiguous_paid_session(self):
         db.session.execute(text("UPDATE vendor_1_dashboard SET end_time=:end"), {'end':self.start.time()})
-        db.session.execute(text("UPDATE vendor_1_dashboard SET start_time=:start"), {'start':(self.start-timedelta(minutes=20)).time()})
+        db.session.execute(text("UPDATE vendor_1_dashboard SET date=:day,start_time=:start"), {'day':(self.start-timedelta(minutes=20)).date(),'start':(self.start-timedelta(minutes=20)).time()})
         db.session.execute(text("INSERT INTO bookings VALUES(6,100,1,'checked_in','{}')"))
         db.session.execute(text("INSERT INTO vendor_1_dashboard VALUES(6,77,'Player',100,10,:day,:start,:end,'current')"),
                            {'day':self.start.date(),'start':self.start.time(),'end':self.end.time()})

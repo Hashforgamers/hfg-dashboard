@@ -1,0 +1,952 @@
+{
+  ".codex/hooks.json": {
+    "mtime": 1785604349.7022715,
+    "ast_hash": "9f01f5b6e48febfdf16ee3da357af06c",
+    "semantic_hash": "9f01f5b6e48febfdf16ee3da357af06c"
+  },
+  "app/__init__.py": {
+    "mtime": 1791393989.9839432,
+    "ast_hash": "fb3af41f3e4675e2081eba354b19de00",
+    "semantic_hash": ""
+  },
+  "app/commands.py": {
+    "mtime": 1773687653.995435,
+    "ast_hash": "b141e74135e037c90c3e0b441c223ad2",
+    "semantic_hash": "b141e74135e037c90c3e0b441c223ad2"
+  },
+  "app/config.py": {
+    "mtime": 1790943783.990568,
+    "ast_hash": "2bc2a7327287a806f659ac27c3c80dd0",
+    "semantic_hash": ""
+  },
+  "app/controllers/access_controller.py": {
+    "mtime": 1790232960.7735128,
+    "ast_hash": "528c23e35a60050ce77ca7e510d0594c",
+    "semantic_hash": ""
+  },
+  "app/controllers/admin_games_controller.py": {
+    "mtime": 1771765008.9839714,
+    "ast_hash": "1aa5e379c05b926c93f783110431d476",
+    "semantic_hash": "1aa5e379c05b926c93f783110431d476"
+  },
+  "app/controllers/booking_bridge_controller.py": {
+    "mtime": 1757443996.532701,
+    "ast_hash": "80357d2bced3e822ed00e1dfafa3ca4e",
+    "semantic_hash": "80357d2bced3e822ed00e1dfafa3ca4e"
+  },
+  "app/controllers/event_controller.py": {
+    "mtime": 1790849777.8196065,
+    "ast_hash": "7996abcbb9c25a788abcf5282da738f4",
+    "semantic_hash": ""
+  },
+  "app/controllers/internal_ws_controller.py": {
+    "mtime": 1790023336.1391482,
+    "ast_hash": "b4d59d258baf473e9f03de3af1751b83",
+    "semantic_hash": ""
+  },
+  "app/controllers/package_controller.py": {
+    "mtime": 1790851221.3721654,
+    "ast_hash": "e1409b007d0a95c6af0c97f5015008a5",
+    "semantic_hash": ""
+  },
+  "app/controllers/pricingController.py": {
+    "mtime": 1790777508.2590287,
+    "ast_hash": "228af0c210fc74c8e3556706883512b0",
+    "semantic_hash": ""
+  },
+  "app/controllers/registration_controller.py": {
+    "mtime": 1780241667.5548785,
+    "ast_hash": "b2ef87f76edd6d34d13d5007c320e927",
+    "semantic_hash": "b2ef87f76edd6d34d13d5007c320e927"
+  },
+  "app/controllers/result_controller.py": {
+    "mtime": 1773689448.3112044,
+    "ast_hash": "fb167ee6076e4e9677285e63d6fba7b7",
+    "semantic_hash": "fb167ee6076e4e9677285e63d6fba7b7"
+  },
+  "app/controllers/review_controller.py": {
+    "mtime": 1774039840.0238335,
+    "ast_hash": "74955e8ea3c56ff7d752854591057fff",
+    "semantic_hash": "74955e8ea3c56ff7d752854591057fff"
+  },
+  "app/controllers/subscription_controller.py": {
+    "mtime": 1790850323.697109,
+    "ast_hash": "547abb0026eec402572adc6d20ba32ed",
+    "semantic_hash": ""
+  },
+  "app/controllers/team_controller.py": {
+    "mtime": 1773615289.8043287,
+    "ast_hash": "a7b9639aeea41190db33202dee1ad807",
+    "semantic_hash": "a7b9639aeea41190db33202dee1ad807"
+  },
+  "app/controllers/tournament_engine_controller.py": {
+    "mtime": 1790849877.241228,
+    "ast_hash": "de47ead34388d4270aa5cc8add161a6f",
+    "semantic_hash": ""
+  },
+  "app/controllers/vendor_games.py": {
+    "mtime": 1773076199.2619467,
+    "ast_hash": "17bf14c45bc74f40c04771c86e5e80d9",
+    "semantic_hash": "17bf14c45bc74f40c04771c86e5e80d9"
+  },
+  "app/controllers/vendor_pc_controller.py": {
+    "mtime": 1790849877.242633,
+    "ast_hash": "ead1955e4425ab03b1dc4f225657da1c",
+    "semantic_hash": ""
+  },
+  "app/controllers/websocket_controller.py": {
+    "mtime": 1738706121.8192484,
+    "ast_hash": "a016443e5aea207b576505083ff74771",
+    "semantic_hash": "a016443e5aea207b576505083ff74771"
+  },
+  "app/extension/extensions.py": {
+    "mtime": 1738788025.5136044,
+    "ast_hash": "511c4d4b25f1d4522eae9c3594868cdb",
+    "semantic_hash": "511c4d4b25f1d4522eae9c3594868cdb"
+  },
+  "app/middleware/rbac_guard.py": {
+    "mtime": 1790775726.7383966,
+    "ast_hash": "e3e8de9246d1fb104c43b9973c1ba66c",
+    "semantic_hash": ""
+  },
+  "app/middleware/subscription_guard.py": {
+    "mtime": 1771765008.9867373,
+    "ast_hash": "4c76ca9fbcb2b9d31908b00293eb16f7",
+    "semantic_hash": "4c76ca9fbcb2b9d31908b00293eb16f7"
+  },
+  "app/models/PassRedemptionLog.py": {
+    "mtime": 1768634213.349051,
+    "ast_hash": "a7f7f2b48ad862f900e1810b133ee957",
+    "semantic_hash": "a7f7f2b48ad862f900e1810b133ee957"
+  },
+  "app/models/__init__.py": {
+    "mtime": 1772609143.4766111,
+    "ast_hash": "b4f73720fcdcd907e6c7ef84bcb13e61",
+    "semantic_hash": "b4f73720fcdcd907e6c7ef84bcb13e61"
+  },
+  "app/models/additionalDetails.py": {
+    "mtime": 1738877279.2595887,
+    "ast_hash": "ef4d4a23fb69e8d15eaf3998a9ef2ddb",
+    "semantic_hash": "ef4d4a23fb69e8d15eaf3998a9ef2ddb"
+  },
+  "app/models/amenity.py": {
+    "mtime": 1756647424.7986565,
+    "ast_hash": "790c115393bb5e4cb127cbb2fbcf859d",
+    "semantic_hash": "790c115393bb5e4cb127cbb2fbcf859d"
+  },
+  "app/models/availableGame.py": {
+    "mtime": 1760822052.413587,
+    "ast_hash": "f880444af722c4caaa253f3be951573f",
+    "semantic_hash": "f880444af722c4caaa253f3be951573f"
+  },
+  "app/models/bankTransferDetails.py": {
+    "mtime": 1756647424.802935,
+    "ast_hash": "d9658afd79c9611b02c13bcacbbbb775",
+    "semantic_hash": "d9658afd79c9611b02c13bcacbbbb775"
+  },
+  "app/models/booking.py": {
+    "mtime": 1773174477.8906567,
+    "ast_hash": "6f25f5b0e21a523b62d74cf18d66679a",
+    "semantic_hash": "6f25f5b0e21a523b62d74cf18d66679a"
+  },
+  "app/models/bookingExtraService.py": {
+    "mtime": 1756647424.8035,
+    "ast_hash": "360a19dab4bb5cd79e12162478b453cb",
+    "semantic_hash": "360a19dab4bb5cd79e12162478b453cb"
+  },
+  "app/models/bookingSquadMember.py": {
+    "mtime": 1773173584.258569,
+    "ast_hash": "556bdafcf8b4df09ae1e24710ea2c68d",
+    "semantic_hash": "556bdafcf8b4df09ae1e24710ea2c68d"
+  },
+  "app/models/businessRegistration.py": {
+    "mtime": 1756647424.8037443,
+    "ast_hash": "5afe3f087007381b869679a42192a637",
+    "semantic_hash": "5afe3f087007381b869679a42192a637"
+  },
+  "app/models/cafePass.py": {
+    "mtime": 1768634213.349597,
+    "ast_hash": "78ff5c38a0bf4b88a173ee4ba05e7bbf",
+    "semantic_hash": "78ff5c38a0bf4b88a173ee4ba05e7bbf"
+  },
+  "app/models/cafeReview.py": {
+    "mtime": 1773687535.910953,
+    "ast_hash": "cc7b6214a385a499ef485e9242af3b5e",
+    "semantic_hash": "cc7b6214a385a499ef485e9242af3b5e"
+  },
+  "app/models/console.py": {
+    "mtime": 1760875417.053335,
+    "ast_hash": "b1fd26d76c9a4f32f34087029fe9295e",
+    "semantic_hash": "b1fd26d76c9a4f32f34087029fe9295e"
+  },
+  "app/models/consoleCatalog.py": {
+    "mtime": 1774725015.1540978,
+    "ast_hash": "022eb566d925ea3793d7b86ea5dacf6f",
+    "semantic_hash": "022eb566d925ea3793d7b86ea5dacf6f"
+  },
+  "app/models/consolePricingOffer.py": {
+    "mtime": 1790777508.2606626,
+    "ast_hash": "3455f32a7ea926f525f058ebd571c21b",
+    "semantic_hash": ""
+  },
+  "app/models/console_link_session.py": {
+    "mtime": 1760812180.3422348,
+    "ast_hash": "c93bfa472ef6326cacd10310f1eadbb8",
+    "semantic_hash": "c93bfa472ef6326cacd10310f1eadbb8"
+  },
+  "app/models/contactInfo.py": {
+    "mtime": 1756647424.805606,
+    "ast_hash": "aa94b59c2a4310175ac1dea882998307",
+    "semantic_hash": "aa94b59c2a4310175ac1dea882998307"
+  },
+  "app/models/controllerPricingRule.py": {
+    "mtime": 1772660154.9695103,
+    "ast_hash": "2134063e2865b59994716ae525a6dfb5",
+    "semantic_hash": "2134063e2865b59994716ae525a6dfb5"
+  },
+  "app/models/controllerPricingTier.py": {
+    "mtime": 1772660168.643118,
+    "ast_hash": "0f0554fa8059cbf0ffe18511a7907a48",
+    "semantic_hash": "0f0554fa8059cbf0ffe18511a7907a48"
+  },
+  "app/models/document.py": {
+    "mtime": 1756647424.8058872,
+    "ast_hash": "e944b2e562aed34456ef869838ebc275",
+    "semantic_hash": "e944b2e562aed34456ef869838ebc275"
+  },
+  "app/models/documentSubmitted.py": {
+    "mtime": 1756647424.8068082,
+    "ast_hash": "f0a503a51a80373ba867883dd5b57646",
+    "semantic_hash": "f0a503a51a80373ba867883dd5b57646"
+  },
+  "app/models/event.py": {
+    "mtime": 1779910837.9601307,
+    "ast_hash": "f4681739e0cba6207a09ce750df8a105",
+    "semantic_hash": "f4681739e0cba6207a09ce750df8a105"
+  },
+  "app/models/eventService.py": {
+    "mtime": 1762089171.5958757,
+    "ast_hash": "b3798dba9d687cf57c3ff3433b2965ae",
+    "semantic_hash": "b3798dba9d687cf57c3ff3433b2965ae"
+  },
+  "app/models/extraServiceCategory.py": {
+    "mtime": 1756647424.807268,
+    "ast_hash": "3aa81b93e01e29ff9b2c8bfc74a96c7f",
+    "semantic_hash": "3aa81b93e01e29ff9b2c8bfc74a96c7f"
+  },
+  "app/models/extraServiceMenu.py": {
+    "mtime": 1774557481.5094075,
+    "ast_hash": "5b81576fa4367a73c6ec7db9e5fce053",
+    "semantic_hash": "5b81576fa4367a73c6ec7db9e5fce053"
+  },
+  "app/models/extraServiceMenuImage.py": {
+    "mtime": 1756647424.808644,
+    "ast_hash": "f0783f4168bf04c96789736466940c16",
+    "semantic_hash": "f0783f4168bf04c96789736466940c16"
+  },
+  "app/models/game.py": {
+    "mtime": 1771765009.0021868,
+    "ast_hash": "2bc5a9dae5654dc72fa2f0747026d9ef",
+    "semantic_hash": "2bc5a9dae5654dc72fa2f0747026d9ef"
+  },
+  "app/models/hardwareSpecification.py": {
+    "mtime": 1756647424.809893,
+    "ast_hash": "377dc13455e8653873c1f2e785f2b095",
+    "semantic_hash": "377dc13455e8653873c1f2e785f2b095"
+  },
+  "app/models/maintenanceStatus.py": {
+    "mtime": 1738877292.2399495,
+    "ast_hash": "c9ad8de5556c26bfd6a49b6d76f5fa95",
+    "semantic_hash": "c9ad8de5556c26bfd6a49b6d76f5fa95"
+  },
+  "app/models/mapVetoAction.py": {
+    "mtime": 1779910837.961622,
+    "ast_hash": "0b2756e8ec36dc78ce10b1a02e0f53d0",
+    "semantic_hash": "0b2756e8ec36dc78ce10b1a02e0f53d0"
+  },
+  "app/models/matchDispute.py": {
+    "mtime": 1779910837.9615057,
+    "ast_hash": "60b75c02adb18770b8836183b40f6fff",
+    "semantic_hash": "60b75c02adb18770b8836183b40f6fff"
+  },
+  "app/models/matchParticipant.py": {
+    "mtime": 1779910837.9611707,
+    "ast_hash": "fbfc1d417547348ae97a87fe7253c3b2",
+    "semantic_hash": "fbfc1d417547348ae97a87fe7253c3b2"
+  },
+  "app/models/matchResultSubmission.py": {
+    "mtime": 1779910837.9613311,
+    "ast_hash": "aec3aee6ea79627d5663b51f93e85c73",
+    "semantic_hash": "aec3aee6ea79627d5663b51f93e85c73"
+  },
+  "app/models/openingDay.py": {
+    "mtime": 1756647424.810334,
+    "ast_hash": "252a184a90361ce29675c01406958f28",
+    "semantic_hash": "252a184a90361ce29675c01406958f28"
+  },
+  "app/models/package.py": {
+    "mtime": 1760802718.758891,
+    "ast_hash": "ea2f37d7c9b8b84f343c750fee5e1921",
+    "semantic_hash": "ea2f37d7c9b8b84f343c750fee5e1921"
+  },
+  "app/models/passModels.py": {
+    "mtime": 1768634213.349818,
+    "ast_hash": "d6fd66b4b2b2ff536f14c128f2ea54d7",
+    "semantic_hash": "d6fd66b4b2b2ff536f14c128f2ea54d7"
+  },
+  "app/models/passType.py": {
+    "mtime": 1756647424.8107703,
+    "ast_hash": "a55f015768d87cc28749d9344b301a2c",
+    "semantic_hash": "a55f015768d87cc28749d9344b301a2c"
+  },
+  "app/models/payAtCafeNotification.py": {
+    "mtime": 1757443996.533671,
+    "ast_hash": "8bcf8db0ced9444bf1443c025c529588",
+    "semantic_hash": "8bcf8db0ced9444bf1443c025c529588"
+  },
+  "app/models/paymentMethod.py": {
+    "mtime": 1757443996.5348017,
+    "ast_hash": "d5552d71294abb449a3eed0c41c5980b",
+    "semantic_hash": "d5552d71294abb449a3eed0c41c5980b"
+  },
+  "app/models/paymentVendorMap.py": {
+    "mtime": 1757443996.535336,
+    "ast_hash": "62136e2883a81f1dd8d036718f841fb9",
+    "semantic_hash": "62136e2883a81f1dd8d036718f841fb9"
+  },
+  "app/models/physicalAddress.py": {
+    "mtime": 1756647424.8112247,
+    "ast_hash": "6e77ae76fb2c730e5e026d343d8153d9",
+    "semantic_hash": "6e77ae76fb2c730e5e026d343d8153d9"
+  },
+  "app/models/priceAndCost.py": {
+    "mtime": 1738877347.3139985,
+    "ast_hash": "e4c6ebce75832bd678c270dfd3f5a8e7",
+    "semantic_hash": "e4c6ebce75832bd678c270dfd3f5a8e7"
+  },
+  "app/models/provisionalResult.py": {
+    "mtime": 1762093206.785053,
+    "ast_hash": "2e7ff02209a530861183340ee5644503",
+    "semantic_hash": "2e7ff02209a530861183340ee5644503"
+  },
+  "app/models/registration.py": {
+    "mtime": 1779910895.2501483,
+    "ast_hash": "2eff50c3fc30ec6271f39687cd85f86d",
+    "semantic_hash": "2eff50c3fc30ec6271f39687cd85f86d"
+  },
+  "app/models/routes.py": {
+    "mtime": 1773732814.299844,
+    "ast_hash": "ff1b734cefc656a8c0e1ce254ed3f22f",
+    "semantic_hash": "ff1b734cefc656a8c0e1ce254ed3f22f"
+  },
+  "app/models/slot.py": {
+    "mtime": 1756647424.8123972,
+    "ast_hash": "48994e220463fc000a6753ab4304af0a",
+    "semantic_hash": "48994e220463fc000a6753ab4304af0a"
+  },
+  "app/models/squadPricingRule.py": {
+    "mtime": 1773175276.7773166,
+    "ast_hash": "486e2942325a778771a9d56ff4518d2f",
+    "semantic_hash": "486e2942325a778771a9d56ff4518d2f"
+  },
+  "app/models/subscription.py": {
+    "mtime": 1790849777.8157032,
+    "ast_hash": "1cff6190a2aa841dcab9b8574ee50a5c",
+    "semantic_hash": ""
+  },
+  "app/models/team.py": {
+    "mtime": 1771765591.5243406,
+    "ast_hash": "d7a211679e3a1766e3bfe1fe20b79200",
+    "semantic_hash": "d7a211679e3a1766e3bfe1fe20b79200"
+  },
+  "app/models/teamMember.py": {
+    "mtime": 1762075316.5234215,
+    "ast_hash": "0f7fe28e1196385960897dd00d20f2fe",
+    "semantic_hash": "0f7fe28e1196385960897dd00d20f2fe"
+  },
+  "app/models/timing.py": {
+    "mtime": 1756647424.8128407,
+    "ast_hash": "0401e8fec12398840224548b4a6c6bbc",
+    "semantic_hash": "0401e8fec12398840224548b4a6c6bbc"
+  },
+  "app/models/tournamentMatch.py": {
+    "mtime": 1779910837.9608843,
+    "ast_hash": "24780102bae0d5fc01d21a340697924f",
+    "semantic_hash": "24780102bae0d5fc01d21a340697924f"
+  },
+  "app/models/tournamentSeed.py": {
+    "mtime": 1779910837.960683,
+    "ast_hash": "3ce751a665e724e88ec9fa5fbc2a5266",
+    "semantic_hash": "3ce751a665e724e88ec9fa5fbc2a5266"
+  },
+  "app/models/transaction.py": {
+    "mtime": 1773694969.2323575,
+    "ast_hash": "7878d70847675d32995e95c60125391c",
+    "semantic_hash": "7878d70847675d32995e95c60125391c"
+  },
+  "app/models/uploadedImage.py": {
+    "mtime": 1756647424.81422,
+    "ast_hash": "59bc7f8f0a5cb1c7a893b3b2cb7e3d60",
+    "semantic_hash": "59bc7f8f0a5cb1c7a893b3b2cb7e3d60"
+  },
+  "app/models/user.py": {
+    "mtime": 1756647424.814667,
+    "ast_hash": "c7886111d39668b0efe0c087b16f88e9",
+    "semantic_hash": "c7886111d39668b0efe0c087b16f88e9"
+  },
+  "app/models/userPass.py": {
+    "mtime": 1768634213.3500729,
+    "ast_hash": "8bd9ed361fe248f553e3f380f40a9067",
+    "semantic_hash": "8bd9ed361fe248f553e3f380f40a9067"
+  },
+  "app/models/vendor.py": {
+    "mtime": 1768938541.854018,
+    "ast_hash": "f85133226019cefaa321c84edeb42a5e",
+    "semantic_hash": "f85133226019cefaa321c84edeb42a5e"
+  },
+  "app/models/vendorAccount.py": {
+    "mtime": 1756647424.816338,
+    "ast_hash": "7150684b4ecca29857d8c96f90ac35c8",
+    "semantic_hash": "7150684b4ecca29857d8c96f90ac35c8"
+  },
+  "app/models/vendorConsoleOverride.py": {
+    "mtime": 1774725015.1570792,
+    "ast_hash": "5d6e6c4748166c76df2be8ca085d78d1",
+    "semantic_hash": "5d6e6c4748166c76df2be8ca085d78d1"
+  },
+  "app/models/vendorDaySlotConfig.py": {
+    "mtime": 1756647424.8167224,
+    "ast_hash": "fba35cdf6353d09ce0149340f0102156",
+    "semantic_hash": "fba35cdf6353d09ce0149340f0102156"
+  },
+  "app/models/vendorGame.py": {
+    "mtime": 1771765009.0024269,
+    "ast_hash": "7105b3ccee0a4412b5196f4390301fdf",
+    "semantic_hash": "7105b3ccee0a4412b5196f4390301fdf"
+  },
+  "app/models/vendorProfileImage.py": {
+    "mtime": 1756647424.8169515,
+    "ast_hash": "7d9e9ec68094758f9df95b875781d5f8",
+    "semantic_hash": "7d9e9ec68094758f9df95b875781d5f8"
+  },
+  "app/models/vendorRolePermission.py": {
+    "mtime": 1772609018.7215686,
+    "ast_hash": "bd89cc9cf9da362d4c8371752ad4adfb",
+    "semantic_hash": "bd89cc9cf9da362d4c8371752ad4adfb"
+  },
+  "app/models/vendorStaff.py": {
+    "mtime": 1772652183.1591964,
+    "ast_hash": "cca4c7c1816919db01f7ad417eba99b8",
+    "semantic_hash": "cca4c7c1816919db01f7ad417eba99b8"
+  },
+  "app/models/vendorTaxProfile.py": {
+    "mtime": 1772712661.1811628,
+    "ast_hash": "9beb202c3a34c6c52f0f4a9a273a06c2",
+    "semantic_hash": "9beb202c3a34c6c52f0f4a9a273a06c2"
+  },
+  "app/models/verificationCheck.py": {
+    "mtime": 1762075377.4875717,
+    "ast_hash": "5388a8ebb8df93bbe8a88e2066468c4c",
+    "semantic_hash": "5388a8ebb8df93bbe8a88e2066468c4c"
+  },
+  "app/models/website.py": {
+    "mtime": 1756647424.8172073,
+    "ast_hash": "cbce37817c3119b00140e37fc5cbdc96",
+    "semantic_hash": "cbce37817c3119b00140e37fc5cbdc96"
+  },
+  "app/models/winner.py": {
+    "mtime": 1762089149.3627675,
+    "ast_hash": "51bdcca2e0986a849528ec83e4f54ff5",
+    "semantic_hash": "51bdcca2e0986a849528ec83e4f54ff5"
+  },
+  "app/routes.py": {
+    "mtime": 1791399197.7319715,
+    "ast_hash": "450ce3459eae24821c15127b2c879991",
+    "semantic_hash": ""
+  },
+  "app/services/add_game_images.py": {
+    "mtime": 1771765009.0025344,
+    "ast_hash": "3cf08c27806ccfde7891a00a875bcede",
+    "semantic_hash": "3cf08c27806ccfde7891a00a875bcede"
+  },
+  "app/services/booking_bridge.py": {
+    "mtime": 1757448112.7029083,
+    "ast_hash": "b1756571aed9d08322b679e6697a9195",
+    "semantic_hash": "b1756571aed9d08322b679e6697a9195"
+  },
+  "app/services/cloudinary_event_service.py": {
+    "mtime": 1771765009.0027108,
+    "ast_hash": "09bb12eef9d7709c0ed42ef59618238a",
+    "semantic_hash": "09bb12eef9d7709c0ed42ef59618238a"
+  },
+  "app/services/cloudinary_game_service.py": {
+    "mtime": 1771765009.0028896,
+    "ast_hash": "f39ccb87cfd08fcaf7651cb49b18f9da",
+    "semantic_hash": "f39ccb87cfd08fcaf7651cb49b18f9da"
+  },
+  "app/services/cloudinary_profile_service.py": {
+    "mtime": 1756647424.8180447,
+    "ast_hash": "cab01cc622045115c5679bc0c4359a1b",
+    "semantic_hash": "cab01cc622045115c5679bc0c4359a1b"
+  },
+  "app/services/cloudinary_services.py": {
+    "mtime": 1756647424.8182058,
+    "ast_hash": "a3473873a0bd5bc4263f10555f855a87",
+    "semantic_hash": "a3473873a0bd5bc4263f10555f855a87"
+  },
+  "app/services/console_catalog_service.py": {
+    "mtime": 1774777827.8182347,
+    "ast_hash": "113a4af301bb2d12dd2c4b37ab35fd39",
+    "semantic_hash": "113a4af301bb2d12dd2c4b37ab35fd39"
+  },
+  "app/services/console_service.py": {
+    "mtime": 1791142205.5063887,
+    "ast_hash": "816638291345ccf839175f61305a387c",
+    "semantic_hash": ""
+  },
+  "app/services/event_service.py": {
+    "mtime": 1783873542.5592222,
+    "ast_hash": "97775575ca430383c0117cff3d3b6409",
+    "semantic_hash": "97775575ca430383c0117cff3d3b6409"
+  },
+  "app/services/extra_service_service.py": {
+    "mtime": 1778417310.8469536,
+    "ast_hash": "71d1e76aef6ea1b92b01a23cf8f14343",
+    "semantic_hash": "71d1e76aef6ea1b92b01a23cf8f14343"
+  },
+  "app/services/game_service.py": {
+    "mtime": 1771765009.004421,
+    "ast_hash": "91e5c0c1222c8669988065751524eaa6",
+    "semantic_hash": "91e5c0c1222c8669988065751524eaa6"
+  },
+  "app/services/link_service.py": {
+    "mtime": 1790849307.134291,
+    "ast_hash": "ba76f98e0bdf704e9bdcb2b5ded8a6d2",
+    "semantic_hash": ""
+  },
+  "app/services/package_service.py": {
+    "mtime": 1760805824.2997591,
+    "ast_hash": "238a4c51834387a34e960626b7c2bbec",
+    "semantic_hash": "238a4c51834387a34e960626b7c2bbec"
+  },
+  "app/services/payload_formatters.py": {
+    "mtime": 1775462374.915445,
+    "ast_hash": "33fcb1a3f79d09f6ba3325eff0b483b8",
+    "semantic_hash": "33fcb1a3f79d09f6ba3325eff0b483b8"
+  },
+  "app/services/rawg_sync_service.py": {
+    "mtime": 1771765009.004532,
+    "ast_hash": "0956bbfe565278572ea68deed6cbe7e9",
+    "semantic_hash": "0956bbfe565278572ea68deed6cbe7e9"
+  },
+  "app/services/razorpay_service.py": {
+    "mtime": 1790849307.1324377,
+    "ast_hash": "8e42d4800393b8c1b2927e26a4f87ff1",
+    "semantic_hash": ""
+  },
+  "app/services/rbac_service.py": {
+    "mtime": 1790188862.217743,
+    "ast_hash": "88ade7bb44d780e26c5310708e1b702f",
+    "semantic_hash": ""
+  },
+  "app/services/subscription_service.py": {
+    "mtime": 1790851145.50816,
+    "ast_hash": "cde4fa4f9cee6f3c0ed1daf78190920f",
+    "semantic_hash": ""
+  },
+  "app/services/tournament_engine_service.py": {
+    "mtime": 1780241128.5804482,
+    "ast_hash": "e9be4972f04ad03285f0e32d3bdce7f7",
+    "semantic_hash": "e9be4972f04ad03285f0e32d3bdce7f7"
+  },
+  "app/services/websocket_service.py": {
+    "mtime": 1790023242.9365957,
+    "ast_hash": "e2122c80d124a04dbec28b25e0d2e8e7",
+    "semantic_hash": ""
+  },
+  "run.py": {
+    "mtime": 1759440121.3455782,
+    "ast_hash": "2ce1c0133833fb21deb2755f17548c72",
+    "semantic_hash": "2ce1c0133833fb21deb2755f17548c72"
+  },
+  "sql/20260305_console_update_perf_indexes.sql": {
+    "mtime": 1772733716.0703764,
+    "ast_hash": "38522f6da51c0bbfe58c9d488723057b",
+    "semantic_hash": "38522f6da51c0bbfe58c9d488723057b"
+  },
+  "sql/20260305_controller_transparency.sql": {
+    "mtime": 1772713265.76149,
+    "ast_hash": "52a04d30e9fd711f44de1a9a0f6e4d8f",
+    "semantic_hash": "52a04d30e9fd711f44de1a9a0f6e4d8f"
+  },
+  "sql/20260305_dashboard_latency_indexes.sql": {
+    "mtime": 1772730077.8667274,
+    "ast_hash": "90ce959fb312a6d4394fbc1385ac66ad",
+    "semantic_hash": "90ce959fb312a6d4394fbc1385ac66ad"
+  },
+  "sql/20260305_get_consoles_perf_indexes.sql": {
+    "mtime": 1772733538.3696625,
+    "ast_hash": "238b56e08d6011b241b11dd83135554f",
+    "semantic_hash": "238b56e08d6011b241b11dd83135554f"
+  },
+  "sql/20260305_landing_page_perf_indexes.sql": {
+    "mtime": 1772733127.1221342,
+    "ast_hash": "c2ebd836273bb9e1695a2f9fd3949c77",
+    "semantic_hash": "c2ebd836273bb9e1695a2f9fd3949c77"
+  },
+  "sql/20260305_subscription_status_constraint_fix.sql": {
+    "mtime": 1772727013.9401693,
+    "ast_hash": "2796d666e29a290bf048bdc068e5af44",
+    "semantic_hash": "2796d666e29a290bf048bdc068e5af44"
+  },
+  "sql/20260309_vendor_games_hot_path_indexes.sql": {
+    "mtime": 1773076213.921188,
+    "ast_hash": "15b95655868f599d6756c807aa8d35b3",
+    "semantic_hash": "15b95655868f599d6756c807aa8d35b3"
+  },
+  "sql/20260310_squad_booking_support.sql": {
+    "mtime": 1773173612.5579202,
+    "ast_hash": "c4626a6d1c58df496e6f14f31ac6333c",
+    "semantic_hash": "c4626a6d1c58df496e6f14f31ac6333c"
+  },
+  "sql/20260310_squad_pricing_rules.sql": {
+    "mtime": 1773175295.243237,
+    "ast_hash": "848cd24271fc4d4f5e4d4424d880ad0c",
+    "semantic_hash": "848cd24271fc4d4f5e4d4424d880ad0c"
+  },
+  "sql/20260324_vendor_notification_preferences.sql": {
+    "mtime": 1774386315.797874,
+    "ast_hash": "731f6236ccb66422a7ffc9eff89fb768",
+    "semantic_hash": "731f6236ccb66422a7ffc9eff89fb768"
+  },
+  "sql/20260326_extra_service_inventory.sql": {
+    "mtime": 1774558692.1523094,
+    "ast_hash": "531de8e8e341c29ad8d39cc460d77d53",
+    "semantic_hash": "531de8e8e341c29ad8d39cc460d77d53"
+  },
+  "sql/20260328_console_catalog_phase1.sql": {
+    "mtime": 1774777937.0162492,
+    "ast_hash": "ac915496a3af331591c7c090df205b8c",
+    "semantic_hash": "ac915496a3af331591c7c090df205b8c"
+  },
+  "sql/20260405_enable_pay_at_cafe_for_all_vendors.sql": {
+    "mtime": 1775390697.1024935,
+    "ast_hash": "e59ede9e1fdc0e1a18ad9fc06488966a",
+    "semantic_hash": "e59ede9e1fdc0e1a18ad9fc06488966a"
+  },
+  "sql/20260405_payment_methods_catalog_and_cafe_pass_sync.sql": {
+    "mtime": 1775386653.1290395,
+    "ast_hash": "4cc76ee7cfad8bb68c79abfce2f57aa2",
+    "semantic_hash": "4cc76ee7cfad8bb68c79abfce2f57aa2"
+  },
+  "sql/20260527_tournament_engine_phase1.sql": {
+    "mtime": 1779911389.6560583,
+    "ast_hash": "57448f319730b139093f4768b7589211",
+    "semantic_hash": "57448f319730b139093f4768b7589211"
+  },
+  "tests/test_subscription_checkout.py": {
+    "mtime": 1790850198.920457,
+    "ast_hash": "a620268b872189ba787e63b03dba832e",
+    "semantic_hash": ""
+  },
+  "AGENTS.md": {
+    "mtime": 1785604349.701918,
+    "ast_hash": "6a47d64fcc136324ca395065a707ef76",
+    "semantic_hash": ""
+  },
+  "docker-compose.yml": {
+    "mtime": 1772649505.373753,
+    "ast_hash": "c4d2a995fbab7a06a7dc55f686b33385",
+    "semantic_hash": ""
+  },
+  "requirements.txt": {
+    "mtime": 1791393989.9452302,
+    "ast_hash": "c122af7d09cc0e92dcffbdae214e55e7",
+    "semantic_hash": ""
+  },
+  "todo.txt": {
+    "mtime": 1737888770.6385753,
+    "ast_hash": "a583e7bccaf217a68f0f78b8bd6cbe24",
+    "semantic_hash": ""
+  },
+  "app/controllers/cafe_wallet_controller.py": {
+    "mtime": 1791395550.8198867,
+    "ast_hash": "fcb48f08ff6df0470ecfebe233064e92",
+    "semantic_hash": ""
+  },
+  "app/controllers/kiosk_controller.py": {
+    "mtime": 1791395550.8194275,
+    "ast_hash": "0cddc2adcb20f5c50d1664ec02ec139b",
+    "semantic_hash": ""
+  },
+  "app/models/cafe_wallet.py": {
+    "mtime": 1790944465.5638802,
+    "ast_hash": "004307b599217c10ea559414905e6a21",
+    "semantic_hash": ""
+  },
+  "app/services/cafe_wallet_service.py": {
+    "mtime": 1791393488.6867044,
+    "ast_hash": "2a979c0a35731c1c4b30d34ebe91b4a3",
+    "semantic_hash": ""
+  },
+  "app/services/kiosk_runtime.py": {
+    "mtime": 1791394766.6811652,
+    "ast_hash": "b57a89504d6a5fed8f60b2bb63ba052b",
+    "semantic_hash": ""
+  },
+  "app/services/kiosk_security.py": {
+    "mtime": 1791398962.730752,
+    "ast_hash": "6523df3fb692f4df0fa574ee21f194df",
+    "semantic_hash": ""
+  },
+  "sql/20260919_performance_audit_read_only.sql": {
+    "mtime": 1789808456.5853841,
+    "ast_hash": "39140a97bac08961bd7d368f31c2a08b",
+    "semantic_hash": ""
+  },
+  "sql/20260922_cafe_wallet.sql": {
+    "mtime": 1790067565.7091398,
+    "ast_hash": "1a3f91a87d4b6a28c8452a3441bd32c1",
+    "semantic_hash": ""
+  },
+  "sql/20260922_kiosk_runtime.sql": {
+    "mtime": 1790023519.2653775,
+    "ast_hash": "a9b26e874f5e38d8be658728697316be",
+    "semantic_hash": ""
+  },
+  "tests/test_cafe_wallet.py": {
+    "mtime": 1791393989.9850996,
+    "ast_hash": "c75297f019373c77c22a59fcf346895f",
+    "semantic_hash": ""
+  },
+  "tests/test_kiosk_runtime.py": {
+    "mtime": 1791398994.2950187,
+    "ast_hash": "7c0f22829a00a8c8ae34fb109b9baa88",
+    "semantic_hash": ""
+  },
+  "tests/test_websocket_bridge.py": {
+    "mtime": 1789808392.6405332,
+    "ast_hash": "bcfea26b81948218a577f72f02fb8388",
+    "semantic_hash": ""
+  },
+  "docs/kiosk-api-2026-09-22.md": {
+    "mtime": 1790958179.515661,
+    "ast_hash": "8f6ab960512ab1bc4e89e78fff4561ec",
+    "semantic_hash": ""
+  },
+  "app/services/cafe_audit_hooks.py": {
+    "mtime": 1790775467.5884886,
+    "ast_hash": "66a49816fb1d290e9e6682ece4c152e9",
+    "semantic_hash": ""
+  },
+  "docs/cafe-wallet-rollout.md": {
+    "mtime": 1790936225.6671867,
+    "ast_hash": "8c19edcfee344791494582abab78f0d5",
+    "semantic_hash": ""
+  },
+  "app/services/cafe_booking_service.py": {
+    "mtime": 1790958125.0225053,
+    "ast_hash": "8259b6de08047daaab520ebae08691b3",
+    "semantic_hash": ""
+  },
+  "sql/20260923_unified_kiosk_qr.sql": {
+    "mtime": 1790068738.166339,
+    "ast_hash": "85c9267c4b89b216c5e856fa62ea7fd9",
+    "semantic_hash": ""
+  },
+  "tests/test_early_start.py": {
+    "mtime": 1790596627.5495853,
+    "ast_hash": "e119c6d3a941e7e15de8208fbcf6e3d8",
+    "semantic_hash": ""
+  },
+  "tests/test_manual_session_end.py": {
+    "mtime": 1790622587.7002864,
+    "ast_hash": "78f9a9a66d941abbeb84df9f78ba44dd",
+    "semantic_hash": ""
+  },
+  "app/controllers/subscription_commerce_controller.py": {
+    "mtime": 1790849920.446303,
+    "ast_hash": "db139e4407d22dd6445d8f2213c1b843",
+    "semantic_hash": ""
+  },
+  "app/models/subscription_checkout.py": {
+    "mtime": 1790849230.9920714,
+    "ast_hash": "aec255b08630c254d9f356653ab5a305",
+    "semantic_hash": ""
+  },
+  "app/services/cafe_session_pricing.py": {
+    "mtime": 1791394061.5727878,
+    "ast_hash": "e730fc546d0677b865c1f048cdd8b18d",
+    "semantic_hash": ""
+  },
+  "app/services/payment_methods.py": {
+    "mtime": 1790707698.3724432,
+    "ast_hash": "93388739bcdebcb12e967b71c64855e1",
+    "semantic_hash": ""
+  },
+  "app/services/pricing_math.py": {
+    "mtime": 1791394061.572384,
+    "ast_hash": "8a134e4f52251aa0953a33650d6277c8",
+    "semantic_hash": ""
+  },
+  "app/services/subscription_commerce.py": {
+    "mtime": 1790864713.2371655,
+    "ast_hash": "026628fdfc0634af2448d2f9e635f57e",
+    "semantic_hash": ""
+  },
+  "app/services/subscription_entitlements.py": {
+    "mtime": 1790849877.240512,
+    "ast_hash": "95a7ae043f29efaf164ba7598dde45f3",
+    "semantic_hash": ""
+  },
+  "sql/20260929_payment_methods.sql": {
+    "mtime": 1790752813.4784923,
+    "ast_hash": "89071b9eeb30222dfaf1f4430d00fb25",
+    "semantic_hash": ""
+  },
+  "sql/20261001_subscription_commerce.sql": {
+    "mtime": 1790850282.2128797,
+    "ast_hash": "55d504669f0021002e865c79686e3f9d",
+    "semantic_hash": ""
+  },
+  "tests/test_cafe_wallet_reads.py": {
+    "mtime": 1791399013.6013324,
+    "ast_hash": "157c8eae368cd72cc24afc4803ae53c9",
+    "semantic_hash": ""
+  },
+  "tests/test_console_pricing.py": {
+    "mtime": 1790941475.374901,
+    "ast_hash": "30e1b71a216637d24b10b65606864141",
+    "semantic_hash": ""
+  },
+  "tests/test_payment_methods.py": {
+    "mtime": 1790755235.9623258,
+    "ast_hash": "bcbdb447360e8e8a42942bf5fe76552f",
+    "semantic_hash": ""
+  },
+  "tests/test_qr_input.py": {
+    "mtime": 1790936225.6665444,
+    "ast_hash": "e8558c8fde918fce9627d362999e9d3a",
+    "semantic_hash": ""
+  },
+  "tests/test_subscription_commerce.py": {
+    "mtime": 1790864713.2377563,
+    "ast_hash": "50076b9ae27a2cf3bc5a82ab8df442bb",
+    "semantic_hash": ""
+  },
+  "docs/cafe-wallet-app-api.md": {
+    "mtime": 1790668429.045649,
+    "ast_hash": "fe8b1c33204c5de6c60a036ca4ef6dc4",
+    "semantic_hash": ""
+  },
+  "docs/console-pricing-contract.md": {
+    "mtime": 1790796756.309848,
+    "ast_hash": "a26dd2ba4669ef80818c478b18e06336",
+    "semantic_hash": ""
+  },
+  "docs/subscription-commerce.md": {
+    "mtime": 1790851145.4457176,
+    "ast_hash": "0bc32ad43df7856edd9cdb14e645b643",
+    "semantic_hash": ""
+  },
+  "app/services/cafe_slot_reservations.py": {
+    "mtime": 1791395804.9062,
+    "ast_hash": "bf830885a7f5a0b4aae02a7c09a55747",
+    "semantic_hash": ""
+  },
+  "app/services/slot_capacity.py": {
+    "mtime": 1791396418.2680347,
+    "ast_hash": "3f20c2651de83dce5ddb7f7343fd5f2f",
+    "semantic_hash": ""
+  },
+  "sql/20261002_shared_slot_reservations.sql": {
+    "mtime": 1790943129.3514545,
+    "ast_hash": "a7341a0ba7468ae126c9d0eb2670c39e",
+    "semantic_hash": ""
+  },
+  "tests/test_shared_slot_capacity.py": {
+    "mtime": 1791141824.2393763,
+    "ast_hash": "8b45d5679cd330e809fd98b4d5bdd4fc",
+    "semantic_hash": ""
+  },
+  "docs/shared-booking-slot-capacity.md": {
+    "mtime": 1790942894.6344583,
+    "ast_hash": "1552158c433cf40dbaa8df37891d3d42",
+    "semantic_hash": ""
+  },
+  "app/services/cafe_continuation_service.py": {
+    "mtime": 1791394434.4078796,
+    "ast_hash": "b883185b3f0847850ce89d6a04315280",
+    "semantic_hash": ""
+  },
+  "app/services/cafe_owner_email.py": {
+    "mtime": 1790943783.9607604,
+    "ast_hash": "951ea5e4aaed20e9602bd86003e509a2",
+    "semantic_hash": ""
+  },
+  "sql/20261002_cafe_continuations.sql": {
+    "mtime": 1790943807.2801652,
+    "ast_hash": "30ecff6913f27fb6289c674d36fc3928",
+    "semantic_hash": ""
+  },
+  "tests/test_cafe_continuations.py": {
+    "mtime": 1790961699.5046875,
+    "ast_hash": "c36d221dbf6fdc6d0cf603ae14e9535f",
+    "semantic_hash": ""
+  },
+  "docs/cafe-continuation-api.md": {
+    "mtime": 1790944588.1023073,
+    "ast_hash": "6e9b7972600588c5e68b48a82d395936",
+    "semantic_hash": ""
+  },
+  "sql/20261002_overtime_assignment.sql": {
+    "mtime": 1790958420.3637757,
+    "ast_hash": "ee5188e985f4259ebe2f32873b0b048d",
+    "semantic_hash": ""
+  },
+  "tests/test_console_checkout_durations.py": {
+    "mtime": 1791140474.5486398,
+    "ast_hash": "df290e50cf975a13e2093d8441643553",
+    "semantic_hash": ""
+  },
+  "tests/test_console_schedule_bootstrap.py": {
+    "mtime": 1791142205.5069585,
+    "ast_hash": "d2410c03b5219097ecae08cae1e97c8d",
+    "semantic_hash": ""
+  },
+  "app/controllers/session_extensions_controller.py": {
+    "mtime": 1791399288.1048074,
+    "ast_hash": "631d2f8d140c99744f228fe2b3ea0770",
+    "semantic_hash": ""
+  },
+  "app/models/session_extension.py": {
+    "mtime": 1791398012.7154531,
+    "ast_hash": "f66dcc45fcfa0875f2e5c526e8e1a5f5",
+    "semantic_hash": ""
+  },
+  "app/services/session_extensions.py": {
+    "mtime": 1791399197.672641,
+    "ast_hash": "46a351680c3dc809d2d61e1c963313d6",
+    "semantic_hash": ""
+  },
+  "app/services/session_realtime.py": {
+    "mtime": 1791399288.1051927,
+    "ast_hash": "a22e27cb99d2340a9ae08b51bc763604",
+    "semantic_hash": ""
+  },
+  "sql/20261007_kiosk_extensions.sql": {
+    "mtime": 1791398894.9881437,
+    "ast_hash": "14b738a8de89e1ee1554a632e472fe8b",
+    "semantic_hash": ""
+  },
+  "tests/test_session_extensions.py": {
+    "mtime": 1791399262.5290163,
+    "ast_hash": "9a19d2870111b4969efbfc779d451c08",
+    "semantic_hash": ""
+  },
+  "docs/kiosk-session-extension-api.md": {
+    "mtime": 1791399117.532399,
+    "ast_hash": "578ed8828a95fb9baebabb16a1775a7f",
+    "semantic_hash": ""
+  }
+}

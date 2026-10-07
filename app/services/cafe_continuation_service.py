@@ -25,6 +25,17 @@ def overtime_charge(session, now=None):
 def snapshot(session):
     result = serialize(session)
     now = datetime.utcnow()
+    from app.services.session_extensions import ready, RuntimeSession, snapshot as runtime_snapshot
+    if ready():
+        managed=RuntimeSession.query.filter_by(source_kind='self_qr',source_id=session.id).first()
+        if managed:
+            state=runtime_snapshot(managed)
+            result.update(runtime=state, ends_at=state['reserved_until'], play_allowed=state['play_allowed'],
+                payment_due=state['billing']['amount_due_paise'], stop_at=state['stop_at'], auto_lock_at_end=False,
+                server_time=state['server_time'], warning=state['extension']['reason_code'],
+                continuation_request=None,last_continuation=None,next_session_id=None,
+                remaining_seconds=max(0,int((managed.reserved_until-now).total_seconds())),billing='metered_extension')
+            return result
     result['remaining_seconds'] = max(0, int((session.ends_at-now).total_seconds())) if session.ends_at else 0
     result['play_allowed'] = bool(session.state == 'active')
     result['stop_at'] = None
@@ -69,6 +80,9 @@ def request_continuation(session_id, user_id, body):
     initial = CafePlaySession.query.filter_by(id=session_id,user_id=user_id).first()
     if not initial:
         raise CafeError('Session not found',404)
+    from app.services.session_extensions import ready, RuntimeSession
+    if ready() and RuntimeSession.query.filter_by(source_kind='self_qr',source_id=session_id).first():
+        raise CafeError('Use the enrolled session extension quote and Continue endpoints',409)
     wallet(initial.vendor_id,user_id)
     session = CafePlaySession.query.filter_by(id=session_id).populate_existing().with_for_update().one()
     minutes = integer(body.get('minutes'),5,720)
@@ -163,6 +177,11 @@ def end_session(session_id, actor):
     if not initial: raise CafeError('Session not found',404)
     wallet(initial.vendor_id,initial.user_id)
     session = CafePlaySession.query.filter_by(id=session_id).populate_existing().with_for_update().one()
+    from app.services.session_extensions import ready, RuntimeSession, lock_row, finish
+    if ready():
+        managed=RuntimeSession.query.filter_by(source_kind='self_qr',source_id=session.id).first()
+        if managed:
+            finish(lock_row(managed.id));return session
     if session.kind == 'existing_booking': raise CafeError('End this booking using the booking controls',409)
     if session.state == 'reserved':
         from app.services.cafe_wallet_service import acknowledge
@@ -181,6 +200,11 @@ def settle(vendor_id,session_id,body,actor):
     if not initial: raise CafeError('Session not found',404)
     w = wallet(vendor_id,initial.user_id)
     row = CafePlaySession.query.filter_by(id=session_id).populate_existing().with_for_update().one()
+    from app.services.session_extensions import ready, RuntimeSession, lock_row, receipt
+    if ready():
+        managed=RuntimeSession.query.filter_by(source_kind='self_qr',source_id=row.id).first()
+        if managed:
+            runtime=lock_row(managed.id);receipt(runtime,dict(body,amount_paise=body.get('expected_amount'),revision=runtime.revision),actor);return row
     idem=key(body.get('idempotency_key'));method=body.get('method')
     amount=integer(body.get('expected_amount'),0);fp=fingerprint([session_id,amount,method])
     old=CafeLedger.query.filter_by(vendor_id=vendor_id,idempotency_key=idem).first()

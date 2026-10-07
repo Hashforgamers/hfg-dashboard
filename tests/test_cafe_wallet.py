@@ -102,6 +102,7 @@ def env(monkeypatch):
     for name,model in [('vendor',Vendor),('user',User),('console',Console),('console_link_session',ConsoleLinkSession),('vendorStaff',VendorStaff),('vendorRolePermission',VendorRolePermission),('extraServiceMenu',ExtraServiceMenu),('extraServiceCategory',ExtraServiceCategory)]:
         model_module(name,model)
     models=load('app.models.cafe_wallet','app/models/cafe_wallet.py')
+    load('app.models.session_extension','app/models/session_extension.py')
     load('app.services.pricing_math','app/services/pricing_math.py')
     load('app.services.slot_capacity','app/services/slot_capacity.py')
     load('app.services.cafe_slot_reservations','app/services/cafe_slot_reservations.py')
@@ -117,6 +118,13 @@ def env(monkeypatch):
     from unittest.mock import Mock
     socket.socketio=Mock();monkeypatch.setitem(sys.modules,socket.__name__,socket)
     app.register_blueprint(controller.bp_cafe)
+    load('app.services.kiosk_security','app/services/kiosk_security.py')
+    load('app.services.kiosk_runtime','app/services/kiosk_runtime.py')
+    load('app.services.session_realtime','app/services/session_realtime.py')
+    extensions=load('app.services.session_extensions','app/services/session_extensions.py')
+    extensions_api=load('app.controllers.session_extensions_controller','app/controllers/session_extensions_controller.py')
+    app.register_blueprint(extensions_api.bp_extensions)
+    app.register_error_handler(service.CafeError,controller.cafe_error)
     access = load('app.controllers.access_controller', 'app/controllers/access_controller.py')
     app.register_blueprint(access.bp_access)
     with app.app_context():

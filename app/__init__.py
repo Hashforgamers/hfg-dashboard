@@ -130,7 +130,8 @@ def create_app():
     # Extensions
     db.init_app(app)
     Migrate(app, db)
-    socketio.init_app(app, cors_allowed_origins=app.config.get("CORS_ALLOWED_ORIGINS", "*"))
+    socketio.init_app(app, cors_allowed_origins=app.config.get("CORS_ALLOWED_ORIGINS", "*"),
+                     message_queue=os.getenv("SOCKETIO_MESSAGE_QUEUE_URL") or os.getenv("REDIS_URL") or None)
 
     # Force model mapper registration order for relationship string references.
     from app.models.bookingSquadMember import BookingSquadMember  # noqa: F401
@@ -181,6 +182,12 @@ def create_app():
     from app.controllers.kiosk_controller import bp_kiosk, install_kiosk_errors
     app.register_blueprint(bp_kiosk)
     install_kiosk_errors(app)
+    from app.controllers.session_extensions_controller import bp_extensions
+    app.register_blueprint(bp_extensions)
+    from app.services.session_realtime import register_gamer_realtime
+    register_gamer_realtime(app,socketio)
+    from app.services.session_extensions import start_worker as start_extension_worker
+    start_extension_worker(app,socketio)
     from werkzeug.exceptions import HTTPException
     @app.errorhandler(Exception)
     def json_error(exc):

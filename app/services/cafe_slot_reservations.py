@@ -64,10 +64,15 @@ def scheduled_slots(link, start, end, *, lock=False):
 def ensure_console_window(link, start, end, *, exclude_bookings=()):
     # The console lock and database assignment guard serialize writes; do not
     # take dashboard row locks in the opposite order to legacy assignments.
-    rows = db.session.execute(text(f'''SELECT book_id,date,start_time,end_time
-        FROM VENDOR_{int(link.vendor_id)}_DASHBOARD
-        WHERE console_id=:console AND book_status IN ('upcoming','current')
-          AND date BETWEEN :first AND :last'''),
+    scope='d.console_id=:console'
+    join=''
+    if db.engine.dialect.name=='postgresql':
+        join='LEFT JOIN bookings b ON b.id=d.book_id'
+        scope="(d.console_id=:console OR (COALESCE(b.squad_details::jsonb->'assigned_console_ids','[]'::jsonb) @> to_jsonb(CAST(:console AS integer)) AND NOT COALESCE(b.squad_details::jsonb->'released_console_ids','[]'::jsonb) @> to_jsonb(CAST(:console AS integer))))"
+    rows = db.session.execute(text(f'''SELECT d.book_id,d.date,d.start_time,d.end_time
+        FROM VENDOR_{int(link.vendor_id)}_DASHBOARD d {join}
+        WHERE {scope} AND d.book_status IN ('upcoming','current')
+          AND d.date BETWEEN :first AND :last'''),
         {'console':link.console_id, 'first':start.date()-timedelta(days=1), 'last':end.date()}).mappings().all()
     for row in rows:
         if row['book_id'] in exclude_bookings:
@@ -134,4 +139,3 @@ def extend_overtime_slots(session, now):
             current_app.logger.warning('Overtime capacity conflict vendor=%s console=%s slot=%s',session.vendor_id,session.console_id,row['slot_id'])
             continue
         hold_slots(session,[row])
-    notify_slot_changes(session)

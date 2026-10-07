@@ -56,9 +56,9 @@ def controller_total(base, tiers, quantity):
     return dp[quantity]
 
 
-def session_amount(base, slots, offers, start, minutes):
+def session_amount(base, slots, offers, start, minutes, *, minimum_minutes=5):
     """Prorate each covered slot; fail closed on schedule gaps or overlaps."""
-    if type(minutes) is not int or not 5 <= minutes <= 720:
+    if type(minutes) is not int or not minimum_minutes <= minutes <= 720:
         raise ValueError('Session duration must be between 5 and 720 minutes')
     end = start + timedelta(minutes=minutes)
     windows = []

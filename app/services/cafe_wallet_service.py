@@ -129,8 +129,13 @@ def topup(vendor_id, user_id, body, actor):
     if not db.session.get(User, user_id):
         raise CafeError('Gamer not found', 404)
     w.balance += amount
-    return ledger(w, 'topup', amount, actor, idem, fp, method=method,
-                  shift_id=shift.id, reason='Desk top-up')
+    from app.services.session_extensions import ready, debt
+    repays=ready() and debt(vendor_id,user_id)>0
+    entry=ledger(w, 'topup', amount, actor, idem, fp, method=method,
+                 shift_id=shift.id, reason='Desk top-up including credit repayment' if repays else 'Desk top-up')
+    from app.services.session_extensions import repay_from_topup
+    repaid=repay_from_topup(w,amount,actor,idem)
+    return entry
 
 
 def refund(vendor_id, entry_id, body, actor):
@@ -147,6 +152,9 @@ def refund(vendor_id, entry_id, body, actor):
         if previous.idempotency_key == idem and previous.actor_id == actor['id'] and previous.fingerprint == fingerprint([entry_id, reason]):
             return previous
         raise CafeError('Transaction already reversed', 409)
+    from app.services.session_extensions import ready, SessionReceipt
+    if original.kind=='topup' and ready() and original.reason=='Desk top-up including credit repayment':
+        raise CafeError('Top-up repaid session debt; use audited collection reversal instead',409)
     delta = -original.amount
     if w.balance + delta < w.reserved:
         raise CafeError('Insufficient available balance for reversal', 409)
@@ -173,6 +181,9 @@ def reserve(vendor_id, user_id, link, minutes, idem, expected_amount=None, *, ow
     if not owner_credit and CafePlaySession.query.filter_by(vendor_id=vendor_id,user_id=user_id).filter(
         CafePlaySession.due_amount > 0, CafePlaySession.settled_at.is_(None)).first():
         raise CafeError('Settle the outstanding gaming balance at the desk before a new checkout',409)
+    from app.services.session_extensions import ready, debt
+    if not owner_credit and ready() and debt(vendor_id,user_id)>0:
+        raise CafeError('Settle this cafe credit balance before a new checkout',409)
     from app.services.payment_methods import require_method
     try:
         require_method(vendor_id, 'cafe_wallet')
@@ -326,6 +337,9 @@ def expire_sessions():
                 if not reconcile_booking(session):
                     continue
             else:
+                from app.services.session_extensions import ready, RuntimeSession
+                if ready() and RuntimeSession.query.filter_by(source_kind='self_qr',source_id=session.id).first():
+                    continue
                 # Funded duration ending starts overtime; staff explicitly release play.
                 from app.services.cafe_slot_reservations import extend_overtime_slots
                 extend_overtime_slots(session,now)

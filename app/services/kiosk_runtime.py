@@ -75,7 +75,7 @@ def booking_window(vendor_id, booking_id, console_id):
     cancelled = anchor['book_status'] in ('cancelled', 'canceled') or anchor['booking_status'] in ('cancelled', 'canceled')
     live = console_id not in released_ids and any(r['book_status'] == 'current' for r in group)
     status = 'cancelled' if cancelled else ('active' if live and begin <= now else 'expired')
-    return {
+    result = {
         'booking_id': booking_id, 'booking_ids': [int(r['book_id']) for r in group],
         'console_id': console_id, 'vendor_id': vendor_id, 'game_id': int(anchor['game_id']),
         'user_id': int(anchor['user_id']) if anchor['user_id'] else None,
@@ -87,6 +87,17 @@ def booking_window(vendor_id, booking_id, console_id):
         'auto_lock_at_end': False, 'stop_at': None,
         'overtime_seconds': max(0, math.ceil((now-finish).total_seconds())) if status == 'active' else 0,
     }
+
+    has_extensions=bool(db.session.execute(text("SELECT to_regclass('kiosk_runtime_sessions')")).scalar()) if db.engine.dialect.name=='postgresql' else False
+    if has_extensions:
+        from app.services.session_extensions import RuntimeSession, snapshot
+        managed=RuntimeSession.query.filter_by(vendor_id=vendor_id,console_id=console_id,source_kind='booking',source_id=str(booking_id)).first()
+        if managed:
+            state=snapshot(managed)
+            result.update(runtime=state,end_time=state['reserved_until'],stop_at=state['stop_at'],
+                auto_lock_at_end=False,play_allowed=state['play_allowed'],status='active' if state['play_allowed'] else 'expired')
+            result['seconds_remaining']=max(0,int((managed.reserved_until-datetime.utcnow()).total_seconds())) if state['play_allowed'] else 0
+    return result
 
 
 def notify_console_runtime(vendor_id, console_ids):

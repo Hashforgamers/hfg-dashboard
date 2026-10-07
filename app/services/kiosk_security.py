@@ -163,6 +163,13 @@ def transactional_device(fn):
                 return jsonify(saved['response']), saved['status_code']
         g.kiosk_transaction = True
         try:
+            release_bookings=[]
+            if booking_id is None and db.session.execute(text("SELECT to_regclass('kiosk_runtime_sessions')")).scalar():
+                release_bookings=db.session.execute(text(f"""SELECT DISTINCT b.id FROM bookings b
+                    JOIN VENDOR_{vendor_id}_DASHBOARD d ON d.book_id=b.id
+                    WHERE lower(d.book_status) IN ('current','active','checked_in')
+                      AND (d.console_id=:cid OR COALESCE(b.squad_details::jsonb->'assigned_console_ids','[]'::jsonb) @> to_jsonb(CAST(:cid AS integer)))
+                      AND NOT COALESCE(b.squad_details::jsonb->'released_console_ids','[]'::jsonb) @> to_jsonb(CAST(:cid AS integer))"""),{'cid':console_id}).scalars().all()
             # Release retries without keys may not terminate a newer booking.
             if identity['kind'] == 'kiosk':
                 from app.services.kiosk_runtime import booking_window
@@ -186,6 +193,26 @@ def transactional_device(fn):
             if response.status_code >= 400:
                 db.session.rollback()
                 return response
+            if booking_id is None:
+                if db.session.execute(text("SELECT to_regclass('kiosk_runtime_sessions')")).scalar():
+                    from app.services.session_extensions import RuntimeSession, lock_row, finish
+                    running=RuntimeSession.query.filter_by(vendor_id=vendor_id,console_id=console_id,ended_at=None).first()
+                    if running: finish(lock_row(running.id))
+                    # A legacy squad sibling can share a booking with an enrolled PC.
+                    from app.models.booking import Booking
+                    from app.services.session_extensions import release_base_booking
+                    from types import SimpleNamespace
+                    for bid in release_bookings:
+                        anchor_id=db.session.execute(text("SELECT id FROM kiosk_runtime_sessions WHERE vendor_id=:vid AND source_kind='booking' AND booking_ids::jsonb @> to_jsonb(CAST(:bid AS integer)) LIMIT 1"),{'vid':vendor_id,'bid':bid}).scalar()
+                        anchor=db.session.get(RuntimeSession,anchor_id) if anchor_id else None
+                        if not anchor: continue
+                        booking=Booking.query.filter_by(id=bid).with_for_update().first()
+                        details=dict(booking.squad_details or {})
+                        assigned=set(map(int,details.get('assigned_console_ids',[]) or [console_id]))
+                        released=set(map(int,details.get('released_console_ids',[])));released.add(console_id)
+                        details['released_console_ids']=sorted(released)
+                        release_base_booking(SimpleNamespace(id=anchor.id,vendor_id=vendor_id,console_id=console_id),booking,details,assigned,released)
+                        booking.squad_details=details
             if key:
                 db.session.execute(text('''INSERT INTO kiosk_idempotency
                     (principal, key, fingerprint, response, status_code)
