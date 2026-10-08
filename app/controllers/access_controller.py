@@ -412,3 +412,46 @@ def refresh_staff_session(vendor_id: int):
             return jsonify(error="Staff account is disabled"), 403
         name, role = member.name, member.role
     return jsonify(create_access_token_payload(vendor_id, actor['id'], name, role, session=session))
+
+
+@bp_access.post('/owner/security')
+@jwt_required()
+def change_owner_security(vendor_id):
+    """Owner credentials are scoped by the signed session, never a supplied email."""
+    import secrets
+    from sqlalchemy import text
+    from werkzeug.security import check_password_hash
+    from app.controllers.cafe_wallet_controller import staff_actor
+    from app.services.cafe_wallet_service import CafeError, audit
+    actor=staff_actor(vendor_id,'account.manage')
+    if (get_jwt().get('staff') or {}).get('role')!='owner':
+        raise CafeError('Only the owner can change owner credentials',403)
+    data=request.get_json(silent=True)
+    if not isinstance(data,dict):raise CafeError('Supply a JSON object')
+    kind=data.get('kind');current=data.get('current_password');value=data.get('new_value');confirm=data.get('confirm_value')
+    if kind not in ('password','pin') or not all(isinstance(v,str) for v in (current,value,confirm)):
+        raise CafeError('Complete all security fields')
+    if value!=confirm:raise CafeError('Confirmation does not match')
+    if kind=='password' and not 8<=len(value)<=128:raise CafeError('Password must contain 8–128 characters')
+    if kind=='pin' and (not value.isascii() or not value.isdigit() or len(value)!=4):raise CafeError('PIN must contain exactly four digits')
+    vendor=Vendor.query.filter_by(id=vendor_id).with_for_update().first()
+    if not vendor:raise CafeError('Cafe not found',404)
+    rows=db.session.execute(text("""SELECT p.id,p.password FROM password_manager p JOIN vendors v ON v.id=p.parent_id
+        WHERE p.parent_type='vendor' AND (v.id=:vid OR (:account IS NOT NULL AND v.account_id=:account))
+        ORDER BY p.id"""+(' FOR UPDATE OF p' if db.engine.dialect.name=='postgresql' else '')),{'vid':vendor_id,'account':vendor.account_id}).mappings().all()
+    def matches(stored):
+        return secrets.compare_digest(str(stored).encode(),current.encode()) or check_password_hash(stored,current)
+    if not current or not rows or not all(matches(row['password']) for row in rows):raise CafeError('Current owner password is incorrect',401)
+    if kind=='password':
+        if secrets.compare_digest(value.encode(),current.encode()):raise CafeError('Choose a different password')
+        # Matches the login service's existing account-wide credential storage contract.
+        for row in rows:db.session.execute(text('UPDATE password_manager SET password=:value,must_change_password=false WHERE id=:id'),{'value':value,'id':row['id']})
+    else:
+        if is_pin_in_use(vendor_id,value):raise CafeError('This PIN is already used by a team member',409)
+        existing=db.session.execute(text('SELECT id FROM vendor_pins WHERE vendor_id=:vid'+(' FOR UPDATE' if db.engine.dialect.name=='postgresql' else '')),{'vid':vendor_id}).scalar()
+        if db.session.execute(text('SELECT 1 FROM vendor_pins WHERE pin_code=:pin AND vendor_id<>:vid'),{'pin':value,'vid':vendor_id}).first():raise CafeError('Choose another PIN',409)
+        if existing:db.session.execute(text('UPDATE vendor_pins SET pin_code=:pin WHERE vendor_id=:vid'),{'pin':value,'vid':vendor_id})
+        else:db.session.execute(text('INSERT INTO vendor_pins(vendor_id,pin_code) VALUES(:vid,:pin)'),{'pin':value,'vid':vendor_id})
+    audit(vendor_id,actor,'owner.credentials_changed',{'kind':kind})
+    db.session.commit()
+    return jsonify(success=True,message='Owner '+kind+' updated.')
