@@ -20,8 +20,8 @@
     "semantic_hash": ""
   },
   "app/controllers/access_controller.py": {
-    "mtime": 1791451402.665185,
-    "ast_hash": "a38a45c697a135ab717f626c15aa7abc",
+    "mtime": 1791466147.775391,
+    "ast_hash": "4f580c8826c7500c4daf9062f8f4c604",
     "semantic_hash": ""
   },
   "app/controllers/admin_games_controller.py": {
@@ -675,8 +675,8 @@
     "semantic_hash": ""
   },
   "app/controllers/kiosk_controller.py": {
-    "mtime": 1791395550.8194275,
-    "ast_hash": "0cddc2adcb20f5c50d1664ec02ec139b",
+    "mtime": 1791465263.1130722,
+    "ast_hash": "628d6c7a5d2dbf679bf46bee318a577b",
     "semantic_hash": ""
   },
   "app/models/cafe_wallet.py": {
@@ -955,8 +955,18 @@
     "semantic_hash": ""
   },
   "tests/test_owner_security.py": {
-    "mtime": 1791451442.7253237,
-    "ast_hash": "10c1d0cf1634e0cd3e461caf01be47e1",
+    "mtime": 1791466147.775726,
+    "ast_hash": "e000fd8934740c9028b7ad3e78f94a02",
+    "semantic_hash": ""
+  },
+  "tests/test_kiosk_owner_pin.py": {
+    "mtime": 1791465352.1849256,
+    "ast_hash": "5963780e1a37048f66f384a890eeba8c",
+    "semantic_hash": ""
+  },
+  "docs/kiosk-owner-pin-force-exit.md": {
+    "mtime": 1791465339.950331,
+    "ast_hash": "af19d8cea905d1d0e98f1e0ec7e53947",
     "semantic_hash": ""
   }
 }

@@ -20,8 +20,8 @@
     "semantic_hash": ""
   },
   "app/controllers/access_controller.py": {
-    "mtime": 1791451402.665185,
-    "ast_hash": "a38a45c697a135ab717f626c15aa7abc",
+    "mtime": 1791466259.9863422,
+    "ast_hash": "444b2343a283dbbfd3526fd206fdd37e",
     "semantic_hash": ""
   },
   "app/controllers/admin_games_controller.py": {
@@ -955,8 +955,8 @@
     "semantic_hash": ""
   },
   "tests/test_owner_security.py": {
-    "mtime": 1791451442.7253237,
-    "ast_hash": "10c1d0cf1634e0cd3e461caf01be47e1",
+    "mtime": 1791466302.9116037,
+    "ast_hash": "eb22a194a5985d0c3b26904247fa315a",
     "semantic_hash": ""
   },
   "tests/test_kiosk_owner_pin.py": {

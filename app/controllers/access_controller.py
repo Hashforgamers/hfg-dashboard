@@ -28,6 +28,17 @@ from werkzeug.security import generate_password_hash
 
 bp_access = Blueprint("vendor_access", __name__, url_prefix="/api/vendor/<int:vendor_id>/access")
 
+@bp_access.errorhandler(IntegrityError)
+def access_conflict(error):
+    db.session.rollback()
+    return jsonify(error='This change conflicts with another update. Please refresh and choose another PIN.'),409
+
+@bp_access.after_request
+def private_access_response(response):
+    response.headers['Cache-Control']='private, no-store'
+    response.vary.add('Authorization')
+    return response
+
 
 def _ensure_vendor_exists(vendor_id: int):
     vendor = Vendor.query.get(vendor_id)
@@ -423,9 +434,9 @@ def change_owner_security(vendor_id):
     from werkzeug.security import check_password_hash
     from app.controllers.cafe_wallet_controller import staff_actor
     from app.services.cafe_wallet_service import CafeError, audit
-    actor=staff_actor(vendor_id,'account.manage')
-    if (get_jwt().get('staff') or {}).get('role')!='owner':
+    if (get_jwt().get('staff') or {}).get('role')!='owner' or (get_jwt().get('staff') or {}).get('id')!=f'owner-{vendor_id}':
         raise CafeError('Only the owner can change owner credentials',403)
+    actor=staff_actor(vendor_id,'account.manage')
     data=request.get_json(silent=True)
     if not isinstance(data,dict):raise CafeError('Supply a JSON object')
     kind=data.get('kind');current=data.get('current_password');value=data.get('new_value');confirm=data.get('confirm_value')
@@ -440,8 +451,12 @@ def change_owner_security(vendor_id):
         WHERE p.parent_type='vendor' AND (v.id=:vid OR (:account IS NOT NULL AND v.account_id=:account))
         ORDER BY p.id"""+(' FOR UPDATE OF p' if db.engine.dialect.name=='postgresql' else '')),{'vid':vendor_id,'account':vendor.account_id}).mappings().all()
     def matches(stored):
-        return secrets.compare_digest(str(stored).encode(),current.encode()) or check_password_hash(stored,current)
-    if not current or not rows or not all(matches(row['password']) for row in rows):raise CafeError('Current owner password is incorrect',401)
+        if not stored:return False
+        if secrets.compare_digest(str(stored).encode(),current.encode()):return True
+        try:return check_password_hash(stored,current)
+        except (ValueError,TypeError):return False
+    # Match the login service's canonical account credential, then synchronize linked cafes.
+    if not current or not rows or not matches(rows[0]['password']):raise CafeError('Current owner password is incorrect',400)
     if kind=='password':
         if secrets.compare_digest(value.encode(),current.encode()):raise CafeError('Choose a different password')
         # Matches the login service's existing account-wide credential storage contract.
@@ -453,5 +468,7 @@ def change_owner_security(vendor_id):
         if existing:db.session.execute(text('UPDATE vendor_pins SET pin_code=:pin WHERE vendor_id=:vid'),{'pin':value,'vid':vendor_id})
         else:db.session.execute(text('INSERT INTO vendor_pins(vendor_id,pin_code) VALUES(:vid,:pin)'),{'pin':value,'vid':vendor_id})
     audit(vendor_id,actor,'owner.credentials_changed',{'kind':kind})
-    db.session.commit()
+    try:db.session.commit()
+    except IntegrityError:
+        db.session.rollback();raise CafeError('Credentials changed concurrently. Please retry with another PIN.',409)
     return jsonify(success=True,message='Owner '+kind+' updated.')
