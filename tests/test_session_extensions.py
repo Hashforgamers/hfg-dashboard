@@ -173,17 +173,37 @@ def test_normal_booking_extends_same_session_and_releases_once(env, monkeypatch)
         from app.services.slot_capacity import reserve_slot
         reserve_slot(e.db.session,1,base_slot,start.date());e.db.session.commit()
         c=engine();row=c.attach(e.db.session.get(e.Link,1),{'kind':'booking','id':'999'});e.db.session.commit()
+        claim_session=e.m.CafePlaySession(id='guest-booking-claim',vendor_id=1,user_id=1,console_id=1,link_id=1,
+            kind='existing_booking',state='active',idempotency_key='guest-claim-key',fingerprint='guest-claim',
+            amount=1000,minutes=30,settled_at=now,command_token='guest-command',deadline=now+timedelta(seconds=30),started_at=now,ends_at=row.paid_until)
+        e.db.session.add(claim_session);e.db.session.add(e.m.CafeBookingClaim(booking_id=999,session_id=claim_session.id));e.db.session.commit()
         q,body=extend(e,row,consent=False)
         assert q.status=='granted' and row.source_id=='999'
         assert c.segments(row)[0].funding==0
+        assert e.db.session.get(e.m.CafeWallet,(1,1)) is None
+        assert c.snapshot(row)['billing']['payment_status']=='extension_reserved'
+        assert c.snapshot(row)['billing']['payment_method']=='pay_at_desk'
         c.finish(row,q.starts_at+(q.ends_at-q.starts_at)/2);e.db.session.commit()
         due=c.snapshot(row)['billing']['amount_due_paise'];assert due>0
+        assert c.snapshot(row)['billing']['payment_status']=='amount_due'
+        legacy=sys.modules['app.services.cafe_continuation_service']
+        assert legacy.snapshot(claim_session)['payment_due']==due
+        assert legacy.snapshot(claim_session)['settled_at'] is None
+        assert legacy.snapshot(claim_session)['original_settled_at'] is not None
+        assert legacy.snapshot(claim_session)['runtime']['session_ref']['kind']=='booking'
+        assert e.db.session.get(e.m.CafeWallet,(1,1)) is None
         assert e.db.session.get(Booking,999).status=='completed'
         assert e.db.session.get(Booking,999).squad_details['remaining_slot_units']==0
         base_available=e.db.session.execute(text('SELECT available_slot FROM vendor_1_slot WHERE slot_id=:slot AND date=:day'),{'slot':base_slot,'day':start.date()}).scalar()
         assert base_available==2
         count=e.m.CafeSlotReservation.query.filter_by(session_id=row.id,released_at=None).count();assert count==0
         c.finish(row);e.db.session.commit();assert c.snapshot(row)['billing']['amount_due_paise']==due
+        e.db.session.add(e.m.CafeShift(id='guest-cash-shift',vendor_id=1,actor_id='owner',actor_name='Owner',open_key='1:owner',opening_cash=0));e.db.session.commit()
+        legacy.settle(1,claim_session.id,{'method':'cash','expected_amount':due,'idempotency_key':'guest-cash-collection'}, {'id':'owner','name':'Owner'});e.db.session.commit()
+        assert legacy.snapshot(claim_session)['payment_due']==0
+        assert c.snapshot(row)['billing']['payment_status']=='settled'
+        assert e.db.session.get(e.m.CafeWallet,(1,1)) is None
+
 
 
 def test_capacity_exhaustion_cannot_be_overridden_by_owner(env):

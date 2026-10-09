@@ -161,6 +161,9 @@ def gamer_extension_snapshot(runtime_id):
 @jwt_required()
 def staff_snapshot(vendor_id,runtime_id):
     check_ready();staff_actor(vendor_id,'dashboard.view')
-    row=RuntimeSession.query.filter_by(id=runtime_id,vendor_id=vendor_id).first()
-    if not row: raise CafeError('Session not found',404)
-    return jsonify(service.snapshot(row))
+    row=service.lock_row(runtime_id,vendor_id=vendor_id)
+    if not row.ended_at:
+        before=sum(part.charged for part in service.segments(row))
+        service.accrue(row)
+        if sum(part.charged for part in service.segments(row))!=before:service.changed(row,state_changed=False)
+    return answer(row)

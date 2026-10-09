@@ -690,8 +690,8 @@
     "semantic_hash": ""
   },
   "app/services/kiosk_runtime.py": {
-    "mtime": 1791394766.6811652,
-    "ast_hash": "b57a89504d6a5fed8f60b2bb63ba052b",
+    "mtime": 1791573883.1685133,
+    "ast_hash": "8d5a32b548dfad61a73a13640c7cfeb3",
     "semantic_hash": ""
   },
   "app/services/kiosk_security.py": {
@@ -720,8 +720,8 @@
     "semantic_hash": ""
   },
   "tests/test_kiosk_runtime.py": {
-    "mtime": 1791398994.2950187,
-    "ast_hash": "7c0f22829a00a8c8ae34fb109b9baa88",
+    "mtime": 1791573950.3157885,
+    "ast_hash": "3fbbb40c7c5d5f3ddca723efae46fe90",
     "semantic_hash": ""
   },
   "tests/test_websocket_bridge.py": {
@@ -875,8 +875,8 @@
     "semantic_hash": ""
   },
   "app/services/cafe_continuation_service.py": {
-    "mtime": 1791394434.4078796,
-    "ast_hash": "b883185b3f0847850ce89d6a04315280",
+    "mtime": 1791574084.597405,
+    "ast_hash": "7d5deac735c14eab1575c9f3017428ce",
     "semantic_hash": ""
   },
   "app/services/cafe_owner_email.py": {
@@ -915,8 +915,8 @@
     "semantic_hash": ""
   },
   "app/controllers/session_extensions_controller.py": {
-    "mtime": 1791399288.1048074,
-    "ast_hash": "631d2f8d140c99744f228fe2b3ea0770",
+    "mtime": 1791574084.597964,
+    "ast_hash": "3ce7a5f755ef50d4ed50ce19b8538912",
     "semantic_hash": ""
   },
   "app/models/session_extension.py": {
@@ -925,8 +925,8 @@
     "semantic_hash": ""
   },
   "app/services/session_extensions.py": {
-    "mtime": 1791399309.3631616,
-    "ast_hash": "65ced12d9edbe1606dee6474ec777b0c",
+    "mtime": 1791573883.1694963,
+    "ast_hash": "ed1a32aeb3151e2d53c417a1471465d9",
     "semantic_hash": ""
   },
   "app/services/session_realtime.py": {
@@ -940,8 +940,8 @@
     "semantic_hash": ""
   },
   "tests/test_session_extensions.py": {
-    "mtime": 1791399262.5290163,
-    "ast_hash": "9a19d2870111b4969efbfc779d451c08",
+    "mtime": 1791574084.5982356,
+    "ast_hash": "93eea8a01e7e7dc3ccf05aab090d3f73",
     "semantic_hash": ""
   },
   "docs/kiosk-session-extension-api.md": {

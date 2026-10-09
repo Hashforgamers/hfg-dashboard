@@ -153,7 +153,8 @@ def secure_start(fn):
         redemption = None
         try:
             if code:
-                if not isinstance(code, str) or len(code) != 6 or not code.isascii() or not code.isdigit():
+                if isinstance(code,str):code=code.strip().upper()
+                if not isinstance(code, str) or len(code) != 6 or not code.isascii() or not code.isalnum():
                     raise KioskError('invalid_access_code', 400)
                 access = db.session.execute(text('''
                     SELECT id FROM access_booking_codes WHERE access_code=:code FOR UPDATE

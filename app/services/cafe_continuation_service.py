@@ -22,15 +22,29 @@ def overtime_charge(session, now=None):
     return math.ceil(session.amount * math.ceil(seconds/60) / session.minutes)
 
 
+def managed_runtime(session):
+    from app.services.session_extensions import RuntimeSession
+    direct=RuntimeSession.query.filter_by(source_kind='self_qr',source_id=session.id).first()
+    if direct or session.kind!='existing_booking':return direct
+    from app.models.cafe_wallet import CafeBookingClaim
+    booking_ids={claim.booking_id for claim in CafeBookingClaim.query.filter_by(session_id=session.id).all()}
+    if not booking_ids:return None
+    for runtime in RuntimeSession.query.filter_by(source_kind='booking',vendor_id=session.vendor_id,console_id=session.console_id).order_by(RuntimeSession.started_at.desc()).all():
+        if booking_ids.intersection(runtime.booking_ids or []):return runtime
+    return None
+
+
 def snapshot(session):
     result = serialize(session)
     now = datetime.utcnow()
     from app.services.session_extensions import ready, RuntimeSession, snapshot as runtime_snapshot
     if ready():
-        managed=RuntimeSession.query.filter_by(source_kind='self_qr',source_id=session.id).first()
+        managed=managed_runtime(session)
         if managed:
             state=runtime_snapshot(managed)
             result.update(runtime=state, ends_at=state['reserved_until'], play_allowed=state['play_allowed'],
+                original_settled_at=result.get('settled_at'),settled_at=state['ended_at'] if state['billing']['is_final'] and state['billing']['amount_due_paise']==0 else None,
+                due_amount=state['billing']['amount_due_paise'],payment_status=state['billing']['payment_status'],
                 payment_due=state['billing']['amount_due_paise'], stop_at=state['stop_at'], auto_lock_at_end=False,
                 server_time=state['server_time'], warning=state['extension']['reason_code'],
                 continuation_request=None,last_continuation=None,next_session_id=None,
@@ -81,7 +95,7 @@ def request_continuation(session_id, user_id, body):
     if not initial:
         raise CafeError('Session not found',404)
     from app.services.session_extensions import ready, RuntimeSession
-    if ready() and RuntimeSession.query.filter_by(source_kind='self_qr',source_id=session_id).first():
+    if ready() and managed_runtime(initial):
         raise CafeError('Use the enrolled session extension quote and Continue endpoints',409)
     wallet(initial.vendor_id,user_id)
     session = CafePlaySession.query.filter_by(id=session_id).populate_existing().with_for_update().one()
@@ -175,13 +189,13 @@ def decide(vendor_id, request_id, body, actor):
 def end_session(session_id, actor):
     initial = db.session.get(CafePlaySession,session_id)
     if not initial: raise CafeError('Session not found',404)
-    wallet(initial.vendor_id,initial.user_id)
-    session = CafePlaySession.query.filter_by(id=session_id).populate_existing().with_for_update().one()
     from app.services.session_extensions import ready, RuntimeSession, lock_row, finish
     if ready():
-        managed=RuntimeSession.query.filter_by(source_kind='self_qr',source_id=session.id).first()
+        managed=managed_runtime(initial)
         if managed:
-            finish(lock_row(managed.id));return session
+            finish(lock_row(managed.id));return initial
+    wallet(initial.vendor_id,initial.user_id)
+    session = CafePlaySession.query.filter_by(id=session_id).populate_existing().with_for_update().one()
     if session.kind == 'existing_booking': raise CafeError('End this booking using the booking controls',409)
     if session.state == 'reserved':
         from app.services.cafe_wallet_service import acknowledge
@@ -198,13 +212,13 @@ def end_session(session_id, actor):
 def settle(vendor_id,session_id,body,actor):
     initial = CafePlaySession.query.filter_by(id=session_id,vendor_id=vendor_id).first()
     if not initial: raise CafeError('Session not found',404)
-    w = wallet(vendor_id,initial.user_id)
-    row = CafePlaySession.query.filter_by(id=session_id).populate_existing().with_for_update().one()
     from app.services.session_extensions import ready, RuntimeSession, lock_row, receipt
     if ready():
-        managed=RuntimeSession.query.filter_by(source_kind='self_qr',source_id=row.id).first()
+        managed=managed_runtime(initial)
         if managed:
-            runtime=lock_row(managed.id);receipt(runtime,dict(body,amount_paise=body.get('expected_amount'),revision=runtime.revision),actor);return row
+            runtime=lock_row(managed.id);receipt(runtime,dict(body,amount_paise=body.get('expected_amount'),revision=runtime.revision),actor);return initial
+    w = wallet(vendor_id,initial.user_id)
+    row = CafePlaySession.query.filter_by(id=session_id).populate_existing().with_for_update().one()
     idem=key(body.get('idempotency_key'));method=body.get('method')
     amount=integer(body.get('expected_amount'),0);fp=fingerprint([session_id,amount,method])
     old=CafeLedger.query.filter_by(vendor_id=vendor_id,idempotency_key=idem).first()
