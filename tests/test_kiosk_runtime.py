@@ -155,6 +155,12 @@ class KioskTests(unittest.TestCase):
             headers['Idempotency-Key'] = key
         return self.client.post(path, json=body or {}, headers=headers)
 
+    def test_alphanumeric_access_code_unlocks_assigned_pc(self):
+        db.session.execute(text("UPDATE access_booking_codes SET access_code='MKY628' WHERE id=1"));db.session.commit()
+        response=self.post('/start',{'console_id':10,'access_code':' mky628 '})
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(self.calls,1)
+
     def test_real_assignment_starts_booking_in_same_transaction_as_redemption(self):
         from sqlalchemy.ext.automap import automap_base
         from flask import current_app

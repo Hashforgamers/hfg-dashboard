@@ -56,7 +56,9 @@ def snapshot(row):
         'reserved_until':stamp(row.reserved_until),'stop_at':stamp(row.stop_at),'auto_lock_at_end':False,
         'play_allowed':row.ended_at is None and now<min(row.reserved_until,row.stop_at or row.reserved_until),
         'last_seen_at':stamp(row.last_seen_at),'ended_at':stamp(row.ended_at),'extension':{'mode':row.credit_mode,'rolling_enabled':row.rolling,'reason_code':row.reason,'request_id':pending.id if pending else None,'status':pending.status if pending else row.status,'requested_price_paise':pending.amount if pending else None},
-        'billing':{'currency':'INR','total_paise':total,'wallet_funded_paise':funded,'collected_paise':collected,
+        'billing':{'currency':'INR','payment_method':'pay_at_desk' if row.source_kind=='booking' else 'cafe_wallet',
+          'has_extension':bool(parts),'payment_status':'amount_due' if total-funded-collected-waived>0 else 'extension_reserved' if row.ended_at is None and any(p.amount>p.funding+p.credit_paid for p in parts) else 'settled' if row.ended_at else 'prepaid',
+          'total_paise':total,'wallet_funded_paise':funded,'collected_paise':collected,
           'waived_paise':waived,'credit_due_paise':total-funded-collected-waived,'amount_due_paise':total-funded-collected-waived,
           'net_cafe_balance_paise':(w.balance if w else 0)-debt(row.vendor_id,row.user_id),
           'as_of':stamp(row.billed_at),'is_final':row.ended_at is not None}}
@@ -67,6 +69,16 @@ def changed(row, state_changed=True, availability_changed=False):
     db.session.flush()
     db.session.add(SessionOutbox(id=uid(),runtime_id=row.id,revision=row.revision,snapshot=dict(snapshot(row),availability_changed=availability_changed)))
 
+def runtime_wallet(row):
+    # Desk/app guests need an invoice, not a cafe wallet or app login.
+    if row.source_kind=='self_qr':return wallet(row.vendor_id,row.user_id)
+    from app.models.vendor import Vendor
+    from app.models.cafe_wallet import CafeWallet
+    if not Vendor.query.filter_by(id=row.vendor_id).populate_existing().with_for_update().first():raise CafeError('Cafe not found',404)
+    existing=CafeWallet.query.filter_by(vendor_id=row.vendor_id,user_id=row.user_id).populate_existing().with_for_update().first()
+    return existing or SimpleNamespace(vendor_id=row.vendor_id,user_id=row.user_id,balance=0,reserved=0)
+
+
 def lock_row(runtime_id,vendor_id=None,link_id=None):
     initial=db.session.get(RuntimeSession,runtime_id)
     if not initial or (vendor_id is not None and initial.vendor_id!=vendor_id) or (link_id is not None and initial.link_id!=link_id):
@@ -74,7 +86,7 @@ def lock_row(runtime_id,vendor_id=None,link_id=None):
     if db.engine.dialect.name=='postgresql':
         from app.services.kiosk_security import vendor_lock
         vendor_lock(initial.vendor_id)
-    wallet(initial.vendor_id,initial.user_id)
+    runtime_wallet(initial)
     return RuntimeSession.query.filter_by(id=runtime_id).populate_existing().with_for_update().one()
 
 def attach(link,ref):
@@ -99,7 +111,7 @@ def attach(link,ref):
     if db.engine.dialect.name=='postgresql':
         from app.services.kiosk_security import vendor_lock
         vendor_lock(link.vendor_id)
-    wallet(link.vendor_id,user)
+    runtime_wallet(SimpleNamespace(source_kind=ref['kind'],vendor_id=link.vendor_id,user_id=user))
     Console.query.filter_by(id=link.console_id,vendor_id=link.vendor_id).with_for_update().one()
     old=RuntimeSession.query.filter_by(source_kind=ref['kind'],source_id=source,console_id=link.console_id).first()
     if old: return old
@@ -149,7 +161,7 @@ def quote(row):
     q=ExtensionQuote(id=uid(),runtime_id=row.id,revision=row.revision,starts_at=start,ends_at=end,
         amount=amount,expires_at=datetime.utcnow()+timedelta(seconds=30),status='quoted')
     db.session.add(q);db.session.flush()
-    w=wallet(row.vendor_id,row.user_id);fund=min(amount,max(0,w.balance-w.reserved)) if row.source_kind=='self_qr' else 0
+    w=runtime_wallet(row);fund=min(amount,max(0,w.balance-w.reserved)) if row.source_kind=='self_qr' else 0
     return q,{'quote_id':q.id,'revision':row.revision,'expires_at':stamp(q.expires_at),'interval_start':stamp(start),
         'interval_end':stamp(end),'price_paise':amount,'wallet_funded_paise':fund,'credit_paise':amount-fund,
         'self_qr_credit_mode':settings(row.vendor_id)['self_qr_credit_mode'],
@@ -159,7 +171,7 @@ def quote(row):
 def grant(row,q,owner=False):
     if row.ended_at or q.starts_at!=row.reserved_until: raise CafeError('Session or extension boundary changed',409)
     if row.last_seen_at<datetime.utcnow()-timedelta(seconds=60): raise CafeError('Kiosk is offline; reconnect before extending',409)
-    w=wallet(row.vendor_id,row.user_id)
+    w=runtime_wallet(row)
     if quoted_amount(row,q)!=q.amount: raise CafeError('Price changed; accept a fresh quote',409)
     Console.query.filter_by(id=row.console_id,vendor_id=row.vendor_id).with_for_update().one()
     active_link=ConsoleLinkSession.query.filter_by(id=row.link_id,status='active').with_for_update().first()
@@ -216,7 +228,7 @@ def grant(row,q,owner=False):
 
 def accrue(row,now=None,close=False):
     now=min(now or datetime.utcnow(),row.ended_at or datetime.max,row.stop_at or datetime.max)
-    w=wallet(row.vendor_id,row.user_id)
+    w=runtime_wallet(row)
     for part in segments(row):
         if part.closed: continue
         seconds=max(0,min((now-part.starts_at).total_seconds(),(part.ends_at-part.starts_at).total_seconds()))
@@ -338,7 +350,7 @@ def receipt(row,body,actor):
         allocated=min(remaining,part.credit_due-part.credit_paid);part.credit_paid+=allocated;remaining-=allocated
         if allocated: db.session.add(SessionCreditEntry(id=uid(),runtime_id=row.id,segment_id=part.id,amount=-allocated,kind='waiver' if method=='waiver' else 'payment',
             idempotency_key='payment:'+fingerprint([idem,part.id])[:64]))
-    w=wallet(row.vendor_id,row.user_id)
+    w=runtime_wallet(row)
     result=SessionReceipt(id=uid(),runtime_id=row.id,vendor_id=row.vendor_id,amount=amount,method=method,
         actor_id=actor['id'],idempotency_key=idem,fingerprint=fp)
     db.session.add(result)
@@ -380,7 +392,7 @@ def tick():
                     row.status='offline';row.reason='kiosk_offline';notice(row,'kiosk_offline');changed(row)
             elif row.rolling and row.status in ('approval_pending','credit_limit','consent_required'):
                 pending=ExtensionQuote.query.filter(ExtensionQuote.runtime_id==row.id,ExtensionQuote.status.in_(['approval_pending','credit_limit','consent_required'])).first()
-                config=settings(row.vendor_id);w=wallet(row.vendor_id,row.user_id)
+                config=settings(row.vendor_id);w=runtime_wallet(row)
                 if pending and (w.balance>w.reserved or (row.credit_consent and (config['self_qr_credit_mode']=='automatic' or row.status=='credit_limit') and (config['credit_limit_paise'] is None or credit_exposure(row)+pending.amount<=config['credit_limit_paise']))):
                     try:
                         with db.session.begin_nested(): grant(row,pending)
