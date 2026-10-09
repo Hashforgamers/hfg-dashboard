@@ -33,7 +33,7 @@ def install_kiosk_errors(app):
 
 @bp_kiosk.post('/api/kiosk/owner-pin/validate')
 def validate_owner_pin():
-    """Authorize immediate native kiosk exit; never end or settle a gaming session."""
+    """Authorize a specific native owner action; never end or settle a gaming session."""
     import secrets
     import uuid
     from datetime import datetime,timedelta,timezone
@@ -48,7 +48,8 @@ def validate_owner_pin():
     pin=data.get('pin')
     if not isinstance(pin,str) or not pin.isascii() or not pin.isdigit() or not 4<=len(pin)<=6:
         raise KioskError('invalid_pin_format',400)
-    if data.get('action')!='force_exit':raise KioskError('invalid_action',400)
+    action=data.get('action')
+    if action not in ('force_exit','admin_settings'):raise KioskError('invalid_action',400)
     row=db.session.execute(text('SELECT p.pin_code,v.owner_name FROM vendor_pins p JOIN vendors v ON v.id=p.vendor_id WHERE p.vendor_id=:vid'),{'vid':identity['vendor_id']}).mappings().first()
     valid=False
     if row:
@@ -61,8 +62,8 @@ def validate_owner_pin():
         current_app.logger.warning('Kiosk owner validation rejected vendor=%s console=%s',identity['vendor_id'],identity['console_id'])
         raise KioskError('invalid_owner_pin',401)
     now=datetime.now(timezone.utc);reference=str(uuid.uuid4())
-    current_app.logger.info('Kiosk force exit authorized vendor=%s console=%s reference=%s',identity['vendor_id'],identity['console_id'],reference)
-    response=jsonify(status='success',authorized=True,action='force_exit',authorization_id=reference,
+    current_app.logger.info('Kiosk owner action authorized vendor=%s console=%s action=%s reference=%s',identity['vendor_id'],identity['console_id'],action,reference)
+    response=jsonify(status='success',authorized=True,action=action,authorization_id=reference,
         vendor_id=identity['vendor_id'],console_id=identity['console_id'],link_id=identity['id'],
         owner={'id':f"owner-{identity['vendor_id']}",'role':'owner','name':row['owner_name'] or 'Owner'},
         server_time=now.isoformat(),expires_at=(now+timedelta(seconds=60)).isoformat(),expires_in_seconds=60)

@@ -23,3 +23,12 @@ class OwnerPinTests(KioskTests):
     def test_owner_pin_validation_rate_limited(self):
         for _ in range(10):self.assertEqual(self.post('/api/kiosk/owner-pin/validate',{'pin':'0000','action':'force_exit'}).status_code,401)
         self.assertEqual(self.post('/api/kiosk/owner-pin/validate',{'pin':'4837','action':'force_exit'}).status_code,429)
+
+    def test_admin_settings_authorization_is_action_specific(self):
+        result=self.post('/api/kiosk/owner-pin/validate',{'pin':'4837','action':'admin_settings'})
+        self.assertEqual(result.status_code,200)
+        self.assertTrue(result.json['authorized'])
+        self.assertEqual(result.json['action'],'admin_settings')
+        self.assertEqual(result.json['expires_in_seconds'],60)
+        wrong=self.post('/api/kiosk/owner-pin/validate',{'pin':'9274','action':'admin_settings'})
+        self.assertEqual(wrong.status_code,401)
