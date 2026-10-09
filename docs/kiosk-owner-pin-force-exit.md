@@ -57,7 +57,7 @@ No PIN or password is returned. Owner identifies the cafe owner represented by t
 | --- | --- | --- |
 | 400 | invalid_json | Send JSON object |
 | 400 | invalid_pin_format | Require PIN string with 4–6 ASCII digits |
-| 400 | invalid_action | Only force_exit is supported |
+| 400 | invalid_action | Use force_exit or admin_settings |
 | 401 | token_required / invalid_session_token | Relink or recover active PC token |
 | 401 | invalid_owner_pin | Keep kiosk running; permit another attempt within limits |
 | 403 | kiosk_token_required | Dashboard JWTs cannot invoke this device endpoint |
@@ -98,3 +98,15 @@ Example PIN is fictional. Avoid entering a real PIN into shared shell history or
 ## Backend verification
 
 Tests cover correct owner authorization, wrong-cafe PIN rejection, missing link token, unsupported action, rate limiting, no PIN in response, private cache headers, and no console release/session side effect. Existing kiosk transaction tests are also run. Real Windows exit/watchdog behavior must be verified by the kiosk team after service deployment.
+
+## Admin settings authorization (9 October 2026)
+
+Use the same endpoint and active PC link token, with this body:
+
+```json
+{"pin":"4837","action":"admin_settings"}
+```
+
+Success has the same schema above, with `action:"admin_settings"`. Only open the native admin settings after a fresh HTTP 200 with authorized true, matching PC/cafe and the requested action. The 60-second response deadline authorizes entry, not an indefinite admin session. Settings panel timeout/lock-on-close must be implemented by the native kiosk team. Validate again when reopening it. An admin_settings response does not authorize force_exit, and a force_exit response does not authorize settings entry.
+
+This validation does not grant dashboard API permissions, change device configuration on the server, or replace authentication/authorization for other backend endpoints. There is no offline permission cache or WebSocket validation action. Both supported actions share the existing rate limiter.

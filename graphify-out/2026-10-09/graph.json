@@ -660,7 +660,7 @@
       "_origin": "ast",
       "id": "app_controllers_admin_games_controller",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": "admin_games_controller.py"
     },
     {
@@ -671,7 +671,7 @@
       "_origin": "ast",
       "id": "app_controllers_admin_games_controller_py_route",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": "route"
     },
     {
@@ -682,7 +682,7 @@
       "_origin": "ast",
       "id": "app_controllers_admin_games_controller_create_game",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": "create_game()"
     },
     {
@@ -693,7 +693,7 @@
       "_origin": "ast",
       "id": "app_controllers_admin_games_controller_update_game",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": "update_game()"
     },
     {
@@ -704,7 +704,7 @@
       "_origin": "ast",
       "id": "app_controllers_admin_games_controller_rationale_12",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": "create a new game with optional image"
     },
     {
@@ -989,8 +989,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "app_controllers_cafe_wallet_controller_py_put",
-      "community": 12,
-      "community_name": "cafe_wallet_controller.py",
+      "community": 16,
+      "community_name": "audit",
       "norm_label": "put"
     },
     {
@@ -1000,8 +1000,8 @@
       "source_location": "L205",
       "_origin": "ast",
       "id": "app_controllers_cafe_wallet_controller_set_policy",
-      "community": 12,
-      "community_name": "cafe_wallet_controller.py",
+      "community": 16,
+      "community_name": "audit",
       "norm_label": "set_policy()"
     },
     {
@@ -1330,8 +1330,8 @@
       "source_location": "L743",
       "_origin": "ast",
       "id": "app_controllers_cafe_wallet_controller_adjust_wallet",
-      "community": 12,
-      "community_name": "cafe_wallet_controller.py",
+      "community": 38,
+      "community_name": "cafe_wallet_service.py",
       "norm_label": "adjust_wallet()"
     },
     {
@@ -1506,8 +1506,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "app_controllers_event_controller_py_before_request",
-      "community": 0,
-      "community_name": "event_controller.py",
+      "community": 17,
+      "community_name": "KioskError",
       "norm_label": "before_request"
     },
     {
@@ -1517,8 +1517,8 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "app_controllers_event_controller_require_tournament_plan",
-      "community": 0,
-      "community_name": "event_controller.py",
+      "community": 17,
+      "community_name": "KioskError",
       "norm_label": "require_tournament_plan()"
     },
     {
@@ -1770,8 +1770,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "app_controllers_internal_ws_controller_py_post",
-      "community": 7,
-      "community_name": "kiosk_security.py",
+      "community": 71,
+      "community_name": "internal_store_updated",
       "norm_label": "post"
     },
     {
@@ -1792,8 +1792,8 @@
       "source_location": "L44",
       "_origin": "ast",
       "id": "app_controllers_internal_ws_controller_internal_store_updated",
-      "community": 7,
-      "community_name": "kiosk_security.py",
+      "community": 71,
+      "community_name": "internal_store_updated",
       "norm_label": "internal_store_updated()"
     },
     {
@@ -1814,8 +1814,8 @@
       "source_location": "L45",
       "_origin": "ast",
       "id": "app_controllers_internal_ws_controller_rationale_45",
-      "community": 7,
-      "community_name": "kiosk_security.py",
+      "community": 71,
+      "community_name": "internal_store_updated",
       "norm_label": "internal endpoint to notify dashboard clients that store inventory/products..."
     },
     {
@@ -1836,8 +1836,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "app_controllers_kiosk_controller_py_get",
-      "community": 17,
-      "community_name": "KioskError",
+      "community": 7,
+      "community_name": "kiosk_security.py",
       "norm_label": "get"
     },
     {
@@ -1869,8 +1869,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "app_controllers_kiosk_controller_py_post",
-      "community": 17,
-      "community_name": "KioskError",
+      "community": 7,
+      "community_name": "kiosk_security.py",
       "norm_label": "post"
     },
     {
@@ -1880,20 +1880,20 @@
       "source_location": "L35",
       "_origin": "ast",
       "id": "app_controllers_kiosk_controller_validate_owner_pin",
-      "community": 17,
-      "community_name": "KioskError",
+      "community": 7,
+      "community_name": "kiosk_security.py",
       "norm_label": "validate_owner_pin()"
     },
     {
-      "label": "Authorize a specific native owner action; never end or settle a gaming session.",
+      "label": "Authorize immediate native kiosk exit; never end or settle a gaming session.",
       "file_type": "rationale",
       "source_file": "app/controllers/kiosk_controller.py",
       "source_location": "L36",
       "_origin": "ast",
       "id": "app_controllers_kiosk_controller_rationale_36",
-      "community": 17,
-      "community_name": "KioskError",
-      "norm_label": "authorize a specific native owner action; never end or settle a gaming session."
+      "community": 7,
+      "community_name": "kiosk_security.py",
+      "norm_label": "authorize immediate native kiosk exit; never end or settle a gaming session."
     },
     {
       "label": "package_controller.py",
@@ -2122,8 +2122,8 @@
       "source_location": "L74",
       "_origin": "ast",
       "id": "app_controllers_pricingcontroller_resolve_squad_group_for_game_name",
-      "community": 39,
-      "community_name": "console_catalog_service.py",
+      "community": 81,
+      "community_name": "pricingController.py",
       "norm_label": "_resolve_squad_group_for_game_name()"
     },
     {
@@ -3332,8 +3332,8 @@
       "source_location": "L219",
       "_origin": "ast",
       "id": "app_controllers_subscription_controller_verify_and_activate",
-      "community": 21,
-      "community_name": "create_subscription",
+      "community": 10,
+      "community_name": "subscription_service.py",
       "norm_label": "verify_and_activate()"
     },
     {
@@ -3453,8 +3453,8 @@
       "source_location": "L220",
       "_origin": "ast",
       "id": "app_controllers_subscription_controller_rationale_220",
-      "community": 21,
-      "community_name": "create_subscription",
+      "community": 10,
+      "community_name": "subscription_service.py",
       "norm_label": "verify razorpay payment signature and activate subscription request body: {..."
     },
     {
@@ -3585,8 +3585,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "app_controllers_tournament_engine_controller_py_before_request",
-      "community": 0,
-      "community_name": "event_controller.py",
+      "community": 4,
+      "community_name": "tournament_engine_service.py",
       "norm_label": "before_request"
     },
     {
@@ -3596,8 +3596,8 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "app_controllers_tournament_engine_controller_require_tournament_subscription",
-      "community": 0,
-      "community_name": "event_controller.py",
+      "community": 4,
+      "community_name": "tournament_engine_service.py",
       "norm_label": "require_tournament_subscription()"
     },
     {
@@ -3783,7 +3783,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_controllers_vendor_games",
-      "community": 10,
+      "community": 44,
       "community_name": "vendor_games.py",
       "norm_label": "vendor_games.py"
     },
@@ -3794,7 +3794,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "app_controllers_vendor_games_vendor_games_cache_get",
-      "community": 10,
+      "community": 44,
       "community_name": "vendor_games.py",
       "norm_label": "_vendor_games_cache_get()"
     },
@@ -3805,7 +3805,7 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "app_controllers_vendor_games_vendor_games_cache_set",
-      "community": 10,
+      "community": 44,
       "community_name": "vendor_games.py",
       "norm_label": "_vendor_games_cache_set()"
     },
@@ -3816,7 +3816,7 @@
       "source_location": "L39",
       "_origin": "ast",
       "id": "app_controllers_vendor_games_vendor_games_cache_invalidate",
-      "community": 10,
+      "community": 44,
       "community_name": "vendor_games.py",
       "norm_label": "_vendor_games_cache_invalidate()"
     },
@@ -3827,7 +3827,7 @@
       "source_location": "L44",
       "_origin": "ast",
       "id": "app_controllers_vendor_games_offer_is_active_now",
-      "community": 10,
+      "community": 44,
       "community_name": "vendor_games.py",
       "norm_label": "_offer_is_active_now()"
     },
@@ -3838,7 +3838,7 @@
       "source_location": "",
       "_origin": "ast",
       "id": "app_controllers_vendor_games_py_route",
-      "community": 10,
+      "community": 44,
       "community_name": "vendor_games.py",
       "norm_label": "route"
     },
@@ -3849,7 +3849,7 @@
       "source_location": "L66",
       "_origin": "ast",
       "id": "app_controllers_vendor_games_get_available_games",
-      "community": 10,
+      "community": 44,
       "community_name": "vendor_games.py",
       "norm_label": "get_available_games()"
     },
@@ -3860,7 +3860,7 @@
       "source_location": "L85",
       "_origin": "ast",
       "id": "app_controllers_vendor_games_get_consoles_by_platform",
-      "community": 10,
+      "community": 44,
       "community_name": "vendor_games.py",
       "norm_label": "get_consoles_by_platform()"
     },
@@ -3871,8 +3871,8 @@
       "source_location": "L138",
       "_origin": "ast",
       "id": "app_controllers_vendor_games_get_all_games",
-      "community": 83,
-      "community_name": "get_all_games",
+      "community": 44,
+      "community_name": "vendor_games.py",
       "norm_label": "get_all_games()"
     },
     {
@@ -3882,7 +3882,7 @@
       "source_location": "L148",
       "_origin": "ast",
       "id": "app_controllers_vendor_games_get_game_details",
-      "community": 10,
+      "community": 44,
       "community_name": "vendor_games.py",
       "norm_label": "get_game_details()"
     },
@@ -3893,7 +3893,7 @@
       "source_location": "L158",
       "_origin": "ast",
       "id": "app_controllers_vendor_games_list_vendor_games",
-      "community": 10,
+      "community": 44,
       "community_name": "vendor_games.py",
       "norm_label": "list_vendor_games()"
     },
@@ -3904,7 +3904,7 @@
       "source_location": "L301",
       "_origin": "ast",
       "id": "app_controllers_vendor_games_add_game_to_consoles",
-      "community": 10,
+      "community": 44,
       "community_name": "vendor_games.py",
       "norm_label": "add_game_to_consoles()"
     },
@@ -3915,7 +3915,7 @@
       "source_location": "L381",
       "_origin": "ast",
       "id": "app_controllers_vendor_games_update_vendor_game",
-      "community": 10,
+      "community": 44,
       "community_name": "vendor_games.py",
       "norm_label": "update_vendor_game()"
     },
@@ -3926,7 +3926,7 @@
       "source_location": "L421",
       "_origin": "ast",
       "id": "app_controllers_vendor_games_delete_vendor_game",
-      "community": 10,
+      "community": 44,
       "community_name": "vendor_games.py",
       "norm_label": "delete_vendor_game()"
     },
@@ -3937,7 +3937,7 @@
       "source_location": "L448",
       "_origin": "ast",
       "id": "app_controllers_vendor_games_bulk_delete_game",
-      "community": 10,
+      "community": 44,
       "community_name": "vendor_games.py",
       "norm_label": "bulk_delete_game()"
     },
@@ -3949,7 +3949,7 @@
       "_origin": "ast",
       "id": "app_controllers_vendor_games_upload_game_image",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": "upload_game_image()"
     },
     {
@@ -3959,7 +3959,7 @@
       "source_location": "L501",
       "_origin": "ast",
       "id": "app_controllers_vendor_games_delete_game_image",
-      "community": 10,
+      "community": 44,
       "community_name": "vendor_games.py",
       "norm_label": "delete_game_image()"
     },
@@ -3970,7 +3970,7 @@
       "source_location": "L159",
       "_origin": "ast",
       "id": "app_controllers_vendor_games_rationale_159",
-      "community": 10,
+      "community": 44,
       "community_name": "vendor_games.py",
       "norm_label": "list all games added by vendor with console details. price_per_hour is now..."
     },
@@ -3981,7 +3981,7 @@
       "source_location": "L302",
       "_origin": "ast",
       "id": "app_controllers_vendor_games_rationale_302",
-      "community": 10,
+      "community": 44,
       "community_name": "vendor_games.py",
       "norm_label": "add a game to specific consoles. price_per_hour is no longer accepted \u2014 it's..."
     },
@@ -3992,7 +3992,7 @@
       "source_location": "L382",
       "_origin": "ast",
       "id": "app_controllers_vendor_games_rationale_382",
-      "community": 10,
+      "community": 44,
       "community_name": "vendor_games.py",
       "norm_label": "update a vendor game \u2014 only is_available is updatable. price is no longer..."
     },
@@ -4003,8 +4003,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_controllers_vendor_pc_controller",
-      "community": 20,
-      "community_name": "test_subscription_commerce.py",
+      "community": 15,
+      "community_name": "link_service.py",
       "norm_label": "vendor_pc_controller.py"
     },
     {
@@ -4014,8 +4014,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "app_controllers_vendor_pc_controller_py_get",
-      "community": 20,
-      "community_name": "test_subscription_commerce.py",
+      "community": 15,
+      "community_name": "link_service.py",
       "norm_label": "get"
     },
     {
@@ -4025,8 +4025,8 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "app_controllers_vendor_pc_controller_get_pcs",
-      "community": 20,
-      "community_name": "test_subscription_commerce.py",
+      "community": 15,
+      "community_name": "link_service.py",
       "norm_label": "get_pcs()"
     },
     {
@@ -4036,8 +4036,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "app_controllers_vendor_pc_controller_py_post",
-      "community": 20,
-      "community_name": "test_subscription_commerce.py",
+      "community": 15,
+      "community_name": "link_service.py",
       "norm_label": "post"
     },
     {
@@ -4047,8 +4047,8 @@
       "source_location": "L68",
       "_origin": "ast",
       "id": "app_controllers_vendor_pc_controller_link_pc",
-      "community": 20,
-      "community_name": "test_subscription_commerce.py",
+      "community": 15,
+      "community_name": "link_service.py",
       "norm_label": "link_pc()"
     },
     {
@@ -4058,8 +4058,8 @@
       "source_location": "L95",
       "_origin": "ast",
       "id": "app_controllers_vendor_pc_controller_unlink_pc",
-      "community": 20,
-      "community_name": "test_subscription_commerce.py",
+      "community": 15,
+      "community_name": "link_service.py",
       "norm_label": "unlink_pc()"
     },
     {
@@ -4069,8 +4069,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_controllers_websocket_controller",
-      "community": 66,
-      "community_name": "Flask",
+      "community": 64,
+      "community_name": "websocket_controller.py",
       "norm_label": "websocket_controller.py"
     },
     {
@@ -4080,8 +4080,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "on",
-      "community": 66,
-      "community_name": "Flask",
+      "community": 64,
+      "community_name": "websocket_controller.py",
       "norm_label": "on"
     },
     {
@@ -4091,8 +4091,8 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "app_controllers_websocket_controller_handle_processed_slot",
-      "community": 66,
-      "community_name": "Flask",
+      "community": 64,
+      "community_name": "websocket_controller.py",
       "norm_label": "handle_processed_slot()"
     },
     {
@@ -4102,8 +4102,8 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "app_controllers_websocket_controller_rationale_7",
-      "community": 66,
-      "community_name": "Flask",
+      "community": 64,
+      "community_name": "websocket_controller.py",
       "norm_label": "handle the processed event and emit a final event"
     },
     {
@@ -4113,7 +4113,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_extension_extensions",
-      "community": 13,
+      "community": 25,
       "community_name": "extensions.py",
       "norm_label": "extensions.py"
     },
@@ -4224,7 +4224,7 @@
       "_origin": "ast",
       "id": "app_models_passredemptionlog",
       "community": 13,
-      "community_name": "extensions.py",
+      "community_name": "datetime",
       "norm_label": "passredemptionlog.py"
     },
     {
@@ -4235,7 +4235,7 @@
       "_origin": "ast",
       "id": "app_models_passredemptionlog_passredemptionlog",
       "community": 13,
-      "community_name": "extensions.py",
+      "community_name": "datetime",
       "norm_label": "passredemptionlog"
     },
     {
@@ -4246,7 +4246,7 @@
       "_origin": "ast",
       "id": "app_models_passredemptionlog_passredemptionlog_repr",
       "community": 13,
-      "community_name": "extensions.py",
+      "community_name": "datetime",
       "norm_label": ".__repr__()"
     },
     {
@@ -4257,7 +4257,7 @@
       "_origin": "ast",
       "id": "app_models_passredemptionlog_passredemptionlog_to_dict",
       "community": 13,
-      "community_name": "extensions.py",
+      "community_name": "datetime",
       "norm_label": ".to_dict()"
     },
     {
@@ -4279,7 +4279,7 @@
       "_origin": "ast",
       "id": "app_models_additionaldetails",
       "community": 25,
-      "community_name": "test_subscription_checkout.py",
+      "community_name": "extensions.py",
       "norm_label": "additionaldetails.py"
     },
     {
@@ -4290,7 +4290,7 @@
       "_origin": "ast",
       "id": "app_models_additionaldetails_additionaldetails",
       "community": 25,
-      "community_name": "test_subscription_checkout.py",
+      "community_name": "extensions.py",
       "norm_label": "additionaldetails"
     },
     {
@@ -4301,7 +4301,7 @@
       "_origin": "ast",
       "id": "app_models_additionaldetails_additionaldetails_repr",
       "community": 25,
-      "community_name": "test_subscription_checkout.py",
+      "community_name": "extensions.py",
       "norm_label": ".__repr__()"
     },
     {
@@ -4333,8 +4333,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_models_availablegame",
-      "community": 10,
-      "community_name": "vendor_games.py",
+      "community": 25,
+      "community_name": "extensions.py",
       "norm_label": "availablegame.py"
     },
     {
@@ -4344,8 +4344,8 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "app_models_availablegame_availablegame",
-      "community": 10,
-      "community_name": "vendor_games.py",
+      "community": 25,
+      "community_name": "extensions.py",
       "norm_label": "availablegame"
     },
     {
@@ -4355,8 +4355,8 @@
       "source_location": "L33",
       "_origin": "ast",
       "id": "app_models_availablegame_availablegame_repr",
-      "community": 10,
-      "community_name": "vendor_games.py",
+      "community": 25,
+      "community_name": "extensions.py",
       "norm_label": ".__repr__()"
     },
     {
@@ -4366,8 +4366,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_models_banktransferdetails",
-      "community": 43,
-      "community_name": "BankTransferDetails",
+      "community": 2,
+      "community_name": "vendor.py",
       "norm_label": "banktransferdetails.py"
     },
     {
@@ -4421,8 +4421,8 @@
       "source_location": "L49",
       "_origin": "ast",
       "id": "app_models_banktransferdetails_payouttransaction",
-      "community": 43,
-      "community_name": "BankTransferDetails",
+      "community": 2,
+      "community_name": "vendor.py",
       "norm_label": "payouttransaction"
     },
     {
@@ -4432,8 +4432,8 @@
       "source_location": "L79",
       "_origin": "ast",
       "id": "app_models_banktransferdetails_payouttransaction_str",
-      "community": 43,
-      "community_name": "BankTransferDetails",
+      "community": 2,
+      "community_name": "vendor.py",
       "norm_label": ".__str__()"
     },
     {
@@ -4466,7 +4466,7 @@
       "_origin": "ast",
       "id": "app_models_booking",
       "community": 25,
-      "community_name": "test_subscription_checkout.py",
+      "community_name": "extensions.py",
       "norm_label": "booking.py"
     },
     {
@@ -4477,7 +4477,7 @@
       "_origin": "ast",
       "id": "app_models_booking_booking",
       "community": 25,
-      "community_name": "test_subscription_checkout.py",
+      "community_name": "extensions.py",
       "norm_label": "booking"
     },
     {
@@ -4488,7 +4488,7 @@
       "_origin": "ast",
       "id": "app_models_bookingextraservice",
       "community": 25,
-      "community_name": "test_subscription_checkout.py",
+      "community_name": "extensions.py",
       "norm_label": "bookingextraservice.py"
     },
     {
@@ -4499,7 +4499,7 @@
       "_origin": "ast",
       "id": "app_models_bookingextraservice_bookingextraservice",
       "community": 25,
-      "community_name": "test_subscription_checkout.py",
+      "community_name": "extensions.py",
       "norm_label": "bookingextraservice"
     },
     {
@@ -4510,7 +4510,7 @@
       "_origin": "ast",
       "id": "app_models_bookingsquadmember",
       "community": 25,
-      "community_name": "test_subscription_checkout.py",
+      "community_name": "extensions.py",
       "norm_label": "bookingsquadmember.py"
     },
     {
@@ -4521,7 +4521,7 @@
       "_origin": "ast",
       "id": "app_models_bookingsquadmember_bookingsquadmember",
       "community": 25,
-      "community_name": "test_subscription_checkout.py",
+      "community_name": "extensions.py",
       "norm_label": "bookingsquadmember"
     },
     {
@@ -4619,8 +4619,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_models_cafe_wallet",
-      "community": 38,
-      "community_name": "CafeError",
+      "community": 16,
+      "community_name": "audit",
       "norm_label": "cafe_wallet.py"
     },
     {
@@ -4630,8 +4630,8 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "app_models_cafe_wallet_cafepaymentpolicy",
-      "community": 38,
-      "community_name": "CafeError",
+      "community": 16,
+      "community_name": "audit",
       "norm_label": "cafepaymentpolicy"
     },
     {
@@ -4642,7 +4642,7 @@
       "_origin": "ast",
       "id": "app_models_cafe_wallet_cafewallet",
       "community": 38,
-      "community_name": "CafeError",
+      "community_name": "cafe_wallet_service.py",
       "norm_label": "cafewallet"
     },
     {
@@ -4653,7 +4653,7 @@
       "_origin": "ast",
       "id": "app_models_cafe_wallet_cafeledger",
       "community": 38,
-      "community_name": "CafeError",
+      "community_name": "cafe_wallet_service.py",
       "norm_label": "cafeledger"
     },
     {
@@ -4663,8 +4663,8 @@
       "source_location": "L45",
       "_origin": "ast",
       "id": "app_models_cafe_wallet_cafeaudit",
-      "community": 38,
-      "community_name": "CafeError",
+      "community": 16,
+      "community_name": "audit",
       "norm_label": "cafeaudit"
     },
     {
@@ -4674,8 +4674,8 @@
       "source_location": "L56",
       "_origin": "ast",
       "id": "app_models_cafe_wallet_cafeshift",
-      "community": 38,
-      "community_name": "CafeError",
+      "community": 16,
+      "community_name": "audit",
       "norm_label": "cafeshift"
     },
     {
@@ -4707,8 +4707,8 @@
       "source_location": "L93",
       "_origin": "ast",
       "id": "app_models_cafe_wallet_cafeplaysession",
-      "community": 38,
-      "community_name": "CafeError",
+      "community": 16,
+      "community_name": "audit",
       "norm_label": "cafeplaysession"
     },
     {
@@ -4718,8 +4718,8 @@
       "source_location": "L125",
       "_origin": "ast",
       "id": "app_models_cafe_wallet_immutable",
-      "community": 38,
-      "community_name": "CafeError",
+      "community": 16,
+      "community_name": "audit",
       "norm_label": "immutable()"
     },
     {
@@ -4729,8 +4729,8 @@
       "source_location": "L134",
       "_origin": "ast",
       "id": "app_models_cafe_wallet_cafefoodorder",
-      "community": 12,
-      "community_name": "cafe_wallet_controller.py",
+      "community": 16,
+      "community_name": "audit",
       "norm_label": "cafefoodorder"
     },
     {
@@ -4752,7 +4752,7 @@
       "_origin": "ast",
       "id": "app_models_cafe_wallet_cafecontinuation",
       "community": 38,
-      "community_name": "CafeError",
+      "community_name": "cafe_wallet_service.py",
       "norm_label": "cafecontinuation"
     },
     {
@@ -4763,7 +4763,7 @@
       "_origin": "ast",
       "id": "app_models_cafe_wallet_cafeowneremail",
       "community": 38,
-      "community_name": "CafeError",
+      "community_name": "cafe_wallet_service.py",
       "norm_label": "cafeowneremail"
     },
     {
@@ -4773,8 +4773,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_models_cafe_wallet_rationale_1",
-      "community": 38,
-      "community_name": "CafeError",
+      "community": 16,
+      "community_name": "audit",
       "norm_label": "cafe money is stored in integer paise; ledger and audit records are immutable."
     },
     {
@@ -4784,8 +4784,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_models_console",
-      "community": 44,
-      "community_name": "Console",
+      "community": 25,
+      "community_name": "extensions.py",
       "norm_label": "console.py"
     },
     {
@@ -4795,8 +4795,8 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "app_models_console_console",
-      "community": 44,
-      "community_name": "Console",
+      "community": 25,
+      "community_name": "extensions.py",
       "norm_label": "console"
     },
     {
@@ -4806,8 +4806,8 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "app_models_console_console_repr",
-      "community": 44,
-      "community_name": "Console",
+      "community": 25,
+      "community_name": "extensions.py",
       "norm_label": ".__repr__()"
     },
     {
@@ -4818,7 +4818,7 @@
       "_origin": "ast",
       "id": "app_models_consolecatalog",
       "community": 39,
-      "community_name": "console_catalog_service.py",
+      "community_name": "ConsoleService",
       "norm_label": "consolecatalog.py"
     },
     {
@@ -4829,7 +4829,7 @@
       "_origin": "ast",
       "id": "app_models_consolecatalog_consolecatalog",
       "community": 39,
-      "community_name": "console_catalog_service.py",
+      "community_name": "ConsoleService",
       "norm_label": "consolecatalog"
     },
     {
@@ -4839,8 +4839,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_models_consolepricingoffer",
-      "community": 10,
-      "community_name": "vendor_games.py",
+      "community": 81,
+      "community_name": "pricingController.py",
       "norm_label": "consolepricingoffer.py"
     },
     {
@@ -4850,8 +4850,8 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "app_models_consolepricingoffer_consolepricingoffer",
-      "community": 10,
-      "community_name": "vendor_games.py",
+      "community": 81,
+      "community_name": "pricingController.py",
       "norm_label": "consolepricingoffer"
     },
     {
@@ -4861,8 +4861,8 @@
       "source_location": "L54",
       "_origin": "ast",
       "id": "app_models_consolepricingoffer_consolepricingoffer_repr",
-      "community": 10,
-      "community_name": "vendor_games.py",
+      "community": 81,
+      "community_name": "pricingController.py",
       "norm_label": ".__repr__()"
     },
     {
@@ -4872,8 +4872,8 @@
       "source_location": "L57",
       "_origin": "ast",
       "id": "app_models_consolepricingoffer_consolepricingoffer_is_currently_active",
-      "community": 10,
-      "community_name": "vendor_games.py",
+      "community": 81,
+      "community_name": "pricingController.py",
       "norm_label": ".is_currently_active()"
     },
     {
@@ -4883,8 +4883,8 @@
       "source_location": "L89",
       "_origin": "ast",
       "id": "app_models_consolepricingoffer_consolepricingoffer_get_discount_percentage",
-      "community": 10,
-      "community_name": "vendor_games.py",
+      "community": 81,
+      "community_name": "pricingController.py",
       "norm_label": ".get_discount_percentage()"
     },
     {
@@ -4894,8 +4894,8 @@
       "source_location": "L96",
       "_origin": "ast",
       "id": "app_models_consolepricingoffer_consolepricingoffer_to_dict",
-      "community": 10,
-      "community_name": "vendor_games.py",
+      "community": 81,
+      "community_name": "pricingController.py",
       "norm_label": ".to_dict()"
     },
     {
@@ -4905,8 +4905,8 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "app_models_consolepricingoffer_rationale_13",
-      "community": 10,
-      "community_name": "vendor_games.py",
+      "community": 81,
+      "community_name": "pricingController.py",
       "norm_label": "time-based promotional pricing for console types (availablegames) allows..."
     },
     {
@@ -4916,8 +4916,8 @@
       "source_location": "L58",
       "_origin": "ast",
       "id": "app_models_consolepricingoffer_rationale_58",
-      "community": 10,
-      "community_name": "vendor_games.py",
+      "community": 81,
+      "community_name": "pricingController.py",
       "norm_label": "check if this offer is active right now using ist. returns true if current ist..."
     },
     {
@@ -4927,8 +4927,8 @@
       "source_location": "L90",
       "_origin": "ast",
       "id": "app_models_consolepricingoffer_rationale_90",
-      "community": 10,
-      "community_name": "vendor_games.py",
+      "community": 81,
+      "community_name": "pricingController.py",
       "norm_label": "calculate discount percentage"
     },
     {
@@ -4938,8 +4938,8 @@
       "source_location": "L97",
       "_origin": "ast",
       "id": "app_models_consolepricingoffer_rationale_97",
-      "community": 10,
-      "community_name": "vendor_games.py",
+      "community": 81,
+      "community_name": "pricingController.py",
       "norm_label": "convert to dictionary for api responses"
     },
     {
@@ -4950,7 +4950,7 @@
       "_origin": "ast",
       "id": "app_models_console_link_session",
       "community": 38,
-      "community_name": "CafeError",
+      "community_name": "cafe_wallet_service.py",
       "norm_label": "console_link_session.py"
     },
     {
@@ -4961,7 +4961,7 @@
       "_origin": "ast",
       "id": "app_models_console_link_session_consolelinkstatus",
       "community": 38,
-      "community_name": "CafeError",
+      "community_name": "cafe_wallet_service.py",
       "norm_label": "consolelinkstatus"
     },
     {
@@ -4972,7 +4972,7 @@
       "_origin": "ast",
       "id": "app_models_console_link_session_consolelinksession",
       "community": 38,
-      "community_name": "CafeError",
+      "community_name": "cafe_wallet_service.py",
       "norm_label": "consolelinksession"
     },
     {
@@ -5235,8 +5235,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_models_extraservicemenuimage",
-      "community": 13,
-      "community_name": "extensions.py",
+      "community": 6,
+      "community_name": "ExtraServiceService",
       "norm_label": "extraservicemenuimage.py"
     },
     {
@@ -5269,7 +5269,7 @@
       "_origin": "ast",
       "id": "app_models_game",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": "game.py"
     },
     {
@@ -5280,7 +5280,7 @@
       "_origin": "ast",
       "id": "app_models_game_game",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": "game"
     },
     {
@@ -5291,7 +5291,7 @@
       "_origin": "ast",
       "id": "app_models_game_game_to_dict",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": ".to_dict()"
     },
     {
@@ -5302,7 +5302,7 @@
       "_origin": "ast",
       "id": "app_models_game_game_from_rawg_api",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": ".from_rawg_api()"
     },
     {
@@ -5313,7 +5313,7 @@
       "_origin": "ast",
       "id": "app_models_game_game_repr",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": ".__repr__()"
     },
     {
@@ -5324,7 +5324,7 @@
       "_origin": "ast",
       "id": "app_models_game_rationale_62",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": "create game from rawg api - image_url gets background_image automatically!"
     },
     {
@@ -5335,7 +5335,7 @@
       "_origin": "ast",
       "id": "app_models_hardwarespecification",
       "community": 25,
-      "community_name": "test_subscription_checkout.py",
+      "community_name": "extensions.py",
       "norm_label": "hardwarespecification.py"
     },
     {
@@ -5346,7 +5346,7 @@
       "_origin": "ast",
       "id": "app_models_hardwarespecification_hardwarespecification",
       "community": 25,
-      "community_name": "test_subscription_checkout.py",
+      "community_name": "extensions.py",
       "norm_label": "hardwarespecification"
     },
     {
@@ -5357,7 +5357,7 @@
       "_origin": "ast",
       "id": "app_models_hardwarespecification_hardwarespecification_repr",
       "community": 25,
-      "community_name": "test_subscription_checkout.py",
+      "community_name": "extensions.py",
       "norm_label": ".__repr__()"
     },
     {
@@ -5368,7 +5368,7 @@
       "_origin": "ast",
       "id": "app_models_maintenancestatus",
       "community": 25,
-      "community_name": "test_subscription_checkout.py",
+      "community_name": "extensions.py",
       "norm_label": "maintenancestatus.py"
     },
     {
@@ -5379,7 +5379,7 @@
       "_origin": "ast",
       "id": "app_models_maintenancestatus_maintenancestatus",
       "community": 25,
-      "community_name": "test_subscription_checkout.py",
+      "community_name": "extensions.py",
       "norm_label": "maintenancestatus"
     },
     {
@@ -5390,7 +5390,7 @@
       "_origin": "ast",
       "id": "app_models_maintenancestatus_maintenancestatus_repr",
       "community": 25,
-      "community_name": "test_subscription_checkout.py",
+      "community_name": "extensions.py",
       "norm_label": ".__repr__()"
     },
     {
@@ -5532,8 +5532,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_models_package",
-      "community": 41,
-      "community_name": "subscription_service.py",
+      "community": 18,
+      "community_name": "package_controller.py",
       "norm_label": "package.py"
     },
     {
@@ -5543,8 +5543,8 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "app_models_package_package",
-      "community": 41,
-      "community_name": "subscription_service.py",
+      "community": 18,
+      "community_name": "package_controller.py",
       "norm_label": "package"
     },
     {
@@ -5587,8 +5587,8 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "app_models_passmodels_cafepass",
-      "community": 63,
-      "community_name": "passModels.py",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": "cafepass"
     },
     {
@@ -5598,8 +5598,8 @@
       "source_location": "L58",
       "_origin": "ast",
       "id": "app_models_passmodels_cafepass_repr",
-      "community": 63,
-      "community_name": "passModels.py",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": ".__repr__()"
     },
     {
@@ -5609,8 +5609,8 @@
       "source_location": "L61",
       "_origin": "ast",
       "id": "app_models_passmodels_cafepass_to_dict",
-      "community": 63,
-      "community_name": "passModels.py",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": ".to_dict()"
     },
     {
@@ -5731,7 +5731,7 @@
       "_origin": "ast",
       "id": "app_models_payatcafenotification",
       "community": 13,
-      "community_name": "extensions.py",
+      "community_name": "datetime",
       "norm_label": "payatcafenotification.py"
     },
     {
@@ -5742,7 +5742,7 @@
       "_origin": "ast",
       "id": "app_models_payatcafenotification_payatcafenotification",
       "community": 13,
-      "community_name": "extensions.py",
+      "community_name": "datetime",
       "norm_label": "payatcafenotification"
     },
     {
@@ -5753,7 +5753,7 @@
       "_origin": "ast",
       "id": "app_models_payatcafenotification_payatcafenotification_repr",
       "community": 13,
-      "community_name": "extensions.py",
+      "community_name": "datetime",
       "norm_label": ".__repr__()"
     },
     {
@@ -5764,7 +5764,7 @@
       "_origin": "ast",
       "id": "app_models_payatcafenotification_payatcafenotification_to_dict",
       "community": 13,
-      "community_name": "extensions.py",
+      "community_name": "datetime",
       "norm_label": ".to_dict()"
     },
     {
@@ -5818,8 +5818,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_models_paymentvendormap",
-      "community": 13,
-      "community_name": "extensions.py",
+      "community": 9,
+      "community_name": "toggle_payment_method_for_vendor",
       "norm_label": "paymentvendormap.py"
     },
     {
@@ -5862,8 +5862,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_models_physicaladdress",
-      "community": 85,
-      "community_name": "PhysicalAddress",
+      "community": 2,
+      "community_name": "vendor.py",
       "norm_label": "physicaladdress.py"
     },
     {
@@ -5873,8 +5873,8 @@
       "source_location": "L5",
       "_origin": "ast",
       "id": "app_models_physicaladdress_physicaladdress",
-      "community": 85,
-      "community_name": "PhysicalAddress",
+      "community": 2,
+      "community_name": "vendor.py",
       "norm_label": "physicaladdress"
     },
     {
@@ -5884,8 +5884,8 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "app_models_physicaladdress_physicaladdress_str",
-      "community": 85,
-      "community_name": "PhysicalAddress",
+      "community": 2,
+      "community_name": "vendor.py",
       "norm_label": ".__str__()"
     },
     {
@@ -5896,7 +5896,7 @@
       "_origin": "ast",
       "id": "app_models_priceandcost",
       "community": 25,
-      "community_name": "test_subscription_checkout.py",
+      "community_name": "extensions.py",
       "norm_label": "priceandcost.py"
     },
     {
@@ -5907,7 +5907,7 @@
       "_origin": "ast",
       "id": "app_models_priceandcost_priceandcost",
       "community": 25,
-      "community_name": "test_subscription_checkout.py",
+      "community_name": "extensions.py",
       "norm_label": "priceandcost"
     },
     {
@@ -5918,7 +5918,7 @@
       "_origin": "ast",
       "id": "app_models_priceandcost_priceandcost_repr",
       "community": 25,
-      "community_name": "test_subscription_checkout.py",
+      "community_name": "extensions.py",
       "norm_label": ".__repr__()"
     },
     {
@@ -5928,7 +5928,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_models_provisionalresult",
-      "community": 13,
+      "community": 25,
       "community_name": "extensions.py",
       "norm_label": "provisionalresult.py"
     },
@@ -5939,7 +5939,7 @@
       "source_location": "L8",
       "_origin": "ast",
       "id": "app_models_provisionalresult_provisionalresult",
-      "community": 13,
+      "community": 25,
       "community_name": "extensions.py",
       "norm_label": "provisionalresult"
     },
@@ -6281,7 +6281,7 @@
       "_origin": "ast",
       "id": "app_models_slot",
       "community": 25,
-      "community_name": "test_subscription_checkout.py",
+      "community_name": "extensions.py",
       "norm_label": "slot.py"
     },
     {
@@ -6292,7 +6292,7 @@
       "_origin": "ast",
       "id": "app_models_slot_slot",
       "community": 25,
-      "community_name": "test_subscription_checkout.py",
+      "community_name": "extensions.py",
       "norm_label": "slot"
     },
     {
@@ -6303,7 +6303,7 @@
       "_origin": "ast",
       "id": "app_models_slot_slot_repr",
       "community": 25,
-      "community_name": "test_subscription_checkout.py",
+      "community_name": "extensions.py",
       "norm_label": ".__repr__()"
     },
     {
@@ -6346,8 +6346,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_models_subscription",
-      "community": 41,
-      "community_name": "subscription_service.py",
+      "community": 18,
+      "community_name": "package_controller.py",
       "norm_label": "subscription.py"
     },
     {
@@ -6357,8 +6357,8 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "app_models_subscription_subscriptionstatus",
-      "community": 41,
-      "community_name": "subscription_service.py",
+      "community": 18,
+      "community_name": "package_controller.py",
       "norm_label": "subscriptionstatus"
     },
     {
@@ -6368,8 +6368,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "str",
-      "community": 41,
-      "community_name": "subscription_service.py",
+      "community": 18,
+      "community_name": "package_controller.py",
       "norm_label": "str"
     },
     {
@@ -6379,7 +6379,7 @@
       "source_location": "L17",
       "_origin": "ast",
       "id": "app_models_subscription_subscription",
-      "community": 41,
+      "community": 10,
       "community_name": "subscription_service.py",
       "norm_label": "subscription"
     },
@@ -6391,7 +6391,7 @@
       "_origin": "ast",
       "id": "app_models_subscription_checkout",
       "community": 41,
-      "community_name": "subscription_service.py",
+      "community_name": "subscription_commerce.py",
       "norm_label": "subscription_checkout.py"
     },
     {
@@ -6402,7 +6402,7 @@
       "_origin": "ast",
       "id": "app_models_subscription_checkout_subscriptioncheckout",
       "community": 41,
-      "community_name": "subscription_service.py",
+      "community_name": "subscription_commerce.py",
       "norm_label": "subscriptioncheckout"
     },
     {
@@ -6413,7 +6413,7 @@
       "_origin": "ast",
       "id": "app_models_subscription_checkout_rationale_1",
       "community": 41,
-      "community_name": "subscription_service.py",
+      "community_name": "subscription_commerce.py",
       "norm_label": "immutable commercial snapshot for each subscription purchase."
     },
     {
@@ -6544,8 +6544,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_models_transaction",
-      "community": 13,
-      "community_name": "extensions.py",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": "transaction.py"
     },
     {
@@ -6555,8 +6555,8 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "app_models_transaction_transaction",
-      "community": 91,
-      "community_name": "Transaction",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": "transaction"
     },
     {
@@ -6566,8 +6566,8 @@
       "source_location": "L51",
       "_origin": "ast",
       "id": "app_models_transaction_transaction_repr",
-      "community": 91,
-      "community_name": "Transaction",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": ".__repr__()"
     },
     {
@@ -6577,7 +6577,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_models_uploadedimage",
-      "community": 13,
+      "community": 25,
       "community_name": "extensions.py",
       "norm_label": "uploadedimage.py"
     },
@@ -6588,7 +6588,7 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "app_models_uploadedimage_image",
-      "community": 13,
+      "community": 25,
       "community_name": "extensions.py",
       "norm_label": "image"
     },
@@ -6599,7 +6599,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_models_user",
-      "community": 13,
+      "community": 25,
       "community_name": "extensions.py",
       "norm_label": "user.py"
     },
@@ -6610,8 +6610,8 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "app_models_user_user",
-      "community": 72,
-      "community_name": "env",
+      "community": 25,
+      "community_name": "extensions.py",
       "norm_label": "user"
     },
     {
@@ -6621,8 +6621,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_models_userpass",
-      "community": 13,
-      "community_name": "extensions.py",
+      "community": 104,
+      "community_name": "UserPass",
       "norm_label": "userpass.py"
     },
     {
@@ -6754,7 +6754,7 @@
       "_origin": "ast",
       "id": "app_models_vendorconsoleoverride",
       "community": 39,
-      "community_name": "console_catalog_service.py",
+      "community_name": "ConsoleService",
       "norm_label": "vendorconsoleoverride.py"
     },
     {
@@ -6765,7 +6765,7 @@
       "_origin": "ast",
       "id": "app_models_vendorconsoleoverride_vendorconsoleoverride",
       "community": 39,
-      "community_name": "console_catalog_service.py",
+      "community_name": "ConsoleService",
       "norm_label": "vendorconsoleoverride"
     },
     {
@@ -6808,8 +6808,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_models_vendorgame",
-      "community": 10,
-      "community_name": "vendor_games.py",
+      "community": 25,
+      "community_name": "extensions.py",
       "norm_label": "vendorgame.py"
     },
     {
@@ -6819,8 +6819,8 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "app_models_vendorgame_vendorgame",
-      "community": 10,
-      "community_name": "vendor_games.py",
+      "community": 25,
+      "community_name": "extensions.py",
       "norm_label": "vendorgame"
     },
     {
@@ -6830,8 +6830,8 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "app_models_vendorgame_vendorgame_price_per_hour",
-      "community": 10,
-      "community_name": "vendor_games.py",
+      "community": 25,
+      "community_name": "extensions.py",
       "norm_label": ".price_per_hour()"
     },
     {
@@ -6841,8 +6841,8 @@
       "source_location": "L69",
       "_origin": "ast",
       "id": "app_models_vendorgame_vendorgame_effective_price_info",
-      "community": 10,
-      "community_name": "vendor_games.py",
+      "community": 25,
+      "community_name": "extensions.py",
       "norm_label": ".effective_price_info()"
     },
     {
@@ -6852,8 +6852,8 @@
       "source_location": "L123",
       "_origin": "ast",
       "id": "app_models_vendorgame_vendorgame_to_dict",
-      "community": 10,
-      "community_name": "vendor_games.py",
+      "community": 25,
+      "community_name": "extensions.py",
       "norm_label": ".to_dict()"
     },
     {
@@ -6863,8 +6863,8 @@
       "source_location": "L141",
       "_origin": "ast",
       "id": "app_models_vendorgame_vendorgame_repr",
-      "community": 10,
-      "community_name": "vendor_games.py",
+      "community": 25,
+      "community_name": "extensions.py",
       "norm_label": ".__repr__()"
     },
     {
@@ -6874,8 +6874,8 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "app_models_vendorgame_rationale_23",
-      "community": 10,
-      "community_name": "vendor_games.py",
+      "community": 25,
+      "community_name": "extensions.py",
       "norm_label": "dynamically compute price from parent availablegame. - if an active..."
     },
     {
@@ -6885,8 +6885,8 @@
       "source_location": "L70",
       "_origin": "ast",
       "id": "app_models_vendorgame_rationale_70",
-      "community": 10,
-      "community_name": "vendor_games.py",
+      "community": 25,
+      "community_name": "extensions.py",
       "norm_label": "returns full pricing context: base price, offer price, offer details. useful..."
     },
     {
@@ -6896,8 +6896,8 @@
       "source_location": "L124",
       "_origin": "ast",
       "id": "app_models_vendorgame_rationale_124",
-      "community": 10,
-      "community_name": "vendor_games.py",
+      "community": 25,
+      "community_name": "extensions.py",
       "norm_label": "serialize vendorgame \u2014 price is always dynamically computed"
     },
     {
@@ -6907,8 +6907,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_models_vendorprofileimage",
-      "community": 13,
-      "community_name": "extensions.py",
+      "community": 2,
+      "community_name": "vendor.py",
       "norm_label": "vendorprofileimage.py"
     },
     {
@@ -7050,7 +7050,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_models_verificationcheck",
-      "community": 13,
+      "community": 25,
       "community_name": "extensions.py",
       "norm_label": "verificationcheck.py"
     },
@@ -7061,7 +7061,7 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "app_models_verificationcheck_verificationcheck",
-      "community": 13,
+      "community": 25,
       "community_name": "extensions.py",
       "norm_label": "verificationcheck"
     },
@@ -7182,8 +7182,8 @@
       "source_location": "L150",
       "_origin": "ast",
       "id": "app_routes_ensure_vendor_notification_preferences_table",
-      "community": 74,
-      "community_name": "get_vendor_notification_preferences",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": "_ensure_vendor_notification_preferences_table()"
     },
     {
@@ -7193,8 +7193,8 @@
       "source_location": "L168",
       "_origin": "ast",
       "id": "app_routes_default_vendor_notification_preferences",
-      "community": 74,
-      "community_name": "get_vendor_notification_preferences",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": "_default_vendor_notification_preferences()"
     },
     {
@@ -7204,8 +7204,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "app_routes_py_any",
-      "community": 74,
-      "community_name": "get_vendor_notification_preferences",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": "any"
     },
     {
@@ -7215,8 +7215,8 @@
       "source_location": "L179",
       "_origin": "ast",
       "id": "app_routes_coerce_bool",
-      "community": 74,
-      "community_name": "get_vendor_notification_preferences",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": "_coerce_bool()"
     },
     {
@@ -7380,8 +7380,8 @@
       "source_location": "L532",
       "_origin": "ast",
       "id": "app_routes_get_console",
-      "community": 5,
-      "community_name": "app/routes.py",
+      "community": 39,
+      "community_name": "ConsoleService",
       "norm_label": "get_console()"
     },
     {
@@ -7391,8 +7391,8 @@
       "source_location": "L537",
       "_origin": "ast",
       "id": "app_routes_get_console_pricing",
-      "community": 5,
-      "community_name": "app/routes.py",
+      "community": 39,
+      "community_name": "ConsoleService",
       "norm_label": "get_console_pricing()"
     },
     {
@@ -7402,8 +7402,8 @@
       "source_location": "L571",
       "_origin": "ast",
       "id": "app_routes_update_console_pricing",
-      "community": 5,
-      "community_name": "app/routes.py",
+      "community": 39,
+      "community_name": "ConsoleService",
       "norm_label": "update_console_pricing()"
     },
     {
@@ -7414,7 +7414,7 @@
       "_origin": "ast",
       "id": "app_routes_get_consoles",
       "community": 39,
-      "community_name": "console_catalog_service.py",
+      "community_name": "ConsoleService",
       "norm_label": "get_consoles()"
     },
     {
@@ -7436,7 +7436,7 @@
       "_origin": "ast",
       "id": "app_routes_get_console_type_overrides",
       "community": 39,
-      "community_name": "console_catalog_service.py",
+      "community_name": "ConsoleService",
       "norm_label": "get_console_type_overrides()"
     },
     {
@@ -7447,7 +7447,7 @@
       "_origin": "ast",
       "id": "app_routes_create_or_update_console_type_override",
       "community": 39,
-      "community_name": "console_catalog_service.py",
+      "community_name": "ConsoleService",
       "norm_label": "create_or_update_console_type_override()"
     },
     {
@@ -7458,7 +7458,7 @@
       "_origin": "ast",
       "id": "app_routes_deactivate_console_type_override",
       "community": 39,
-      "community_name": "console_catalog_service.py",
+      "community_name": "ConsoleService",
       "norm_label": "deactivate_console_type_override()"
     },
     {
@@ -7534,8 +7534,8 @@
       "source_location": "L1892",
       "_origin": "ast",
       "id": "app_routes_kiosk_start_session",
-      "community": 7,
-      "community_name": "kiosk_security.py",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": "kiosk_start_session()"
     },
     {
@@ -7589,8 +7589,8 @@
       "source_location": "L3072",
       "_origin": "ast",
       "id": "app_routes_to_24h",
-      "community": 71,
-      "community_name": "get_vendor_dashboard",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": "to_24h()"
     },
     {
@@ -7600,8 +7600,8 @@
       "source_location": "L3080",
       "_origin": "ast",
       "id": "app_routes_coerce_duration",
-      "community": 71,
-      "community_name": "get_vendor_dashboard",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": "coerce_duration()"
     },
     {
@@ -7611,8 +7611,8 @@
       "source_location": "L3091",
       "_origin": "ast",
       "id": "app_routes_get_vendor_dashboard",
-      "community": 71,
-      "community_name": "get_vendor_dashboard",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": "get_vendor_dashboard()"
     },
     {
@@ -7688,8 +7688,8 @@
       "source_location": "L3846",
       "_origin": "ast",
       "id": "app_routes_add_extra_service_category",
-      "community": 6,
-      "community_name": "ExtraServiceService",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": "add_extra_service_category()"
     },
     {
@@ -7776,8 +7776,8 @@
       "source_location": "L4126",
       "_origin": "ast",
       "id": "app_routes_get_extra_services",
-      "community": 87,
-      "community_name": "get_extra_services",
+      "community": 6,
+      "community_name": "ExtraServiceService",
       "norm_label": "get_extra_services()"
     },
     {
@@ -7787,8 +7787,8 @@
       "source_location": "L4135",
       "_origin": "ast",
       "id": "app_routes_create_category",
-      "community": 6,
-      "community_name": "ExtraServiceService",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": "create_category()"
     },
     {
@@ -7798,8 +7798,8 @@
       "source_location": "L4145",
       "_origin": "ast",
       "id": "app_routes_create_menu_item",
-      "community": 6,
-      "community_name": "ExtraServiceService",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": "create_menu_item()"
     },
     {
@@ -7831,8 +7831,8 @@
       "source_location": "L4188",
       "_origin": "ast",
       "id": "app_routes_update_menu_inventory",
-      "community": 88,
-      "community_name": "update_menu_inventory",
+      "community": 6,
+      "community_name": "ExtraServiceService",
       "norm_label": "update_menu_inventory()"
     },
     {
@@ -7842,8 +7842,8 @@
       "source_location": "L4199",
       "_origin": "ast",
       "id": "app_routes_update_menu_item_status",
-      "community": 6,
-      "community_name": "ExtraServiceService",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": "update_menu_item_status()"
     },
     {
@@ -7853,8 +7853,8 @@
       "source_location": "L4214",
       "_origin": "ast",
       "id": "app_routes_get_extra_services_low_stock_alerts",
-      "community": 71,
-      "community_name": "get_vendor_dashboard",
+      "community": 6,
+      "community_name": "ExtraServiceService",
       "norm_label": "get_extra_services_low_stock_alerts()"
     },
     {
@@ -7864,8 +7864,8 @@
       "source_location": "L4224",
       "_origin": "ast",
       "id": "app_routes_create_hash_pass",
-      "community": 63,
-      "community_name": "passModels.py",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": "create_hash_pass()"
     },
     {
@@ -7875,8 +7875,8 @@
       "source_location": "L4282",
       "_origin": "ast",
       "id": "app_routes_update_profile_image",
-      "community": 89,
-      "community_name": "CloudinaryProfileImageService",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": "update_profile_image()"
     },
     {
@@ -7897,8 +7897,8 @@
       "source_location": "L4402",
       "_origin": "ast",
       "id": "app_routes_delete_vendor_profile_image",
-      "community": 89,
-      "community_name": "CloudinaryProfileImageService",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": "delete_vendor_profile_image()"
     },
     {
@@ -7908,8 +7908,8 @@
       "source_location": "L4442",
       "_origin": "ast",
       "id": "app_routes_update_business_details",
-      "community": 85,
-      "community_name": "PhysicalAddress",
+      "community": 2,
+      "community_name": "vendor.py",
       "norm_label": "update_business_details()"
     },
     {
@@ -7963,8 +7963,8 @@
       "source_location": "L4891",
       "_origin": "ast",
       "id": "app_routes_get_vendor_notification_preferences",
-      "community": 74,
-      "community_name": "get_vendor_notification_preferences",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": "get_vendor_notification_preferences()"
     },
     {
@@ -7974,8 +7974,8 @@
       "source_location": "L4949",
       "_origin": "ast",
       "id": "app_routes_upsert_vendor_notification_preferences",
-      "community": 74,
-      "community_name": "get_vendor_notification_preferences",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": "upsert_vendor_notification_preferences()"
     },
     {
@@ -7996,8 +7996,8 @@
       "source_location": "L5134",
       "_origin": "ast",
       "id": "app_routes_create_payout",
-      "community": 43,
-      "community_name": "BankTransferDetails",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": "create_payout()"
     },
     {
@@ -8194,8 +8194,8 @@
       "source_location": "L1893",
       "_origin": "ast",
       "id": "app_routes_rationale_1893",
-      "community": 7,
-      "community_name": "kiosk_security.py",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": "start a session from kiosk using either booking_id (scan) or access_code...."
     },
     {
@@ -8216,8 +8216,8 @@
       "source_location": "L3081",
       "_origin": "ast",
       "id": "app_routes_rationale_3081",
-      "community": 71,
-      "community_name": "get_vendor_dashboard",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": "force duration to a single int or none."
     },
     {
@@ -8249,8 +8249,8 @@
       "source_location": "L4127",
       "_origin": "ast",
       "id": "app_routes_rationale_4127",
-      "community": 87,
-      "community_name": "get_extra_services",
+      "community": 6,
+      "community_name": "ExtraServiceService",
       "norm_label": "get all categories and menu items"
     },
     {
@@ -8260,8 +8260,8 @@
       "source_location": "L4136",
       "_origin": "ast",
       "id": "app_routes_rationale_4136",
-      "community": 6,
-      "community_name": "ExtraServiceService",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": "create new service category"
     },
     {
@@ -8271,8 +8271,8 @@
       "source_location": "L4146",
       "_origin": "ast",
       "id": "app_routes_rationale_4146",
-      "community": 6,
-      "community_name": "ExtraServiceService",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": "create menu item with optional image"
     },
     {
@@ -8282,8 +8282,8 @@
       "source_location": "L4189",
       "_origin": "ast",
       "id": "app_routes_rationale_4189",
-      "community": 88,
-      "community_name": "update_menu_inventory",
+      "community": 6,
+      "community_name": "ExtraServiceService",
       "norm_label": "set/increment/decrement stock for a menu item."
     },
     {
@@ -8293,8 +8293,8 @@
       "source_location": "L4200",
       "_origin": "ast",
       "id": "app_routes_rationale_4200",
-      "community": 6,
-      "community_name": "ExtraServiceService",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": "activate/deactivate extra service menu item."
     },
     {
@@ -8304,8 +8304,8 @@
       "source_location": "L4215",
       "_origin": "ast",
       "id": "app_routes_rationale_4215",
-      "community": 71,
-      "community_name": "get_vendor_dashboard",
+      "community": 6,
+      "community_name": "ExtraServiceService",
       "norm_label": "return low-stock alerts for extra service menu items."
     },
     {
@@ -8315,8 +8315,8 @@
       "source_location": "L4283",
       "_origin": "ast",
       "id": "app_routes_rationale_4283",
-      "community": 89,
-      "community_name": "CloudinaryProfileImageService",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": "upload profile image to cloudinary and update vendorprofileimage table. creates..."
     },
     {
@@ -8337,8 +8337,8 @@
       "source_location": "L4403",
       "_origin": "ast",
       "id": "app_routes_rationale_4403",
-      "community": 89,
-      "community_name": "CloudinaryProfileImageService",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": "delete vendor's profile image"
     },
     {
@@ -8348,8 +8348,8 @@
       "source_location": "L4443",
       "_origin": "ast",
       "id": "app_routes_rationale_4443",
-      "community": 85,
-      "community_name": "PhysicalAddress",
+      "community": 2,
+      "community_name": "vendor.py",
       "norm_label": "update vendor business details including website, phone, email, and address"
     },
     {
@@ -8403,8 +8403,8 @@
       "source_location": "L5135",
       "_origin": "ast",
       "id": "app_routes_rationale_5135",
-      "community": 43,
-      "community_name": "BankTransferDetails",
+      "community": 5,
+      "community_name": "app/routes.py",
       "norm_label": "create a new payout transaction"
     },
     {
@@ -8503,7 +8503,7 @@
       "_origin": "ast",
       "id": "app_services_add_game_images",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": "add_game_images.py"
     },
     {
@@ -8514,7 +8514,7 @@
       "_origin": "ast",
       "id": "app_services_add_game_images_add_images_to_games",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": "add_images_to_games()"
     },
     {
@@ -8877,7 +8877,7 @@
       "_origin": "ast",
       "id": "app_services_cafe_continuation_service",
       "community": 38,
-      "community_name": "CafeError",
+      "community_name": "cafe_wallet_service.py",
       "norm_label": "cafe_continuation_service.py"
     },
     {
@@ -8888,7 +8888,7 @@
       "_origin": "ast",
       "id": "app_services_cafe_continuation_service_overtime_charge",
       "community": 38,
-      "community_name": "CafeError",
+      "community_name": "cafe_wallet_service.py",
       "norm_label": "overtime_charge()"
     },
     {
@@ -8921,7 +8921,7 @@
       "_origin": "ast",
       "id": "app_services_cafe_continuation_service_request_continuation",
       "community": 38,
-      "community_name": "CafeError",
+      "community_name": "cafe_wallet_service.py",
       "norm_label": "request_continuation()"
     },
     {
@@ -8932,7 +8932,7 @@
       "_origin": "ast",
       "id": "app_services_cafe_continuation_service_decide",
       "community": 38,
-      "community_name": "CafeError",
+      "community_name": "cafe_wallet_service.py",
       "norm_label": "decide()"
     },
     {
@@ -8954,7 +8954,7 @@
       "_origin": "ast",
       "id": "app_services_cafe_continuation_service_settle",
       "community": 38,
-      "community_name": "CafeError",
+      "community_name": "cafe_wallet_service.py",
       "norm_label": "settle()"
     },
     {
@@ -8965,7 +8965,7 @@
       "_origin": "ast",
       "id": "app_services_cafe_continuation_service_reconcile_notifications",
       "community": 38,
-      "community_name": "CafeError",
+      "community_name": "cafe_wallet_service.py",
       "norm_label": "reconcile_notifications()"
     },
     {
@@ -8976,7 +8976,7 @@
       "_origin": "ast",
       "id": "app_services_cafe_continuation_service_rationale_1",
       "community": 38,
-      "community_name": "CafeError",
+      "community_name": "cafe_wallet_service.py",
       "norm_label": "owner-approved fixed-duration credit, independent of nonnegative wallet..."
     },
     {
@@ -8987,7 +8987,7 @@
       "_origin": "ast",
       "id": "app_services_cafe_continuation_service_rationale_16",
       "community": 38,
-      "community_name": "CafeError",
+      "community_name": "cafe_wallet_service.py",
       "norm_label": "prorate extra whole minutes at the agreed session price, rounded up to paise."
     },
     {
@@ -8997,8 +8997,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_services_cafe_owner_email",
-      "community": 38,
-      "community_name": "CafeError",
+      "community": 16,
+      "community_name": "audit",
       "norm_label": "cafe_owner_email.py"
     },
     {
@@ -9008,8 +9008,8 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "app_services_cafe_owner_email_send_owner_email",
-      "community": 38,
-      "community_name": "CafeError",
+      "community": 16,
+      "community_name": "audit",
       "norm_label": "send_owner_email()"
     },
     {
@@ -9019,8 +9019,8 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "app_services_cafe_owner_email_dispatch_owner_emails",
-      "community": 38,
-      "community_name": "CafeError",
+      "community": 16,
+      "community_name": "audit",
       "norm_label": "dispatch_owner_emails()"
     },
     {
@@ -9030,8 +9030,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_services_cafe_owner_email_rationale_1",
-      "community": 38,
-      "community_name": "CafeError",
+      "community": 16,
+      "community_name": "audit",
       "norm_label": "transactional outbox: smtp retries never undo an owner-approval request."
     },
     {
@@ -9074,8 +9074,8 @@
       "source_location": "L94",
       "_origin": "ast",
       "id": "app_services_cafe_session_pricing_affordable_duration",
-      "community": 29,
-      "community_name": "local_window",
+      "community": 12,
+      "community_name": "cafe_wallet_controller.py",
       "norm_label": "affordable_duration()"
     },
     {
@@ -9107,8 +9107,8 @@
       "source_location": "L95",
       "_origin": "ast",
       "id": "app_services_cafe_session_pricing_rationale_95",
-      "community": 29,
-      "community_name": "local_window",
+      "community": 12,
+      "community_name": "cafe_wallet_controller.py",
       "norm_label": "longest whole-minute session the available wallet covers, within cafe limits."
     },
     {
@@ -9162,8 +9162,8 @@
       "source_location": "L45",
       "_origin": "ast",
       "id": "app_services_cafe_slot_reservations_scheduled_slots",
-      "community": 29,
-      "community_name": "local_window",
+      "community": 82,
+      "community_name": "test_session_extensions.py",
       "norm_label": "scheduled_slots()"
     },
     {
@@ -9273,7 +9273,7 @@
       "_origin": "ast",
       "id": "app_services_cafe_wallet_service",
       "community": 38,
-      "community_name": "CafeError",
+      "community_name": "cafe_wallet_service.py",
       "norm_label": "cafe_wallet_service.py"
     },
     {
@@ -9283,8 +9283,8 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "app_services_cafe_wallet_service_cafeerror",
-      "community": 38,
-      "community_name": "CafeError",
+      "community": 12,
+      "community_name": "cafe_wallet_controller.py",
       "norm_label": "cafeerror"
     },
     {
@@ -9294,8 +9294,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "app_services_cafe_wallet_service_py_exception",
-      "community": 38,
-      "community_name": "CafeError",
+      "community": 12,
+      "community_name": "cafe_wallet_controller.py",
       "norm_label": "exception"
     },
     {
@@ -9305,8 +9305,8 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "app_services_cafe_wallet_service_cafeerror_init",
-      "community": 38,
-      "community_name": "CafeError",
+      "community": 12,
+      "community_name": "cafe_wallet_controller.py",
       "norm_label": ".__init__()"
     },
     {
@@ -9317,7 +9317,7 @@
       "_origin": "ast",
       "id": "app_services_cafe_wallet_service_integer",
       "community": 38,
-      "community_name": "CafeError",
+      "community_name": "cafe_wallet_service.py",
       "norm_label": "integer()"
     },
     {
@@ -9327,8 +9327,8 @@
       "source_location": "L33",
       "_origin": "ast",
       "id": "app_services_cafe_wallet_service_fingerprint",
-      "community": 26,
-      "community_name": "session_extensions.py",
+      "community": 38,
+      "community_name": "cafe_wallet_service.py",
       "norm_label": "fingerprint()"
     },
     {
@@ -9339,7 +9339,7 @@
       "_origin": "ast",
       "id": "app_services_cafe_wallet_service_key",
       "community": 38,
-      "community_name": "CafeError",
+      "community_name": "cafe_wallet_service.py",
       "norm_label": "key()"
     },
     {
@@ -9350,7 +9350,7 @@
       "_origin": "ast",
       "id": "app_services_cafe_wallet_service_policy",
       "community": 38,
-      "community_name": "CafeError",
+      "community_name": "cafe_wallet_service.py",
       "norm_label": "policy()"
     },
     {
@@ -9361,7 +9361,7 @@
       "_origin": "ast",
       "id": "app_services_cafe_wallet_service_validate_policy",
       "community": 38,
-      "community_name": "CafeError",
+      "community_name": "cafe_wallet_service.py",
       "norm_label": "validate_policy()"
     },
     {
@@ -9383,7 +9383,7 @@
       "_origin": "ast",
       "id": "app_services_cafe_wallet_service_wallet",
       "community": 38,
-      "community_name": "CafeError",
+      "community_name": "cafe_wallet_service.py",
       "norm_label": "wallet()"
     },
     {
@@ -9394,7 +9394,7 @@
       "_origin": "ast",
       "id": "app_services_cafe_wallet_service_ledger",
       "community": 38,
-      "community_name": "CafeError",
+      "community_name": "cafe_wallet_service.py",
       "norm_label": "ledger()"
     },
     {
@@ -9405,7 +9405,7 @@
       "_origin": "ast",
       "id": "app_services_cafe_wallet_service_topup",
       "community": 38,
-      "community_name": "CafeError",
+      "community_name": "cafe_wallet_service.py",
       "norm_label": "topup()"
     },
     {
@@ -9416,7 +9416,7 @@
       "_origin": "ast",
       "id": "app_services_cafe_wallet_service_refund",
       "community": 38,
-      "community_name": "CafeError",
+      "community_name": "cafe_wallet_service.py",
       "norm_label": "refund()"
     },
     {
@@ -9427,7 +9427,7 @@
       "_origin": "ast",
       "id": "app_services_cafe_wallet_service_reserve",
       "community": 38,
-      "community_name": "CafeError",
+      "community_name": "cafe_wallet_service.py",
       "norm_label": "reserve()"
     },
     {
@@ -9482,7 +9482,7 @@
       "_origin": "ast",
       "id": "app_services_cafe_wallet_service_rationale_1",
       "community": 38,
-      "community_name": "CafeError",
+      "community_name": "cafe_wallet_service.py",
       "norm_label": "transactional cafe checkout. callers commit before publishing commands."
     },
     {
@@ -9592,7 +9592,7 @@
       "_origin": "ast",
       "id": "app_services_cloudinary_game_service",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": "cloudinary_game_service.py"
     },
     {
@@ -9603,7 +9603,7 @@
       "_origin": "ast",
       "id": "app_services_cloudinary_game_service_cloudinarygameimageservice",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": "cloudinarygameimageservice"
     },
     {
@@ -9614,7 +9614,7 @@
       "_origin": "ast",
       "id": "app_services_cloudinary_game_service_cloudinarygameimageservice_is_cloudinary_configured",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": ".is_cloudinary_configured()"
     },
     {
@@ -9625,7 +9625,7 @@
       "_origin": "ast",
       "id": "app_services_cloudinary_game_service_cloudinarygameimageservice_configure_cloudinary",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": ".configure_cloudinary()"
     },
     {
@@ -9636,7 +9636,7 @@
       "_origin": "ast",
       "id": "app_services_cloudinary_game_service_cloudinarygameimageservice_upload_game_cover_image",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": ".upload_game_cover_image()"
     },
     {
@@ -9647,7 +9647,7 @@
       "_origin": "ast",
       "id": "app_services_cloudinary_game_service_cloudinarygameimageservice_delete_game_image",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": ".delete_game_image()"
     },
     {
@@ -9658,7 +9658,7 @@
       "_origin": "ast",
       "id": "app_services_cloudinary_game_service_rationale_16",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": "service for handling game cover images images are uploaded to the 'game_covers'..."
     },
     {
@@ -9669,7 +9669,7 @@
       "_origin": "ast",
       "id": "app_services_cloudinary_game_service_rationale_23",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": "checking if cloudinary credentials are available"
     },
     {
@@ -9680,7 +9680,7 @@
       "_origin": "ast",
       "id": "app_services_cloudinary_game_service_rationale_32",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": "initialize cloudinary configuration"
     },
     {
@@ -9691,7 +9691,7 @@
       "_origin": "ast",
       "id": "app_services_cloudinary_game_service_rationale_53",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": "upload game cover image to cloudinary"
     },
     {
@@ -9702,7 +9702,7 @@
       "_origin": "ast",
       "id": "app_services_cloudinary_game_service_rationale_121",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": "delete game cover image from cloudinary"
     },
     {
@@ -9713,7 +9713,7 @@
       "_origin": "ast",
       "id": "app_services_cloudinary_profile_service",
       "community": 89,
-      "community_name": "CloudinaryProfileImageService",
+      "community_name": "CloudinaryMenuImageService",
       "norm_label": "cloudinary_profile_service.py"
     },
     {
@@ -9724,7 +9724,7 @@
       "_origin": "ast",
       "id": "app_services_cloudinary_profile_service_cloudinaryprofileimageservice",
       "community": 89,
-      "community_name": "CloudinaryProfileImageService",
+      "community_name": "CloudinaryMenuImageService",
       "norm_label": "cloudinaryprofileimageservice"
     },
     {
@@ -9735,7 +9735,7 @@
       "_origin": "ast",
       "id": "app_services_cloudinary_profile_service_cloudinaryprofileimageservice_is_cloudinary_configured",
       "community": 89,
-      "community_name": "CloudinaryProfileImageService",
+      "community_name": "CloudinaryMenuImageService",
       "norm_label": ".is_cloudinary_configured()"
     },
     {
@@ -9746,7 +9746,7 @@
       "_origin": "ast",
       "id": "app_services_cloudinary_profile_service_cloudinaryprofileimageservice_configure_cloudinary",
       "community": 89,
-      "community_name": "CloudinaryProfileImageService",
+      "community_name": "CloudinaryMenuImageService",
       "norm_label": ".configure_cloudinary()"
     },
     {
@@ -9757,7 +9757,7 @@
       "_origin": "ast",
       "id": "app_services_cloudinary_profile_service_cloudinaryprofileimageservice_upload_profile_image",
       "community": 89,
-      "community_name": "CloudinaryProfileImageService",
+      "community_name": "CloudinaryMenuImageService",
       "norm_label": ".upload_profile_image()"
     },
     {
@@ -9768,7 +9768,7 @@
       "_origin": "ast",
       "id": "app_services_cloudinary_profile_service_cloudinaryprofileimageservice_delete_profile_image",
       "community": 89,
-      "community_name": "CloudinaryProfileImageService",
+      "community_name": "CloudinaryMenuImageService",
       "norm_label": ".delete_profile_image()"
     },
     {
@@ -9779,7 +9779,7 @@
       "_origin": "ast",
       "id": "app_services_cloudinary_profile_service_rationale_1",
       "community": 89,
-      "community_name": "CloudinaryProfileImageService",
+      "community_name": "CloudinaryMenuImageService",
       "norm_label": "cloudinary service for handling vendor profile images images are uploaded to..."
     },
     {
@@ -9790,7 +9790,7 @@
       "_origin": "ast",
       "id": "app_services_cloudinary_profile_service_rationale_13",
       "community": 89,
-      "community_name": "CloudinaryProfileImageService",
+      "community_name": "CloudinaryMenuImageService",
       "norm_label": "service to handle vendor profile image uploads. images are stored in..."
     },
     {
@@ -9801,7 +9801,7 @@
       "_origin": "ast",
       "id": "app_services_cloudinary_profile_service_rationale_20",
       "community": 89,
-      "community_name": "CloudinaryProfileImageService",
+      "community_name": "CloudinaryMenuImageService",
       "norm_label": "check if cloudinary credentials are available"
     },
     {
@@ -9812,7 +9812,7 @@
       "_origin": "ast",
       "id": "app_services_cloudinary_profile_service_rationale_29",
       "community": 89,
-      "community_name": "CloudinaryProfileImageService",
+      "community_name": "CloudinaryMenuImageService",
       "norm_label": "initialize cloudinary configuration"
     },
     {
@@ -9823,7 +9823,7 @@
       "_origin": "ast",
       "id": "app_services_cloudinary_profile_service_rationale_50",
       "community": 89,
-      "community_name": "CloudinaryProfileImageService",
+      "community_name": "CloudinaryMenuImageService",
       "norm_label": "upload profile image to cloudinary in individual vendor folder"
     },
     {
@@ -9834,7 +9834,7 @@
       "_origin": "ast",
       "id": "app_services_cloudinary_profile_service_rationale_121",
       "community": 89,
-      "community_name": "CloudinaryProfileImageService",
+      "community_name": "CloudinaryMenuImageService",
       "norm_label": "delete profile image from cloudinary"
     },
     {
@@ -9844,7 +9844,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_services_cloudinary_services",
-      "community": 68,
+      "community": 89,
       "community_name": "CloudinaryMenuImageService",
       "norm_label": "cloudinary_services.py"
     },
@@ -9855,7 +9855,7 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "app_services_cloudinary_services_cloudinarymenuimageservice",
-      "community": 68,
+      "community": 89,
       "community_name": "CloudinaryMenuImageService",
       "norm_label": "cloudinarymenuimageservice"
     },
@@ -9866,7 +9866,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "app_services_cloudinary_services_cloudinarymenuimageservice_is_cloudinary_configured",
-      "community": 68,
+      "community": 89,
       "community_name": "CloudinaryMenuImageService",
       "norm_label": ".is_cloudinary_configured()"
     },
@@ -9877,7 +9877,7 @@
       "source_location": "L31",
       "_origin": "ast",
       "id": "app_services_cloudinary_services_cloudinarymenuimageservice_configure_cloudinary",
-      "community": 68,
+      "community": 89,
       "community_name": "CloudinaryMenuImageService",
       "norm_label": ".configure_cloudinary()"
     },
@@ -9888,7 +9888,7 @@
       "source_location": "L52",
       "_origin": "ast",
       "id": "app_services_cloudinary_services_cloudinarymenuimageservice_upload_menu_item_image",
-      "community": 68,
+      "community": 89,
       "community_name": "CloudinaryMenuImageService",
       "norm_label": ".upload_menu_item_image()"
     },
@@ -9899,7 +9899,7 @@
       "source_location": "L121",
       "_origin": "ast",
       "id": "app_services_cloudinary_services_cloudinarymenuimageservice_delete_menu_image",
-      "community": 68,
+      "community": 89,
       "community_name": "CloudinaryMenuImageService",
       "norm_label": ".delete_menu_image()"
     },
@@ -9910,7 +9910,7 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "app_services_cloudinary_services_rationale_16",
-      "community": 68,
+      "community": 89,
       "community_name": "CloudinaryMenuImageService",
       "norm_label": "service for handling menu cover images images are uploaded to the 'poc' folder"
     },
@@ -9921,7 +9921,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "app_services_cloudinary_services_rationale_23",
-      "community": 68,
+      "community": 89,
       "community_name": "CloudinaryMenuImageService",
       "norm_label": "checking if cloudinary credentials are available"
     },
@@ -9932,7 +9932,7 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "app_services_cloudinary_services_rationale_32",
-      "community": 68,
+      "community": 89,
       "community_name": "CloudinaryMenuImageService",
       "norm_label": "initialize cloudinary configuration"
     },
@@ -9943,7 +9943,7 @@
       "source_location": "L53",
       "_origin": "ast",
       "id": "app_services_cloudinary_services_rationale_53",
-      "community": 68,
+      "community": 89,
       "community_name": "CloudinaryMenuImageService",
       "norm_label": "upload menu item image to cloudinary"
     },
@@ -9954,7 +9954,7 @@
       "source_location": "L122",
       "_origin": "ast",
       "id": "app_services_cloudinary_services_rationale_122",
-      "community": 68,
+      "community": 89,
       "community_name": "CloudinaryMenuImageService",
       "norm_label": "delete menu item image from cloudinary"
     },
@@ -9966,7 +9966,7 @@
       "_origin": "ast",
       "id": "app_services_console_catalog_service",
       "community": 39,
-      "community_name": "console_catalog_service.py",
+      "community_name": "ConsoleService",
       "norm_label": "console_catalog_service.py"
     },
     {
@@ -9977,7 +9977,7 @@
       "_origin": "ast",
       "id": "app_services_console_catalog_service_slugify",
       "community": 39,
-      "community_name": "console_catalog_service.py",
+      "community_name": "ConsoleService",
       "norm_label": "_slugify()"
     },
     {
@@ -9988,7 +9988,7 @@
       "_origin": "ast",
       "id": "app_services_console_catalog_service_py_any",
       "community": 39,
-      "community_name": "console_catalog_service.py",
+      "community_name": "ConsoleService",
       "norm_label": "any"
     },
     {
@@ -9999,7 +9999,7 @@
       "_origin": "ast",
       "id": "app_services_console_catalog_service_normalize_console_slug",
       "community": 39,
-      "community_name": "console_catalog_service.py",
+      "community_name": "ConsoleService",
       "norm_label": "normalize_console_slug()"
     },
     {
@@ -10010,7 +10010,7 @@
       "_origin": "ast",
       "id": "app_services_console_catalog_service_ensure_default_console_catalog_seed",
       "community": 39,
-      "community_name": "console_catalog_service.py",
+      "community_name": "ConsoleService",
       "norm_label": "ensure_default_console_catalog_seed()"
     },
     {
@@ -10021,7 +10021,7 @@
       "_origin": "ast",
       "id": "app_services_console_catalog_service_row_to_dict",
       "community": 39,
-      "community_name": "console_catalog_service.py",
+      "community_name": "ConsoleService",
       "norm_label": "_row_to_dict()"
     },
     {
@@ -10032,7 +10032,7 @@
       "_origin": "ast",
       "id": "app_services_console_catalog_service_get_merged_console_catalog",
       "community": 39,
-      "community_name": "console_catalog_service.py",
+      "community_name": "ConsoleService",
       "norm_label": "get_merged_console_catalog()"
     },
     {
@@ -10043,7 +10043,7 @@
       "_origin": "ast",
       "id": "app_services_console_catalog_service_resolve_console_capabilities",
       "community": 39,
-      "community_name": "console_catalog_service.py",
+      "community_name": "ConsoleService",
       "norm_label": "resolve_console_capabilities()"
     },
     {
@@ -10054,7 +10054,7 @@
       "_origin": "ast",
       "id": "app_services_console_catalog_service_legacy_console_group",
       "community": 39,
-      "community_name": "console_catalog_service.py",
+      "community_name": "ConsoleService",
       "norm_label": "legacy_console_group()"
     },
     {
@@ -10065,7 +10065,7 @@
       "_origin": "ast",
       "id": "app_services_console_catalog_service_override_to_dict",
       "community": 39,
-      "community_name": "console_catalog_service.py",
+      "community_name": "ConsoleService",
       "norm_label": "_override_to_dict()"
     },
     {
@@ -10076,7 +10076,7 @@
       "_origin": "ast",
       "id": "app_services_console_catalog_service_get_vendor_console_overrides",
       "community": 39,
-      "community_name": "console_catalog_service.py",
+      "community_name": "ConsoleService",
       "norm_label": "get_vendor_console_overrides()"
     },
     {
@@ -10087,7 +10087,7 @@
       "_origin": "ast",
       "id": "app_services_console_catalog_service_upsert_vendor_console_override",
       "community": 39,
-      "community_name": "console_catalog_service.py",
+      "community_name": "ConsoleService",
       "norm_label": "upsert_vendor_console_override()"
     },
     {
@@ -10098,7 +10098,7 @@
       "_origin": "ast",
       "id": "app_services_console_catalog_service_set_vendor_console_override_active",
       "community": 39,
-      "community_name": "console_catalog_service.py",
+      "community_name": "ConsoleService",
       "norm_label": "set_vendor_console_override_active()"
     },
     {
@@ -10109,7 +10109,7 @@
       "_origin": "ast",
       "id": "app_services_console_service",
       "community": 25,
-      "community_name": "test_subscription_checkout.py",
+      "community_name": "extensions.py",
       "norm_label": "console_service.py"
     },
     {
@@ -10119,7 +10119,7 @@
       "source_location": "L17",
       "_origin": "ast",
       "id": "app_services_console_service_consoleservice",
-      "community": 64,
+      "community": 39,
       "community_name": "ConsoleService",
       "norm_label": "consoleservice"
     },
@@ -10130,7 +10130,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "app_services_console_service_consoleservice_normalize_day_key",
-      "community": 64,
+      "community": 39,
       "community_name": "ConsoleService",
       "norm_label": "._normalize_day_key()"
     },
@@ -10141,7 +10141,7 @@
       "source_location": "L31",
       "_origin": "ast",
       "id": "app_services_console_service_consoleservice_row_value",
-      "community": 64,
+      "community": 39,
       "community_name": "ConsoleService",
       "norm_label": "._row_value()"
     },
@@ -10152,7 +10152,7 @@
       "source_location": "L42",
       "_origin": "ast",
       "id": "app_services_console_service_consoleservice_parse_time_flexible",
-      "community": 64,
+      "community": 39,
       "community_name": "ConsoleService",
       "norm_label": "._parse_time_flexible()"
     },
@@ -10163,7 +10163,7 @@
       "source_location": "L54",
       "_origin": "ast",
       "id": "app_services_console_service_consoleservice_infer_slot_duration_minutes",
-      "community": 64,
+      "community": 39,
       "community_name": "ConsoleService",
       "norm_label": "._infer_slot_duration_minutes()"
     },
@@ -10174,7 +10174,7 @@
       "source_location": "L86",
       "_origin": "ast",
       "id": "app_services_console_service_consoleservice_resolve_slot_window_end_date",
-      "community": 64,
+      "community": 39,
       "community_name": "ConsoleService",
       "norm_label": "._resolve_slot_window_end_date()"
     },
@@ -10185,7 +10185,7 @@
       "source_location": "L114",
       "_origin": "ast",
       "id": "app_services_console_service_consoleservice_load_schedule_from_vendor_hours",
-      "community": 64,
+      "community": 39,
       "community_name": "ConsoleService",
       "norm_label": "._load_schedule_from_vendor_hours()"
     },
@@ -10196,7 +10196,7 @@
       "source_location": "L166",
       "_origin": "ast",
       "id": "app_services_console_service_consoleservice_generate_blocks",
-      "community": 64,
+      "community": 39,
       "community_name": "ConsoleService",
       "norm_label": "._generate_blocks()"
     },
@@ -10207,7 +10207,7 @@
       "source_location": "L188",
       "_origin": "ast",
       "id": "app_services_console_service_consoleservice_bootstrap_new_game_from_existing_horizon",
-      "community": 64,
+      "community": 39,
       "community_name": "ConsoleService",
       "norm_label": "._bootstrap_new_game_from_existing_horizon()"
     },
@@ -10218,7 +10218,7 @@
       "source_location": "L298",
       "_origin": "ast",
       "id": "app_services_console_service_consoleservice_bootstrap_new_game_slots",
-      "community": 64,
+      "community": 39,
       "community_name": "ConsoleService",
       "norm_label": "._bootstrap_new_game_slots()"
     },
@@ -10229,7 +10229,7 @@
       "source_location": "L438",
       "_origin": "ast",
       "id": "app_services_console_service_consoleservice_reset_game_slots",
-      "community": 64,
+      "community": 39,
       "community_name": "ConsoleService",
       "norm_label": "._reset_game_slots()"
     },
@@ -10240,7 +10240,7 @@
       "source_location": "L485",
       "_origin": "ast",
       "id": "app_services_console_service_consoleservice_is_blank",
-      "community": 64,
+      "community": 39,
       "community_name": "ConsoleService",
       "norm_label": "._is_blank()"
     },
@@ -10251,7 +10251,7 @@
       "source_location": "L489",
       "_origin": "ast",
       "id": "app_services_console_service_consoleservice_validate_console_payload",
-      "community": 64,
+      "community": 39,
       "community_name": "ConsoleService",
       "norm_label": ".validate_console_payload()"
     },
@@ -10262,7 +10262,7 @@
       "source_location": "L542",
       "_origin": "ast",
       "id": "app_services_console_service_consoleservice_normalize_hardware_spec",
-      "community": 64,
+      "community": 39,
       "community_name": "ConsoleService",
       "norm_label": ".normalize_hardware_spec()"
     },
@@ -10273,7 +10273,7 @@
       "source_location": "L567",
       "_origin": "ast",
       "id": "app_services_console_service_consoleservice_add_console",
-      "community": 64,
+      "community": 39,
       "community_name": "ConsoleService",
       "norm_label": ".add_console()"
     },
@@ -10284,7 +10284,7 @@
       "source_location": "L784",
       "_origin": "ast",
       "id": "app_services_console_service_consoleservice_get_console_details",
-      "community": 64,
+      "community": 39,
       "community_name": "ConsoleService",
       "norm_label": ".get_console_details()"
     },
@@ -10295,7 +10295,7 @@
       "source_location": "L87",
       "_origin": "ast",
       "id": "app_services_console_service_rationale_87",
-      "community": 64,
+      "community": 39,
       "community_name": "ConsoleService",
       "norm_label": "align new slot generation to the vendor's existing slot horizon. - if vendor..."
     },
@@ -10306,7 +10306,7 @@
       "source_location": "L189",
       "_origin": "ast",
       "id": "app_services_console_service_rationale_189",
-      "community": 64,
+      "community": 39,
       "community_name": "ConsoleService",
       "norm_label": "prefer cloning existing vendor slot date-coverage from other console types...."
     },
@@ -10317,7 +10317,7 @@
       "source_location": "L439",
       "_origin": "ast",
       "id": "app_services_console_service_rationale_439",
-      "community": 64,
+      "community": 39,
       "community_name": "ConsoleService",
       "norm_label": "clear slot templates and dynamic vendor rows for one game type. used when a..."
     },
@@ -10471,8 +10471,8 @@
       "source_location": "L53",
       "_origin": "ast",
       "id": "app_services_extra_service_service_extraserviceservice_get_categories_with_menus",
-      "community": 87,
-      "community_name": "get_extra_services",
+      "community": 6,
+      "community_name": "ExtraServiceService",
       "norm_label": ".get_categories_with_menus()"
     },
     {
@@ -10537,8 +10537,8 @@
       "source_location": "L478",
       "_origin": "ast",
       "id": "app_services_extra_service_service_extraserviceservice_update_menu_inventory",
-      "community": 88,
-      "community_name": "update_menu_inventory",
+      "community": 6,
+      "community_name": "ExtraServiceService",
       "norm_label": ".update_menu_inventory()"
     },
     {
@@ -10559,8 +10559,8 @@
       "source_location": "L597",
       "_origin": "ast",
       "id": "app_services_extra_service_service_extraserviceservice_get_low_stock_alerts",
-      "community": 71,
-      "community_name": "get_vendor_dashboard",
+      "community": 6,
+      "community_name": "ExtraServiceService",
       "norm_label": ".get_low_stock_alerts()"
     },
     {
@@ -10581,8 +10581,8 @@
       "source_location": "L54",
       "_origin": "ast",
       "id": "app_services_extra_service_service_rationale_54",
-      "community": 87,
-      "community_name": "get_extra_services",
+      "community": 6,
+      "community_name": "ExtraServiceService",
       "norm_label": "get all active categories with their menu items for a vendor"
     },
     {
@@ -10658,8 +10658,8 @@
       "source_location": "L479",
       "_origin": "ast",
       "id": "app_services_extra_service_service_rationale_479",
-      "community": 88,
-      "community_name": "update_menu_inventory",
+      "community": 6,
+      "community_name": "ExtraServiceService",
       "norm_label": "set or increment stock quantity for a menu item."
     },
     {
@@ -10680,8 +10680,8 @@
       "source_location": "L598",
       "_origin": "ast",
       "id": "app_services_extra_service_service_rationale_598",
-      "community": 71,
-      "community_name": "get_vendor_dashboard",
+      "community": 6,
+      "community_name": "ExtraServiceService",
       "norm_label": "return low-stock menu items for notification surfaces."
     },
     {
@@ -10692,7 +10692,7 @@
       "_origin": "ast",
       "id": "app_services_game_service",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": "game_service.py"
     },
     {
@@ -10703,7 +10703,7 @@
       "_origin": "ast",
       "id": "app_services_game_service_gameservice",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": "gameservice"
     },
     {
@@ -10713,8 +10713,8 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "app_services_game_service_gameservice_get_all_games",
-      "community": 83,
-      "community_name": "get_all_games",
+      "community": 44,
+      "community_name": "vendor_games.py",
       "norm_label": ".get_all_games()"
     },
     {
@@ -10724,8 +10724,8 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "app_services_game_service_gameservice_search_games",
-      "community": 83,
-      "community_name": "get_all_games",
+      "community": 44,
+      "community_name": "vendor_games.py",
       "norm_label": ".search_games()"
     },
     {
@@ -10736,7 +10736,7 @@
       "_origin": "ast",
       "id": "app_services_game_service_gameservice_get_vendor_games_grouped",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": ".get_vendor_games_grouped()"
     },
     {
@@ -10747,7 +10747,7 @@
       "_origin": "ast",
       "id": "app_services_game_service_gameservice_get_consoles_by_platform",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": ".get_consoles_by_platform()"
     },
     {
@@ -10758,7 +10758,7 @@
       "_origin": "ast",
       "id": "app_services_game_service_gameservice_update_game_image",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": ".update_game_image()"
     },
     {
@@ -10768,7 +10768,7 @@
       "source_location": "L121",
       "_origin": "ast",
       "id": "app_services_game_service_gameservice_delete_game_image",
-      "community": 10,
+      "community": 44,
       "community_name": "vendor_games.py",
       "norm_label": ".delete_game_image()"
     },
@@ -10780,7 +10780,7 @@
       "_origin": "ast",
       "id": "app_services_game_service_gameservice_sync_game_from_rawg",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": ".sync_game_from_rawg()"
     },
     {
@@ -10790,8 +10790,8 @@
       "source_location": "L17",
       "_origin": "ast",
       "id": "app_services_game_service_rationale_17",
-      "community": 83,
-      "community_name": "get_all_games",
+      "community": 44,
+      "community_name": "vendor_games.py",
       "norm_label": "get all games ordered by name"
     },
     {
@@ -10801,8 +10801,8 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "app_services_game_service_rationale_23",
-      "community": 83,
-      "community_name": "get_all_games",
+      "community": 44,
+      "community_name": "vendor_games.py",
       "norm_label": "search games by name (case-insensitive, partial match)"
     },
     {
@@ -10813,7 +10813,7 @@
       "_origin": "ast",
       "id": "app_services_game_service_rationale_41",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": "get all vendor games grouped by game. price_per_hour is dynamically computed..."
     },
     {
@@ -10824,7 +10824,7 @@
       "_origin": "ast",
       "id": "app_services_game_service_rationale_79",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": "get all consoles for a specific platform (pc, ps5, xbox, vr)"
     },
     {
@@ -10835,7 +10835,7 @@
       "_origin": "ast",
       "id": "app_services_game_service_rationale_93",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": "update game cover image using cloudinary"
     },
     {
@@ -10845,7 +10845,7 @@
       "source_location": "L122",
       "_origin": "ast",
       "id": "app_services_game_service_rationale_122",
-      "community": 10,
+      "community": 44,
       "community_name": "vendor_games.py",
       "norm_label": "delete cloudinary image"
     },
@@ -10857,7 +10857,7 @@
       "_origin": "ast",
       "id": "app_services_game_service_rationale_139",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": "sync single game from rawg api"
     },
     {
@@ -11087,8 +11087,8 @@
       "source_location": "L72",
       "_origin": "ast",
       "id": "app_services_kiosk_security_runtime_identity",
-      "community": 17,
-      "community_name": "KioskError",
+      "community": 7,
+      "community_name": "kiosk_security.py",
       "norm_label": "runtime_identity()"
     },
     {
@@ -11109,8 +11109,8 @@
       "source_location": "L99",
       "_origin": "ast",
       "id": "app_services_kiosk_security_vendor_required",
-      "community": 20,
-      "community_name": "test_subscription_commerce.py",
+      "community": 15,
+      "community_name": "link_service.py",
       "norm_label": "vendor_required()"
     },
     {
@@ -11197,8 +11197,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_services_link_service",
-      "community": 20,
-      "community_name": "test_subscription_commerce.py",
+      "community": 15,
+      "community_name": "link_service.py",
       "norm_label": "link_service.py"
     },
     {
@@ -11208,8 +11208,8 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "app_services_link_service_count_active_links",
-      "community": 20,
-      "community_name": "test_subscription_commerce.py",
+      "community": 15,
+      "community_name": "link_service.py",
       "norm_label": "count_active_links()"
     },
     {
@@ -11219,8 +11219,8 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "app_services_link_service_pc_is_linked",
-      "community": 20,
-      "community_name": "test_subscription_commerce.py",
+      "community": 15,
+      "community_name": "link_service.py",
       "norm_label": "pc_is_linked()"
     },
     {
@@ -11230,8 +11230,8 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "app_services_link_service_list_vendor_pcs",
-      "community": 20,
-      "community_name": "test_subscription_commerce.py",
+      "community": 15,
+      "community_name": "link_service.py",
       "norm_label": "list_vendor_pcs()"
     },
     {
@@ -11241,8 +11241,8 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "app_services_link_service_create_link",
-      "community": 20,
-      "community_name": "test_subscription_commerce.py",
+      "community": 15,
+      "community_name": "link_service.py",
       "norm_label": "create_link()"
     },
     {
@@ -11252,8 +11252,8 @@
       "source_location": "L47",
       "_origin": "ast",
       "id": "app_services_link_service_close_link",
-      "community": 20,
-      "community_name": "test_subscription_commerce.py",
+      "community": 15,
+      "community_name": "link_service.py",
       "norm_label": "close_link()"
     },
     {
@@ -11263,8 +11263,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_services_package_service",
-      "community": 90,
-      "community_name": "package_service.py",
+      "community": 18,
+      "community_name": "package_controller.py",
       "norm_label": "package_service.py"
     },
     {
@@ -11274,8 +11274,8 @@
       "source_location": "L4",
       "_origin": "ast",
       "id": "app_services_package_service_list_packages",
-      "community": 90,
-      "community_name": "package_service.py",
+      "community": 18,
+      "community_name": "package_controller.py",
       "norm_label": "list_packages()"
     },
     {
@@ -11285,8 +11285,8 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "app_services_package_service_create_package",
-      "community": 90,
-      "community_name": "package_service.py",
+      "community": 18,
+      "community_name": "package_controller.py",
       "norm_label": "create_package()"
     },
     {
@@ -11296,8 +11296,8 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "app_services_package_service_update_package",
-      "community": 90,
-      "community_name": "package_service.py",
+      "community": 18,
+      "community_name": "package_controller.py",
       "norm_label": "update_package()"
     },
     {
@@ -11417,8 +11417,8 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "app_services_payment_methods_require_method",
-      "community": 102,
-      "community_name": "accepted_methods",
+      "community": 38,
+      "community_name": "cafe_wallet_service.py",
       "norm_label": "require_method()"
     },
     {
@@ -11494,8 +11494,8 @@
       "source_location": "L59",
       "_origin": "ast",
       "id": "app_services_pricing_math_session_amount",
-      "community": 29,
-      "community_name": "local_window",
+      "community": 81,
+      "community_name": "pricingController.py",
       "norm_label": "session_amount()"
     },
     {
@@ -11516,8 +11516,8 @@
       "source_location": "L60",
       "_origin": "ast",
       "id": "app_services_pricing_math_rationale_60",
-      "community": 29,
-      "community_name": "local_window",
+      "community": 81,
+      "community_name": "pricingController.py",
       "norm_label": "prorate each covered slot; fail closed on schedule gaps or overlaps."
     },
     {
@@ -11528,7 +11528,7 @@
       "_origin": "ast",
       "id": "app_services_rawg_sync_service",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": "rawg_sync_service.py"
     },
     {
@@ -11539,7 +11539,7 @@
       "_origin": "ast",
       "id": "app_services_rawg_sync_service_rawgsyncservice",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": "rawgsyncservice"
     },
     {
@@ -11550,7 +11550,7 @@
       "_origin": "ast",
       "id": "app_services_rawg_sync_service_rawgsyncservice_fetch_games_page",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": ".fetch_games_page()"
     },
     {
@@ -11561,7 +11561,7 @@
       "_origin": "ast",
       "id": "app_services_rawg_sync_service_rawgsyncservice_sync_games",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": ".sync_games()"
     },
     {
@@ -11572,7 +11572,7 @@
       "_origin": "ast",
       "id": "app_services_rawg_sync_service_rationale_18",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": "fetch a single page of games from rawg api"
     },
     {
@@ -11583,7 +11583,7 @@
       "_origin": "ast",
       "id": "app_services_rawg_sync_service_rationale_39",
       "community": 44,
-      "community_name": "Console",
+      "community_name": "vendor_games.py",
       "norm_label": "sync games from rawg api"
     },
     {
@@ -11594,7 +11594,7 @@
       "_origin": "ast",
       "id": "app_services_razorpay_service",
       "community": 21,
-      "community_name": "create_subscription",
+      "community_name": "razorpay_service.py",
       "norm_label": "razorpay_service.py"
     },
     {
@@ -11605,7 +11605,7 @@
       "_origin": "ast",
       "id": "app_services_razorpay_service_get_razorpay_client",
       "community": 21,
-      "community_name": "create_subscription",
+      "community_name": "razorpay_service.py",
       "norm_label": "get_razorpay_client()"
     },
     {
@@ -11616,7 +11616,7 @@
       "_origin": "ast",
       "id": "app_services_razorpay_service_create_order",
       "community": 21,
-      "community_name": "create_subscription",
+      "community_name": "razorpay_service.py",
       "norm_label": "create_order()"
     },
     {
@@ -11627,7 +11627,7 @@
       "_origin": "ast",
       "id": "app_services_razorpay_service_verify_payment_signature",
       "community": 21,
-      "community_name": "create_subscription",
+      "community_name": "razorpay_service.py",
       "norm_label": "verify_payment_signature()"
     },
     {
@@ -11638,7 +11638,7 @@
       "_origin": "ast",
       "id": "app_services_razorpay_service_get_payment_details",
       "community": 21,
-      "community_name": "create_subscription",
+      "community_name": "razorpay_service.py",
       "norm_label": "get_payment_details()"
     },
     {
@@ -11649,7 +11649,7 @@
       "_origin": "ast",
       "id": "app_services_razorpay_service_get_test_price",
       "community": 21,
-      "community_name": "create_subscription",
+      "community_name": "razorpay_service.py",
       "norm_label": "get_test_price()"
     },
     {
@@ -11660,7 +11660,7 @@
       "_origin": "ast",
       "id": "app_services_razorpay_service_get_order_details",
       "community": 21,
-      "community_name": "create_subscription",
+      "community_name": "razorpay_service.py",
       "norm_label": "get_order_details()"
     },
     {
@@ -11682,7 +11682,7 @@
       "_origin": "ast",
       "id": "app_services_razorpay_service_rationale_9",
       "community": 21,
-      "community_name": "create_subscription",
+      "community_name": "razorpay_service.py",
       "norm_label": "initialize razorpay client with keys from config"
     },
     {
@@ -11693,7 +11693,7 @@
       "_origin": "ast",
       "id": "app_services_razorpay_service_rationale_19",
       "community": 21,
-      "community_name": "create_subscription",
+      "community_name": "razorpay_service.py",
       "norm_label": "create a razorpay order for subscription payment args: amount: amount in inr..."
     },
     {
@@ -11704,7 +11704,7 @@
       "_origin": "ast",
       "id": "app_services_razorpay_service_rationale_53",
       "community": 21,
-      "community_name": "create_subscription",
+      "community_name": "razorpay_service.py",
       "norm_label": "verify razorpay payment signature for security args: order_id: razorpay order..."
     },
     {
@@ -11715,7 +11715,7 @@
       "_origin": "ast",
       "id": "app_services_razorpay_service_rationale_82",
       "community": 21,
-      "community_name": "create_subscription",
+      "community_name": "razorpay_service.py",
       "norm_label": "fetch payment details from razorpay args: payment_id: razorpay payment id..."
     },
     {
@@ -11726,7 +11726,7 @@
       "_origin": "ast",
       "id": "app_services_razorpay_service_rationale_98",
       "community": 21,
-      "community_name": "create_subscription",
+      "community_name": "razorpay_service.py",
       "norm_label": "get test price for development mode"
     },
     {
@@ -11737,7 +11737,7 @@
       "_origin": "ast",
       "id": "app_services_razorpay_service_rationale_104",
       "community": 21,
-      "community_name": "create_subscription",
+      "community_name": "razorpay_service.py",
       "norm_label": "get order details from razorpay args: order_id: razorpay order id returns:..."
     },
     {
@@ -11935,7 +11935,7 @@
       "_origin": "ast",
       "id": "app_services_session_extensions_ready",
       "community": 38,
-      "community_name": "CafeError",
+      "community_name": "cafe_wallet_service.py",
       "norm_label": "ready()"
     },
     {
@@ -11968,7 +11968,7 @@
       "_origin": "ast",
       "id": "app_services_session_extensions_debt",
       "community": 38,
-      "community_name": "CafeError",
+      "community_name": "cafe_wallet_service.py",
       "norm_label": "debt()"
     },
     {
@@ -12011,8 +12011,8 @@
       "source_location": "L70",
       "_origin": "ast",
       "id": "app_services_session_extensions_lock_row",
-      "community": 7,
-      "community_name": "kiosk_security.py",
+      "community": 26,
+      "community_name": "session_extensions.py",
       "norm_label": "lock_row()"
     },
     {
@@ -12099,8 +12099,8 @@
       "source_location": "L322",
       "_origin": "ast",
       "id": "app_services_session_extensions_receipt",
-      "community": 26,
-      "community_name": "session_extensions.py",
+      "community": 38,
+      "community_name": "cafe_wallet_service.py",
       "norm_label": "receipt()"
     },
     {
@@ -12397,7 +12397,7 @@
       "_origin": "ast",
       "id": "app_services_subscription_commerce",
       "community": 41,
-      "community_name": "subscription_service.py",
+      "community_name": "subscription_commerce.py",
       "norm_label": "subscription_commerce.py"
     },
     {
@@ -12408,7 +12408,7 @@
       "_origin": "ast",
       "id": "app_services_subscription_commerce_utcnow",
       "community": 41,
-      "community_name": "subscription_service.py",
+      "community_name": "subscription_commerce.py",
       "norm_label": "utcnow()"
     },
     {
@@ -12419,7 +12419,7 @@
       "_origin": "ast",
       "id": "app_services_subscription_commerce_paise",
       "community": 41,
-      "community_name": "subscription_service.py",
+      "community_name": "subscription_commerce.py",
       "norm_label": "paise()"
     },
     {
@@ -12430,7 +12430,7 @@
       "_origin": "ast",
       "id": "app_services_subscription_commerce_billing_datetime",
       "community": 41,
-      "community_name": "subscription_service.py",
+      "community_name": "subscription_commerce.py",
       "norm_label": "billing_datetime()"
     },
     {
@@ -12452,7 +12452,7 @@
       "_origin": "ast",
       "id": "app_services_subscription_commerce_preview",
       "community": 41,
-      "community_name": "subscription_service.py",
+      "community_name": "subscription_commerce.py",
       "norm_label": "preview()"
     },
     {
@@ -12463,7 +12463,7 @@
       "_origin": "ast",
       "id": "app_services_subscription_commerce_public_quote",
       "community": 41,
-      "community_name": "subscription_service.py",
+      "community_name": "subscription_commerce.py",
       "norm_label": "public_quote()"
     },
     {
@@ -12474,7 +12474,7 @@
       "_origin": "ast",
       "id": "app_services_subscription_commerce_lock_vendor",
       "community": 41,
-      "community_name": "subscription_service.py",
+      "community_name": "subscription_commerce.py",
       "norm_label": "lock_vendor()"
     },
     {
@@ -12485,7 +12485,7 @@
       "_origin": "ast",
       "id": "app_services_subscription_commerce_check_base",
       "community": 41,
-      "community_name": "subscription_service.py",
+      "community_name": "subscription_commerce.py",
       "norm_label": "check_base()"
     },
     {
@@ -12496,7 +12496,7 @@
       "_origin": "ast",
       "id": "app_services_subscription_commerce_activate",
       "community": 41,
-      "community_name": "subscription_service.py",
+      "community_name": "subscription_commerce.py",
       "norm_label": "activate()"
     },
     {
@@ -12507,7 +12507,7 @@
       "_origin": "ast",
       "id": "app_services_subscription_commerce_rationale_1",
       "community": 41,
-      "community_name": "subscription_service.py",
+      "community_name": "subscription_commerce.py",
       "norm_label": "server-priced subscription quotes, prorated upgrades and immutable invoices."
     },
     {
@@ -12518,7 +12518,7 @@
       "_origin": "ast",
       "id": "app_services_subscription_commerce_rationale_31",
       "community": 41,
-      "community_name": "subscription_service.py",
+      "community_name": "subscription_commerce.py",
       "norm_label": "accept postgresql iso timestamps with variable fractional precision on python..."
     },
     {
@@ -12529,7 +12529,7 @@
       "_origin": "ast",
       "id": "app_services_subscription_commerce_rationale_141",
       "community": 41,
-      "community_name": "subscription_service.py",
+      "community_name": "subscription_commerce.py",
       "norm_label": "caller holds vendor lock; activation, receipt and invoice commit together."
     },
     {
@@ -12539,8 +12539,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_services_subscription_entitlements",
-      "community": 86,
-      "community_name": "get_active_subscription",
+      "community": 66,
+      "community_name": "Flask",
       "norm_label": "subscription_entitlements.py"
     },
     {
@@ -12550,8 +12550,8 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "app_services_subscription_entitlements_require_feature",
-      "community": 86,
-      "community_name": "get_active_subscription",
+      "community": 66,
+      "community_name": "Flask",
       "norm_label": "require_feature()"
     },
     {
@@ -12572,8 +12572,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_services_subscription_entitlements_rationale_1",
-      "community": 86,
-      "community_name": "get_active_subscription",
+      "community": 66,
+      "community_name": "Flask",
       "norm_label": "dashboard feature access is independent of staff permissions."
     },
     {
@@ -12583,7 +12583,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_services_subscription_service",
-      "community": 41,
+      "community": 10,
       "community_name": "subscription_service.py",
       "norm_label": "subscription_service.py"
     },
@@ -12594,8 +12594,8 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "app_services_subscription_service_normalize_billing_cycle",
-      "community": 21,
-      "community_name": "create_subscription",
+      "community": 10,
+      "community_name": "subscription_service.py",
       "norm_label": "normalize_billing_cycle()"
     },
     {
@@ -12605,7 +12605,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "app_services_subscription_service_get_subscription_duration",
-      "community": 41,
+      "community": 10,
       "community_name": "subscription_service.py",
       "norm_label": "get_subscription_duration()"
     },
@@ -12616,8 +12616,8 @@
       "source_location": "L38",
       "_origin": "ast",
       "id": "app_services_subscription_service_get_package_price_for_cycle",
-      "community": 21,
-      "community_name": "create_subscription",
+      "community": 10,
+      "community_name": "subscription_service.py",
       "norm_label": "get_package_price_for_cycle()"
     },
     {
@@ -12627,8 +12627,8 @@
       "source_location": "L57",
       "_origin": "ast",
       "id": "app_services_subscription_service_get_active_subscription",
-      "community": 86,
-      "community_name": "get_active_subscription",
+      "community": 41,
+      "community_name": "subscription_commerce.py",
       "norm_label": "get_active_subscription()"
     },
     {
@@ -12639,7 +12639,7 @@
       "_origin": "ast",
       "id": "app_services_subscription_service_as_utc",
       "community": 41,
-      "community_name": "subscription_service.py",
+      "community_name": "subscription_commerce.py",
       "norm_label": "_as_utc()"
     },
     {
@@ -12660,7 +12660,7 @@
       "source_location": "L107",
       "_origin": "ast",
       "id": "app_services_subscription_service_purchased_terms",
-      "community": 41,
+      "community": 10,
       "community_name": "subscription_service.py",
       "norm_label": "purchased_terms()"
     },
@@ -12671,7 +12671,7 @@
       "source_location": "L115",
       "_origin": "ast",
       "id": "app_services_subscription_service_provision_default_subscription",
-      "community": 41,
+      "community": 10,
       "community_name": "subscription_service.py",
       "norm_label": "provision_default_subscription()"
     },
@@ -12682,8 +12682,8 @@
       "source_location": "L150",
       "_origin": "ast",
       "id": "app_services_subscription_service_create_subscription",
-      "community": 21,
-      "community_name": "create_subscription",
+      "community": 10,
+      "community_name": "subscription_service.py",
       "norm_label": "create_subscription()"
     },
     {
@@ -12693,7 +12693,7 @@
       "source_location": "L225",
       "_origin": "ast",
       "id": "app_services_subscription_service_renew_subscription",
-      "community": 41,
+      "community": 10,
       "community_name": "subscription_service.py",
       "norm_label": "renew_subscription()"
     },
@@ -12704,7 +12704,7 @@
       "source_location": "L303",
       "_origin": "ast",
       "id": "app_services_subscription_service_change_subscription",
-      "community": 41,
+      "community": 10,
       "community_name": "subscription_service.py",
       "norm_label": "change_subscription()"
     },
@@ -12715,8 +12715,8 @@
       "source_location": "L394",
       "_origin": "ast",
       "id": "app_services_subscription_service_get_vendor_pc_limit",
-      "community": 20,
-      "community_name": "test_subscription_commerce.py",
+      "community": 15,
+      "community_name": "link_service.py",
       "norm_label": "get_vendor_pc_limit()"
     },
     {
@@ -12748,7 +12748,7 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "app_services_subscription_service_rationale_27",
-      "community": 41,
+      "community": 10,
       "community_name": "subscription_service.py",
       "norm_label": "get subscription duration based on environment returns: timedelta object"
     },
@@ -12759,8 +12759,8 @@
       "source_location": "L58",
       "_origin": "ast",
       "id": "app_services_subscription_service_rationale_58",
-      "community": 86,
-      "community_name": "get_active_subscription",
+      "community": 41,
+      "community_name": "subscription_commerce.py",
       "norm_label": "get currently active subscription for a vendor checks status and period validity"
     },
     {
@@ -12781,7 +12781,7 @@
       "source_location": "L116",
       "_origin": "ast",
       "id": "app_services_subscription_service_rationale_116",
-      "community": 41,
+      "community": 10,
       "community_name": "subscription_service.py",
       "norm_label": "create default subscription for new vendor used during vendor onboarding"
     },
@@ -12792,8 +12792,8 @@
       "source_location": "L151",
       "_origin": "ast",
       "id": "app_services_subscription_service_rationale_151",
-      "community": 21,
-      "community_name": "create_subscription",
+      "community": 10,
+      "community_name": "subscription_service.py",
       "norm_label": "create a new subscription after successful payment args: vendor_id: vendor id..."
     },
     {
@@ -12803,7 +12803,7 @@
       "source_location": "L226",
       "_origin": "ast",
       "id": "app_services_subscription_service_rationale_226",
-      "community": 41,
+      "community": 10,
       "community_name": "subscription_service.py",
       "norm_label": "renew existing subscription (keeps same package) args: vendor_id: vendor id..."
     },
@@ -12814,7 +12814,7 @@
       "source_location": "L313",
       "_origin": "ast",
       "id": "app_services_subscription_service_rationale_313",
-      "community": 41,
+      "community": 10,
       "community_name": "subscription_service.py",
       "norm_label": "change vendor's subscription package (admin function)"
     },
@@ -12825,8 +12825,8 @@
       "source_location": "L395",
       "_origin": "ast",
       "id": "app_services_subscription_service_rationale_395",
-      "community": 20,
-      "community_name": "test_subscription_commerce.py",
+      "community": 15,
+      "community_name": "link_service.py",
       "norm_label": "get pc limit for vendor based on their subscription expired or missing..."
     },
     {
@@ -13144,8 +13144,8 @@
       "source_location": "L82",
       "_origin": "ast",
       "id": "app_services_websocket_service_get_next_slot_for_today",
-      "community": 30,
-      "community_name": "websocket_service.py",
+      "community": 13,
+      "community_name": "datetime",
       "norm_label": "_get_next_slot_for_today()"
     },
     {
@@ -13156,7 +13156,7 @@
       "_origin": "ast",
       "id": "datetime",
       "community": 13,
-      "community_name": "extensions.py",
+      "community_name": "datetime",
       "norm_label": "datetime"
     },
     {
@@ -14343,8 +14343,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "tests_test_cafe_wallet_py_fixture",
-      "community": 72,
-      "community_name": "env",
+      "community": 6,
+      "community_name": "ExtraServiceService",
       "norm_label": "fixture"
     },
     {
@@ -14354,8 +14354,8 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "tests_test_cafe_wallet_env",
-      "community": 72,
-      "community_name": "env",
+      "community": 6,
+      "community_name": "ExtraServiceService",
       "norm_label": "env()"
     },
     {
@@ -14871,8 +14871,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_test_console_checkout_durations",
-      "community": 72,
-      "community_name": "env",
+      "community": 13,
+      "community_name": "datetime",
       "norm_label": "test_console_checkout_durations.py"
     },
     {
@@ -14882,8 +14882,8 @@
       "source_location": "L8",
       "_origin": "ast",
       "id": "tests_test_console_checkout_durations_test_durations_follow_dated_slot_size_and_closing_time",
-      "community": 72,
-      "community_name": "env",
+      "community": 13,
+      "community_name": "datetime",
       "norm_label": "test_durations_follow_dated_slot_size_and_closing_time()"
     },
     {
@@ -14893,8 +14893,8 @@
       "source_location": "L33",
       "_origin": "ast",
       "id": "tests_test_console_checkout_durations_test_midnight_options_use_next_calendar_day",
-      "community": 72,
-      "community_name": "env",
+      "community": 13,
+      "community_name": "datetime",
       "norm_label": "test_midnight_options_use_next_calendar_day()"
     },
     {
@@ -14904,8 +14904,8 @@
       "source_location": "L45",
       "_origin": "ast",
       "id": "tests_test_console_checkout_durations_test_overlapping_current_slots_have_explicit_error",
-      "community": 72,
-      "community_name": "env",
+      "community": 13,
+      "community_name": "datetime",
       "norm_label": "test_overlapping_current_slots_have_explicit_error()"
     },
     {
@@ -15136,7 +15136,7 @@
       "_origin": "ast",
       "id": "tests_test_console_schedule_bootstrap",
       "community": 13,
-      "community_name": "extensions.py",
+      "community_name": "datetime",
       "norm_label": "test_console_schedule_bootstrap.py"
     },
     {
@@ -15147,7 +15147,7 @@
       "_origin": "ast",
       "id": "tests_test_console_schedule_bootstrap_test_existing_game_bootstrap_keeps_capacity_and_weekday_grid",
       "community": 13,
-      "community_name": "extensions.py",
+      "community_name": "datetime",
       "norm_label": "test_existing_game_bootstrap_keeps_capacity_and_weekday_grid()"
     },
     {
@@ -15158,7 +15158,7 @@
       "_origin": "ast",
       "id": "tests_test_console_schedule_bootstrap_rationale_1",
       "community": 13,
-      "community_name": "extensions.py",
+      "community_name": "datetime",
       "norm_label": "adding hardware must not revive historical schedules or reset held capacity."
     },
     {
@@ -15169,7 +15169,7 @@
       "_origin": "ast",
       "id": "tests_test_early_start",
       "community": 13,
-      "community_name": "extensions.py",
+      "community_name": "datetime",
       "norm_label": "test_early_start.py"
     },
     {
@@ -15180,7 +15180,7 @@
       "_origin": "ast",
       "id": "tests_test_early_start_earlystarttests",
       "community": 13,
-      "community_name": "extensions.py",
+      "community_name": "datetime",
       "norm_label": "earlystarttests"
     },
     {
@@ -15191,7 +15191,7 @@
       "_origin": "ast",
       "id": "tests_test_early_start_earlystarttests_eligible",
       "community": 13,
-      "community_name": "extensions.py",
+      "community_name": "datetime",
       "norm_label": ".eligible()"
     },
     {
@@ -15202,7 +15202,7 @@
       "_origin": "ast",
       "id": "tests_test_early_start_earlystarttests_test_five_minute_boundary",
       "community": 13,
-      "community_name": "extensions.py",
+      "community_name": "datetime",
       "norm_label": ".test_five_minute_boundary()"
     },
     {
@@ -15213,7 +15213,7 @@
       "_origin": "ast",
       "id": "tests_test_early_start_earlystarttests_test_end_time_unchanged",
       "community": 13,
-      "community_name": "extensions.py",
+      "community_name": "datetime",
       "norm_label": ".test_end_time_unchanged()"
     },
     {
@@ -15224,7 +15224,7 @@
       "_origin": "ast",
       "id": "tests_test_early_start_earlystarttests_test_midnight_and_overnight",
       "community": 13,
-      "community_name": "extensions.py",
+      "community_name": "datetime",
       "norm_label": ".test_midnight_and_overnight()"
     },
     {
@@ -15235,7 +15235,7 @@
       "_origin": "ast",
       "id": "tests_test_early_start_earlystarttests_test_incomplete_schedule",
       "community": 13,
-      "community_name": "extensions.py",
+      "community_name": "datetime",
       "norm_label": ".test_incomplete_schedule()"
     },
     {
@@ -15246,7 +15246,7 @@
       "_origin": "ast",
       "id": "tests_test_early_start_rationale_1",
       "community": 13,
-      "community_name": "extensions.py",
+      "community_name": "datetime",
       "norm_label": "check the dashboard's production eligibility rule without booting services."
     },
     {
@@ -15325,17 +15325,6 @@
       "community": 8,
       "community_name": "KioskTests",
       "norm_label": ".test_owner_pin_validation_rate_limited()"
-    },
-    {
-      "label": ".test_admin_settings_authorization_is_action_specific()",
-      "file_type": "code",
-      "source_file": "tests/test_kiosk_owner_pin.py",
-      "source_location": "L27",
-      "_origin": "ast",
-      "id": "tests_test_kiosk_owner_pin_ownerpintests_test_admin_settings_authorization_is_action_specific",
-      "community": 8,
-      "community_name": "KioskTests",
-      "norm_label": ".test_admin_settings_authorization_is_action_specific()"
     },
     {
       "label": "test_kiosk_runtime.py",
@@ -15905,8 +15894,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_test_payment_methods",
-      "community": 3,
-      "community_name": "auth",
+      "community": 68,
+      "community_name": "test_payment_methods.py",
       "norm_label": "test_payment_methods.py"
     },
     {
@@ -15916,8 +15905,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "tests_test_payment_methods_py_fixture",
-      "community": 3,
-      "community_name": "auth",
+      "community": 68,
+      "community_name": "test_payment_methods.py",
       "norm_label": "fixture"
     },
     {
@@ -15927,8 +15916,8 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "tests_test_payment_methods_methods",
-      "community": 3,
-      "community_name": "auth",
+      "community": 68,
+      "community_name": "test_payment_methods.py",
       "norm_label": "methods()"
     },
     {
@@ -15938,8 +15927,8 @@
       "source_location": "L41",
       "_origin": "ast",
       "id": "tests_test_payment_methods_test_all_six_methods_and_authenticated_idempotent_selection",
-      "community": 3,
-      "community_name": "auth",
+      "community": 68,
+      "community_name": "test_payment_methods.py",
       "norm_label": "test_all_six_methods_and_authenticated_idempotent_selection()"
     },
     {
@@ -15949,8 +15938,8 @@
       "source_location": "L62",
       "_origin": "ast",
       "id": "tests_test_payment_methods_test_migration_rerun_preserves_disabled_method",
-      "community": 3,
-      "community_name": "auth",
+      "community": 68,
+      "community_name": "test_payment_methods.py",
       "norm_label": "test_migration_rerun_preserves_disabled_method()"
     },
     {
@@ -15960,8 +15949,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_test_payment_methods_rationale_1",
-      "community": 3,
-      "community_name": "auth",
+      "community": 68,
+      "community_name": "test_payment_methods.py",
       "norm_label": "exercise the production payment-settings handlers in a disposable db."
     },
     {
@@ -16389,8 +16378,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_test_shared_slot_capacity",
-      "community": 15,
-      "community_name": "test_shared_slot_capacity.py",
+      "community": 82,
+      "community_name": "test_session_extensions.py",
       "norm_label": "test_shared_slot_capacity.py"
     },
     {
@@ -16400,8 +16389,8 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "tests_test_shared_slot_capacity_load_source",
-      "community": 15,
-      "community_name": "test_shared_slot_capacity.py",
+      "community": 82,
+      "community_name": "test_session_extensions.py",
       "norm_label": "load_source()"
     },
     {
@@ -16411,8 +16400,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "tests_test_shared_slot_capacity_py_fixture",
-      "community": 15,
-      "community_name": "test_shared_slot_capacity.py",
+      "community": 82,
+      "community_name": "test_session_extensions.py",
       "norm_label": "fixture"
     },
     {
@@ -16422,8 +16411,8 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "tests_test_shared_slot_capacity_flows",
-      "community": 15,
-      "community_name": "test_shared_slot_capacity.py",
+      "community": 82,
+      "community_name": "test_session_extensions.py",
       "norm_label": "flows()"
     },
     {
@@ -16433,8 +16422,8 @@
       "source_location": "L63",
       "_origin": "ast",
       "id": "tests_test_shared_slot_capacity_first_slot",
-      "community": 15,
-      "community_name": "test_shared_slot_capacity.py",
+      "community": 82,
+      "community_name": "test_session_extensions.py",
       "norm_label": "first_slot()"
     },
     {
@@ -16444,8 +16433,8 @@
       "source_location": "L70",
       "_origin": "ast",
       "id": "tests_test_shared_slot_capacity_test_three_booking_flows_compete_for_same_last_unit",
-      "community": 15,
-      "community_name": "test_shared_slot_capacity.py",
+      "community": 82,
+      "community_name": "test_session_extensions.py",
       "norm_label": "test_three_booking_flows_compete_for_same_last_unit()"
     },
     {
@@ -16455,8 +16444,8 @@
       "source_location": "L99",
       "_origin": "ast",
       "id": "tests_test_shared_slot_capacity_test_qr_reservation_retry_failure_and_completion_release_once",
-      "community": 15,
-      "community_name": "test_shared_slot_capacity.py",
+      "community": 82,
+      "community_name": "test_session_extensions.py",
       "norm_label": "test_qr_reservation_retry_failure_and_completion_release_once()"
     },
     {
@@ -16466,8 +16455,8 @@
       "source_location": "L133",
       "_origin": "ast",
       "id": "tests_test_shared_slot_capacity_test_qr_multislot_conflict_rolls_back_wallet_and_all_slots",
-      "community": 15,
-      "community_name": "test_shared_slot_capacity.py",
+      "community": 82,
+      "community_name": "test_session_extensions.py",
       "norm_label": "test_qr_multislot_conflict_rolls_back_wallet_and_all_slots()"
     },
     {
@@ -16477,8 +16466,8 @@
       "source_location": "L152",
       "_origin": "ast",
       "id": "tests_test_shared_slot_capacity_test_desk_failed_payment_rolls_back_capacity_and_booking",
-      "community": 15,
-      "community_name": "test_shared_slot_capacity.py",
+      "community": 82,
+      "community_name": "test_session_extensions.py",
       "norm_label": "test_desk_failed_payment_rolls_back_capacity_and_booking()"
     },
     {
@@ -16488,8 +16477,8 @@
       "source_location": "L162",
       "_origin": "ast",
       "id": "tests_test_shared_slot_capacity_test_future_assignment_and_qr_reservation_cannot_overlap",
-      "community": 15,
-      "community_name": "test_shared_slot_capacity.py",
+      "community": 82,
+      "community_name": "test_session_extensions.py",
       "norm_label": "test_future_assignment_and_qr_reservation_cannot_overlap()"
     },
     {
@@ -16510,8 +16499,8 @@
       "source_location": "L206",
       "_origin": "ast",
       "id": "tests_test_shared_slot_capacity_test_reconciliation_preserves_pending_squad_and_qr_capacity",
-      "community": 15,
-      "community_name": "test_shared_slot_capacity.py",
+      "community": 82,
+      "community_name": "test_session_extensions.py",
       "norm_label": "test_reconciliation_preserves_pending_squad_and_qr_capacity()"
     },
     {
@@ -16521,8 +16510,8 @@
       "source_location": "L227",
       "_origin": "ast",
       "id": "tests_test_shared_slot_capacity_test_shared_slot_helpers_match_across_services",
-      "community": 15,
-      "community_name": "test_shared_slot_capacity.py",
+      "community": 82,
+      "community_name": "test_session_extensions.py",
       "norm_label": "test_shared_slot_helpers_match_across_services()"
     },
     {
@@ -16532,8 +16521,8 @@
       "source_location": "L233",
       "_origin": "ast",
       "id": "tests_test_shared_slot_capacity_test_legacy_assignments_compete_for_same_console_interval",
-      "community": 15,
-      "community_name": "test_shared_slot_capacity.py",
+      "community": 82,
+      "community_name": "test_session_extensions.py",
       "norm_label": "test_legacy_assignments_compete_for_same_console_interval()"
     },
     {
@@ -16543,8 +16532,8 @@
       "source_location": "L254",
       "_origin": "ast",
       "id": "tests_test_shared_slot_capacity_test_migration_backfills_live_qr_holds_and_recovers_old_completion",
-      "community": 15,
-      "community_name": "test_shared_slot_capacity.py",
+      "community": 82,
+      "community_name": "test_session_extensions.py",
       "norm_label": "test_migration_backfills_live_qr_holds_and_recovers_old_completion()"
     },
     {
@@ -16554,8 +16543,8 @@
       "source_location": "L281",
       "_origin": "ast",
       "id": "tests_test_shared_slot_capacity_test_qr_overnight_holds_use_both_dates",
-      "community": 15,
-      "community_name": "test_shared_slot_capacity.py",
+      "community": 82,
+      "community_name": "test_session_extensions.py",
       "norm_label": "test_qr_overnight_holds_use_both_dates()"
     },
     {
@@ -16565,8 +16554,8 @@
       "source_location": "L302",
       "_origin": "ast",
       "id": "tests_test_shared_slot_capacity_test_reschedule_moves_only_reserved_units_and_updates_canonical_date",
-      "community": 15,
-      "community_name": "test_shared_slot_capacity.py",
+      "community": 82,
+      "community_name": "test_session_extensions.py",
       "norm_label": "test_reschedule_moves_only_reserved_units_and_updates_canonical_date()"
     },
     {
@@ -16576,8 +16565,8 @@
       "source_location": "L326",
       "_origin": "ast",
       "id": "tests_test_shared_slot_capacity_test_background_release_is_concurrent_safe_and_preserves_squad_units",
-      "community": 15,
-      "community_name": "test_shared_slot_capacity.py",
+      "community": 82,
+      "community_name": "test_session_extensions.py",
       "norm_label": "test_background_release_is_concurrent_safe_and_preserves_squad_units()"
     },
     {
@@ -16587,8 +16576,8 @@
       "source_location": "L358",
       "_origin": "ast",
       "id": "tests_test_shared_slot_capacity_overtime_route",
-      "community": 15,
-      "community_name": "test_shared_slot_capacity.py",
+      "community": 82,
+      "community_name": "test_session_extensions.py",
       "norm_label": "overtime_route()"
     },
     {
@@ -16598,8 +16587,8 @@
       "source_location": "L420",
       "_origin": "ast",
       "id": "tests_test_shared_slot_capacity_test_overtime_reuses_exact_date_without_duplicate_slot_hold",
-      "community": 15,
-      "community_name": "test_shared_slot_capacity.py",
+      "community": 82,
+      "community_name": "test_session_extensions.py",
       "norm_label": "test_overtime_reuses_exact_date_without_duplicate_slot_hold()"
     },
     {
@@ -16609,8 +16598,8 @@
       "source_location": "L439",
       "_origin": "ast",
       "id": "tests_test_shared_slot_capacity_test_overtime_write_failure_rolls_back_new_capacity",
-      "community": 15,
-      "community_name": "test_shared_slot_capacity.py",
+      "community": 82,
+      "community_name": "test_session_extensions.py",
       "norm_label": "test_overtime_write_failure_rolls_back_new_capacity()"
     },
     {
@@ -16620,8 +16609,8 @@
       "source_location": "L456",
       "_origin": "ast",
       "id": "tests_test_shared_slot_capacity_test_unrelated_time_slots_can_book_while_qr_transaction_is_open",
-      "community": 15,
-      "community_name": "test_shared_slot_capacity.py",
+      "community": 82,
+      "community_name": "test_session_extensions.py",
       "norm_label": "test_unrelated_time_slots_can_book_while_qr_transaction_is_open()"
     },
     {
@@ -16631,8 +16620,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_test_shared_slot_capacity_rationale_1",
-      "community": 15,
-      "community_name": "test_shared_slot_capacity.py",
+      "community": 82,
+      "community_name": "test_session_extensions.py",
       "norm_label": "cross-flow capacity regressions against isolated postgresql schemas."
     },
     {
@@ -16642,8 +16631,8 @@
       "source_location": "L359",
       "_origin": "ast",
       "id": "tests_test_shared_slot_capacity_rationale_359",
-      "community": 15,
-      "community_name": "test_shared_slot_capacity.py",
+      "community": 82,
+      "community_name": "test_session_extensions.py",
       "norm_label": "run the real overtime endpoint with unrelated mail/tax helpers stubbed."
     },
     {
@@ -16654,7 +16643,7 @@
       "_origin": "ast",
       "id": "tests_test_subscription_checkout",
       "community": 25,
-      "community_name": "test_subscription_checkout.py",
+      "community_name": "extensions.py",
       "norm_label": "test_subscription_checkout.py"
     },
     {
@@ -16664,8 +16653,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "tests_test_subscription_checkout_py_fixture",
-      "community": 25,
-      "community_name": "test_subscription_checkout.py",
+      "community": 20,
+      "community_name": "test_subscription_commerce.py",
       "norm_label": "fixture"
     },
     {
@@ -16675,8 +16664,8 @@
       "source_location": "L39",
       "_origin": "ast",
       "id": "tests_test_subscription_checkout_app",
-      "community": 25,
-      "community_name": "test_subscription_checkout.py",
+      "community": 20,
+      "community_name": "test_subscription_commerce.py",
       "norm_label": "app()"
     },
     {
@@ -16686,8 +16675,8 @@
       "source_location": "L86",
       "_origin": "ast",
       "id": "tests_test_subscription_checkout_order",
-      "community": 25,
-      "community_name": "test_subscription_checkout.py",
+      "community": 20,
+      "community_name": "test_subscription_commerce.py",
       "norm_label": "order()"
     },
     {
@@ -16697,8 +16686,8 @@
       "source_location": "L89",
       "_origin": "ast",
       "id": "tests_test_subscription_checkout_payment",
-      "community": 25,
-      "community_name": "test_subscription_checkout.py",
+      "community": 20,
+      "community_name": "test_subscription_commerce.py",
       "norm_label": "payment()"
     },
     {
@@ -16708,8 +16697,8 @@
       "source_location": "L92",
       "_origin": "ast",
       "id": "tests_test_subscription_checkout_verify",
-      "community": 25,
-      "community_name": "test_subscription_checkout.py",
+      "community": 20,
+      "community_name": "test_subscription_commerce.py",
       "norm_label": "verify()"
     },
     {
@@ -16719,8 +16708,8 @@
       "source_location": "L97",
       "_origin": "ast",
       "id": "tests_test_subscription_checkout_test_first_purchase_unlocks_and_duplicate_is_idempotent",
-      "community": 25,
-      "community_name": "test_subscription_checkout.py",
+      "community": 20,
+      "community_name": "test_subscription_commerce.py",
       "norm_label": "test_first_purchase_unlocks_and_duplicate_is_idempotent()"
     },
     {
@@ -16730,8 +16719,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "tests_test_subscription_checkout_py_parametrize",
-      "community": 25,
-      "community_name": "test_subscription_checkout.py",
+      "community": 20,
+      "community_name": "test_subscription_commerce.py",
       "norm_label": "parametrize"
     },
     {
@@ -16741,8 +16730,8 @@
       "source_location": "L109",
       "_origin": "ast",
       "id": "tests_test_subscription_checkout_test_rejects_invalid_payment",
-      "community": 25,
-      "community_name": "test_subscription_checkout.py",
+      "community": 20,
+      "community_name": "test_subscription_commerce.py",
       "norm_label": "test_rejects_invalid_payment()"
     },
     {
@@ -16752,8 +16741,8 @@
       "source_location": "L123",
       "_origin": "ast",
       "id": "tests_test_subscription_checkout_test_polled_payment_uses_provider_verification",
-      "community": 25,
-      "community_name": "test_subscription_checkout.py",
+      "community": 20,
+      "community_name": "test_subscription_commerce.py",
       "norm_label": "test_polled_payment_uses_provider_verification()"
     },
     {
@@ -16763,8 +16752,8 @@
       "source_location": "L128",
       "_origin": "ast",
       "id": "tests_test_subscription_checkout_test_request_cannot_change_order_action",
-      "community": 25,
-      "community_name": "test_subscription_checkout.py",
+      "community": 20,
+      "community_name": "test_subscription_commerce.py",
       "norm_label": "test_request_cannot_change_order_action()"
     },
     {
@@ -16786,7 +16775,7 @@
       "_origin": "ast",
       "id": "tests_test_subscription_checkout_rationale_1",
       "community": 25,
-      "community_name": "test_subscription_checkout.py",
+      "community_name": "extensions.py",
       "norm_label": "isolated checkout tests with real subscription rows and provider responses."
     },
     {
@@ -17756,17 +17745,6 @@
       "community": 19,
       "community_name": "Owner PIN validation for native kiosk force exit",
       "norm_label": "backend verification"
-    },
-    {
-      "label": "Admin settings authorization (9 October 2026)",
-      "file_type": "document",
-      "source_file": "docs/kiosk-owner-pin-force-exit.md",
-      "source_location": "L102",
-      "_origin": "ast",
-      "id": "docs_kiosk_owner_pin_force_exit_admin_settings_authorization_9_october_2026",
-      "community": 19,
-      "community_name": "Owner PIN validation for native kiosk force exit",
-      "norm_label": "admin settings authorization (9 october 2026)"
     },
     {
       "label": "kiosk-session-extension-api.md",
@@ -68148,17 +68126,6 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "tests/test_kiosk_owner_pin.py",
-      "source_location": "L27",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "tests_test_kiosk_owner_pin_ownerpintests",
-      "target": "tests_test_kiosk_owner_pin_ownerpintests_test_admin_settings_authorization_is_action_specific",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "tests/test_kiosk_owner_pin.py",
       "source_location": "L20",
       "weight": 1.0,
       "_origin": "ast",
@@ -72419,17 +72386,6 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/kiosk-owner-pin-force-exit.md",
-      "source_location": "L102",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "docs_kiosk_owner_pin_force_exit_owner_pin_validation_for_native_kiosk_force_exit",
-      "target": "docs_kiosk_owner_pin_force_exit_admin_settings_authorization_9_october_2026",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "docs/kiosk-owner-pin-force-exit.md",
       "source_location": "L98",
       "weight": 1.0,
       "_origin": "ast",
@@ -73044,5 +73000,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "9905f71a24d55de659937f92d52f1ceb1c66191e"
+  "built_at_commit": "7daaad307aa23365926bd73d05b87b19d526a5c3"
 }
