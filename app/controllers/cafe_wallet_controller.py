@@ -930,3 +930,19 @@ def wallet_affordable_checkout():
     quote=affordable_duration(link,balance,console_durations(link))
     return jsonify(duration=quote,available_balance=balance,currency='INR',
                    reason=None if quote else 'Balance or slots do not cover a five-minute session. Visit the desk.')
+
+
+@bp_cafe.get('/<int:vendor_id>/ledger')
+@jwt_required()
+def financial_movement_ledger(vendor_id):
+    staff_actor(vendor_id,'transactions.view')
+    from app.services.cafe_audit_reports import ledger_report
+    return jsonify(ledger_report(vendor_id,request.args))
+
+
+@bp_cafe.get('/<int:vendor_id>/consoles/<int:console_id>/history')
+@jwt_required()
+def console_usage_history(vendor_id,console_id):
+    staff_actor(vendor_id,'gaming.manage')
+    from app.services.cafe_audit_reports import console_history
+    return jsonify(console_history(vendor_id,console_id,request.args))
