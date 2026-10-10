@@ -222,7 +222,7 @@ def secure_start(fn=None, *, verify_only=False):
                 raise KioskError('booking_not_accepted',409)
             if target['status'] in ('cancelled', 'canceled') or target['book_status'] not in ('upcoming', 'current'):
                 raise KioskError('session_ended', 409)
-            if target['console_id'] and int(target['console_id']) != console_id:
+            if target['console_id'] and console_id not in assigned_consoles(target):
                 raise KioskError('booking_console_mismatch', 403)
             if target['book_status'] == 'current':
                 window = booking_window(vendor_id, target['id'], console_id)

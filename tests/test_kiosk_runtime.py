@@ -173,6 +173,16 @@ class KioskTests(unittest.TestCase):
         self.assertEqual(self.post('/start',{'console_id':10,'access_code':'123456'}).status_code,409)
         self.assertEqual(self.calls,0)
 
+    def test_assigned_squad_pc_can_verify_but_unassigned_pc_cannot(self):
+        self.app.add_url_rule('/verify',view_func=runtime['secure_start'](lambda:None,verify_only=True),methods=['POST'])
+        db.session.execute(text("UPDATE bookings SET squad_details='{\"assigned_console_ids\":[10,11]}'::jsonb WHERE id=5"));db.session.commit()
+        result=self.post('/verify',{'access_code':'123456'},token='link-b')
+        self.assertEqual(result.status_code,200)
+        self.assertEqual(result.json['data']['console_id'],11)
+        db.session.execute(text("UPDATE bookings SET squad_details='{}'::jsonb WHERE id=5"));db.session.commit()
+        self.assertEqual(self.post('/verify',{'access_code':'123456'},token='link-b').status_code,403)
+        self.assertEqual(db.session.execute(text('SELECT count(*) FROM kiosk_code_redemptions')).scalar(),0)
+
     def test_accepted_pay_at_cafe_verifies_and_starts_without_wallet(self):
         self.app.add_url_rule('/verify',view_func=runtime['secure_start'](lambda:None,verify_only=True),methods=['POST'])
         db.session.execute(text("UPDATE bookings SET status='confirmed' WHERE id=5"))
