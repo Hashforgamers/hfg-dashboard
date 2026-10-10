@@ -134,16 +134,30 @@ def notify_console_runtime(vendor_id, console_ids):
         db.session.rollback()
 
 
-def secure_start(fn):
+def secure_start(fn=None, *, verify_only=False):
+    if fn is None:return lambda handler:secure_start(handler,verify_only=verify_only)
     @wraps(fn)
     def wrapped():
         data = request.get_json(silent=True) or {}
         if not isinstance(data, dict):
             raise KioskError('invalid_json', 400)
-        console_id = positive_id(data.get('console_id'))
-        rate_limit(console_id)
         identity = runtime_identity()
+        if verify_only and identity['kind']!='kiosk':raise KioskError('kiosk_token_required',403)
+        console_id = positive_id(data.get('console_id') or identity.get('console_id'))
+        rate_limit(console_id)
         code = data.get('access_code') or data.get('accessCode')
+        qr=data.get('qr')
+        if not code and qr:
+            import json
+            if isinstance(qr,str):
+                try:qr=json.loads(qr)
+                except (ValueError,TypeError):qr={'access_code':qr}
+            if not isinstance(qr,dict):raise KioskError('invalid_booking_qr',400)
+            code=qr.get('access_code') or qr.get('accessCode')
+            if qr.get('booking_id') is not None:
+                if data.get('booking_id') is not None and str(data['booking_id'])!=str(qr['booking_id']):raise KioskError('booking_scope_mismatch',403)
+                data['booking_id']=qr['booking_id']
+        data['console_id']=console_id
         if identity['kind'] == 'kiosk' and not code:
             raise KioskError('access_code_required', 400)
         vendor_id = identity['vendor_id']
@@ -203,7 +217,9 @@ def secure_start(fn):
                 if window['status'] != 'active':
                     raise KioskError('access_code_used', 409)
                 db.session.rollback()
-                return jsonify({'status': 'success', 'data': window}), 200
+                return jsonify(dict(status='success',data=window,**({'verified':True,'can_start':True} if verify_only else {}))), 200
+            if target['status'] in ('pending_acceptance','pending_verified','verification_failed','rejected'):
+                raise KioskError('booking_not_accepted',409)
             if target['status'] in ('cancelled', 'canceled') or target['book_status'] not in ('upcoming', 'current'):
                 raise KioskError('session_ended', 409)
             if target['console_id'] and int(target['console_id']) != console_id:
@@ -216,6 +232,16 @@ def secure_start(fn):
                 begin, finish = utc_window(target['date'], target['start_time'], target['end_time'])
                 if not begin <= datetime.now(timezone.utc) < finish:
                     raise KioskError('session_not_active', 409)
+            if verify_only:
+                begin,finish=utc_window(target['date'],target['start_time'],target['end_time'])
+                if target['book_status']=='current':
+                    window=booking_window(vendor_id,target['id'],console_id)
+                else:
+                    window={'booking_id':int(target['id']),'console_id':console_id,'vendor_id':vendor_id,
+                        'game_id':int(target['game_id']),'start_time':begin.isoformat(),'end_time':finish.isoformat(),
+                        'status':'ready','server_time':datetime.now(timezone.utc).isoformat()}
+                db.session.rollback()
+                return jsonify(status='success',verified=True,can_start=True,data=window),200
             if code_id:
                 db.session.execute(text('''INSERT INTO kiosk_code_redemptions(access_code_id, console_id, booking_id)
                     VALUES (:aid,:cid,:bid) ON CONFLICT (access_code_id) DO NOTHING'''), {'aid': code_id, 'cid': console_id, 'bid': target['id']})

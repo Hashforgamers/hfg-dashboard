@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request
 from app.extension.extensions import db
 from app.services.kiosk_security import KioskError, runtime_identity, positive_id, check_scope, rate_limit
-from app.services.kiosk_runtime import booking_window, expire_vendor
+from app.services.kiosk_runtime import booking_window, expire_vendor, secure_start
 
 bp_kiosk = Blueprint('kiosk_runtime', __name__)
 
@@ -24,7 +24,19 @@ def install_kiosk_errors(app):
     @app.errorhandler(KioskError)
     def kiosk_error(exc):
         db.session.rollback()
-        response = jsonify({'status': 'error', 'code': exc.error_code})
+        messages={
+            'token_required':'PC authentication is required. Send the active PC link token in the Authorization Bearer header.',
+            'invalid_session_token':'The PC link token is invalid or inactive. Re-link this kiosk.',
+            'token_expired':'The login token expired. Use the active PC link token for kiosk runtime requests.',
+            'token_invalid':'The authentication token is invalid.',
+            'kiosk_token_required':'This endpoint requires an active PC link token, not a dashboard login token.',
+            'access_code_required':'Send the booking access code from the QR ticket or access-code entry.',
+            'invalid_access_code':'The booking access code is invalid.',
+            'booking_not_accepted':'The cafe has not accepted this booking yet.',
+            'booking_console_mismatch':'This booking is assigned to another PC.',
+            'session_not_active':'This booking is outside its scheduled play window.',
+            'rate_limited':'Too many attempts. Please wait one minute.'}
+        response = jsonify({'status': 'error', 'code': exc.error_code,'message':messages.get(exc.error_code,exc.error_code.replace('_',' ').capitalize())})
         response.status_code = exc.code
         if exc.code == 429:
             response.headers['Retry-After'] = '60'
@@ -69,3 +81,10 @@ def validate_owner_pin():
         server_time=now.isoformat(),expires_at=(now+timedelta(seconds=60)).isoformat(),expires_in_seconds=60)
     response.headers['Cache-Control']='private, no-store';response.vary.add('Authorization')
     return response,200
+
+
+@bp_kiosk.post('/api/kiosk/booking/verify')
+@secure_start(verify_only=True)
+def verify_kiosk_booking():
+    # Shared validation returns before this handler; no redemption or unlock here.
+    raise KioskError('verification_failed',500)

@@ -6,7 +6,7 @@ class OwnerPinTests(KioskTests):
         super().setUp()
         db.session.execute(text('ALTER TABLE vendors ADD COLUMN owner_name text'))
         db.session.execute(text("CREATE TABLE vendor_pins(vendor_id integer,pin_code text); INSERT INTO vendor_pins VALUES(1,'4837'),(2,'9274')"));db.session.commit()
-        module=load('app/controllers/kiosk_controller.py',__name__=__name__,db=db,**{name:security[name] for name in ('KioskError','runtime_identity','positive_id','check_scope','rate_limit')},booking_window=runtime['booking_window'],expire_vendor=runtime['expire_vendor'])
+        module=load('app/controllers/kiosk_controller.py',__name__=__name__,db=db,**{name:security[name] for name in ('KioskError','runtime_identity','positive_id','check_scope','rate_limit')},booking_window=runtime['booking_window'],expire_vendor=runtime['expire_vendor'],secure_start=runtime['secure_start'])
         self.app.register_blueprint(module['bp_kiosk'])
     def test_owner_exit_validates_link_and_returns_no_pin(self):
         result=self.post('/api/kiosk/owner-pin/validate',{'pin':'4837','action':'force_exit'})
