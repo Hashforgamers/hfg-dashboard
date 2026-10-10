@@ -670,8 +670,8 @@
     "semantic_hash": ""
   },
   "app/controllers/cafe_wallet_controller.py": {
-    "mtime": 1791395550.8198867,
-    "ast_hash": "fcb48f08ff6df0470ecfebe233064e92",
+    "mtime": 1791638493.4494026,
+    "ast_hash": "0f11aee13b370f8fc93b6293fef8abe9",
     "semantic_hash": ""
   },
   "app/controllers/kiosk_controller.py": {
@@ -972,6 +972,16 @@
   "docs/kiosk-booking-auth-unification.md": {
     "mtime": 1791618564.6039598,
     "ast_hash": "d9a7506632e6404ef325d56384ffd68b",
+    "semantic_hash": ""
+  },
+  "app/services/cafe_audit_reports.py": {
+    "mtime": 1791638637.2630496,
+    "ast_hash": "4a24f98e08927faa16c5c2a9ebed7b4f",
+    "semantic_hash": ""
+  },
+  "tests/test_cafe_audit_reports.py": {
+    "mtime": 1791652267.913943,
+    "ast_hash": "187ecdfc5fe67101df1a60078b6dcf06",
     "semantic_hash": ""
   }
 }
