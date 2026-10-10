@@ -675,8 +675,8 @@
     "semantic_hash": ""
   },
   "app/controllers/kiosk_controller.py": {
-    "mtime": 1791529930.61143,
-    "ast_hash": "3bbf7d82f6427ccf5cf5a22e2a16da57",
+    "mtime": 1791618464.9031768,
+    "ast_hash": "d9e5c444dcc82e6205996dc96609d820",
     "semantic_hash": ""
   },
   "app/models/cafe_wallet.py": {
@@ -690,8 +690,8 @@
     "semantic_hash": ""
   },
   "app/services/kiosk_runtime.py": {
-    "mtime": 1791573883.1685133,
-    "ast_hash": "8d5a32b548dfad61a73a13640c7cfeb3",
+    "mtime": 1791618269.4955766,
+    "ast_hash": "62e85ec46146d87d375d4f2c14e57424",
     "semantic_hash": ""
   },
   "app/services/kiosk_security.py": {
@@ -720,8 +720,8 @@
     "semantic_hash": ""
   },
   "tests/test_kiosk_runtime.py": {
-    "mtime": 1791573950.3157885,
-    "ast_hash": "3fbbb40c7c5d5f3ddca723efae46fe90",
+    "mtime": 1791618481.6329856,
+    "ast_hash": "dbf180a505b7bee2e820ff15adbf40ac",
     "semantic_hash": ""
   },
   "tests/test_websocket_bridge.py": {
@@ -960,13 +960,18 @@
     "semantic_hash": ""
   },
   "tests/test_kiosk_owner_pin.py": {
-    "mtime": 1791529930.6118891,
-    "ast_hash": "1677d58cba8613726338176f9ab60029",
+    "mtime": 1791618269.4970329,
+    "ast_hash": "fa507cbbeccea5985ffe61e4d798e5cf",
     "semantic_hash": ""
   },
   "docs/kiosk-owner-pin-force-exit.md": {
     "mtime": 1791529930.6124191,
     "ast_hash": "764c482fc314c40357d5c17753aa5218",
+    "semantic_hash": ""
+  },
+  "docs/kiosk-booking-auth-unification.md": {
+    "mtime": 1791618564.6039598,
+    "ast_hash": "d9a7506632e6404ef325d56384ffd68b",
     "semantic_hash": ""
   }
 }
