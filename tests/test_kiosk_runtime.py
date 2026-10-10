@@ -120,7 +120,7 @@ class KioskTests(unittest.TestCase):
             if request.get_json().get('fail'):
                 db.session.execute(text("UPDATE vendor_1_dashboard SET book_status='completed' WHERE book_id=5"))
                 return jsonify(error='simulated'), 500
-            db.session.execute(text("UPDATE vendor_1_dashboard SET book_status='current' WHERE book_id=5"))
+            db.session.execute(text("UPDATE vendor_1_dashboard SET book_status='current',console_id=:cid WHERE book_id=5"),{'cid':request.get_json()['console_id']})
             return jsonify(booking_ids=[5]), 200
         # Execute actual unlink route body with no application bootstrap.
         tree = ast.parse((ROOT/'app/routes.py').read_text())
@@ -154,6 +154,36 @@ class KioskTests(unittest.TestCase):
         if key:
             headers['Idempotency-Key'] = key
         return self.client.post(path, json=body or {}, headers=headers)
+
+    def test_booking_qr_and_access_code_share_device_verification(self):
+        self.app.add_url_rule('/verify',view_func=runtime['secure_start'](lambda:None,verify_only=True),methods=['POST'])
+        db.session.execute(text("UPDATE access_booking_codes SET access_code='MKY628' WHERE id=1"));db.session.commit()
+        for payload in [{'access_code':'mky628'},{'qr':{'booking_id':5,'access_code':'MKY628'}}]:
+            result=self.post('/verify',payload)
+            self.assertEqual(result.status_code,200)
+            self.assertTrue(result.json['verified'])
+            self.assertEqual(result.json['data']['booking_id'],5)
+        self.assertEqual(db.session.execute(text('SELECT count(*) FROM kiosk_code_redemptions')).scalar(),0)
+        self.assertEqual(self.calls,0)
+
+    def test_unaccepted_pay_at_cafe_cannot_verify_or_unlock(self):
+        self.app.add_url_rule('/verify',view_func=runtime['secure_start'](lambda:None,verify_only=True),methods=['POST'])
+        db.session.execute(text("UPDATE bookings SET status='pending_acceptance' WHERE id=5"));db.session.commit()
+        self.assertEqual(self.post('/verify',{'access_code':'123456'}).status_code,409)
+        self.assertEqual(self.post('/start',{'console_id':10,'access_code':'123456'}).status_code,409)
+        self.assertEqual(self.calls,0)
+
+    def test_accepted_pay_at_cafe_verifies_and_starts_without_wallet(self):
+        self.app.add_url_rule('/verify',view_func=runtime['secure_start'](lambda:None,verify_only=True),methods=['POST'])
+        db.session.execute(text("UPDATE bookings SET status='confirmed' WHERE id=5"))
+        db.session.execute(text("UPDATE vendor_1_dashboard SET book_status='upcoming',console_id=NULL WHERE book_id=5"));db.session.commit()
+        result=self.post('/verify',{'qr':{'booking_id':5,'access_code':'123456'}})
+        self.assertEqual(result.status_code,200)
+        self.assertEqual(result.json['data']['status'],'ready')
+        self.assertEqual(db.session.execute(text('SELECT count(*) FROM kiosk_code_redemptions')).scalar(),0)
+        started=self.post('/start',{'console_id':10,'access_code':'123456'})
+        self.assertEqual(started.status_code,200)
+        self.assertEqual(self.calls,1)
 
     def test_alphanumeric_access_code_unlocks_assigned_pc(self):
         db.session.execute(text("UPDATE access_booking_codes SET access_code='MKY628' WHERE id=1"));db.session.commit()
