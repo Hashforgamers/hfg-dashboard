@@ -1980,7 +1980,7 @@ def kiosk_start_session():
                   AND date = :slot_date
                   AND book_status IN ('upcoming','current')
                   AND (:code_id IS NULL OR book_id IN (SELECT id FROM bookings WHERE access_code_id=:code_id))
-                  AND (console_id IS NULL OR console_id=:console_id)
+                  AND (console_id IS NULL OR console_id<=0 OR console_id=:console_id)
                 ORDER BY start_time ASC
             """),
             {"user_id": user_id, "game_id": game_id, "slot_date": slot_date, "code_id": g.kiosk_access_code_id, "console_id": int(console_id)}
