@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, current_app, g
 from app.extension.extensions import db
 from app.services.kiosk_security import KioskError, runtime_identity, positive_id, check_scope, rate_limit
 from app.services.kiosk_runtime import booking_window, expire_vendor, secure_start
@@ -24,6 +24,10 @@ def install_kiosk_errors(app):
     @app.errorhandler(KioskError)
     def kiosk_error(exc):
         db.session.rollback()
+        reference=getattr(g,'request_id',None)
+        # Only validated numeric identity/assignment context; never log the ticket or bearer.
+        current_app.logger.warning('kiosk_rejected request_id=%s path=%s status=%s code=%s context=%s',
+            reference or '-',request.path,exc.code,exc.error_code,getattr(g,'kiosk_diagnostic',{}))
         messages={
             'token_required':'PC authentication is required. Send the active PC link token in the Authorization Bearer header.',
             'invalid_session_token':'The PC link token is invalid or inactive. Re-link this kiosk.',
@@ -34,9 +38,11 @@ def install_kiosk_errors(app):
             'invalid_access_code':'The booking access code is invalid.',
             'booking_not_accepted':'The cafe has not accepted this booking yet.',
             'booking_console_mismatch':'This booking is assigned to another PC.',
+            'console_mismatch':'The requested console does not match this linked PC. Check its linked database console ID.',
+            'booking_scope_mismatch':'The ticket booking, game or cafe does not match the request.',
             'session_not_active':'This booking is outside its scheduled play window.',
             'rate_limited':'Too many attempts. Please wait one minute.'}
-        response = jsonify({'status': 'error', 'code': exc.error_code,'message':messages.get(exc.error_code,exc.error_code.replace('_',' ').capitalize())})
+        response = jsonify({'status': 'error', 'code': exc.error_code,'message':messages.get(exc.error_code,exc.error_code.replace('_',' ').capitalize()),'request_id':reference})
         response.status_code = exc.code
         if exc.code == 429:
             response.headers['Retry-After'] = '60'

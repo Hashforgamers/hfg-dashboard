@@ -1,16 +1,16 @@
 # Graph Report - hfg-dashboard-service  (2026-10-10)
 
 ## Corpus Check
-- 194 files · ~104,124 words
+- 194 files · ~104,204 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1697 nodes · 4757 edges · 98 communities (87 shown, 11 thin omitted)
+- 1698 nodes · 4760 edges · 99 communities (89 shown, 10 thin omitted)
 - Extraction: 98% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 109 edges (avg confidence: 0.6)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `ebcb0f2c`
+- Built from commit: `6400803a`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -31,7 +31,7 @@
 - access_controller.py
 - subscription_commerce.py
 - test_shared_slot_capacity.py
-- VendorGame
+- BankTransferDetails
 - razorpay_service.py
 - package_controller.py
 - Owner PIN validation for native kiosk force exit
@@ -45,7 +45,7 @@
 - BridgeTests
 - Kiosk backend contract — 22 September 2026
 - local_window
-- env
+- test_cafe_audit_reports.py
 - 20260922_cafe_wallet.sql
 - subscription_controller.py
 - Self QR sessions, owner-approved continuation and balance due
@@ -84,7 +84,7 @@
 - test_session_extensions.py
 - PayoutTransaction
 - Booking verification and kiosk 401 review — 10 October 2026
-- vendorTaxProfile.py
+- test_payment_methods.py
 - get_extra_services
 - update_menu_inventory
 - CloudinaryProfileImageService
@@ -100,8 +100,8 @@
 2. `staff_actor()` - 43 edges
 3. `Vendor` - 41 edges
 4. `auth()` - 38 edges
-5. `audit()` - 33 edges
-6. `KioskTests` - 33 edges
+5. `KioskTests` - 34 edges
+6. `audit()` - 33 edges
 7. `KioskError` - 32 edges
 8. `fund()` - 32 edges
 9. `local_window()` - 28 edges
@@ -122,19 +122,19 @@
 ## Import Cycles
 - None detected.
 
-## Communities (98 total, 11 thin omitted)
+## Communities (99 total, 10 thin omitted)
 
 ### Community 0 - "event_controller.py"
-Cohesion: 0.06
-Nodes (56): delete_banner(), _event_payload(), get_event(), get_event_detail(), get_events(), issue_jwt(), patch_event(), post_event() (+48 more)
+Cohesion: 0.05
+Nodes (72): delete_banner(), _event_payload(), get_event(), get_event_detail(), get_events(), issue_jwt(), patch_event(), post_event() (+64 more)
 
 ### Community 1 - "Flask"
-Cohesion: 0.15
-Nodes (14): Config, create_app(), _is_insecure_secret(), _validate_production_config(), install_cafe_audit_hooks(), Cloudinary service for handling event banner images. Images are uploaded to the…, Cloudinary service for handling vendor profile images Images are uploaded to…, start_expiry_worker() (+6 more)
+Cohesion: 0.17
+Nodes (13): Config, create_app(), _is_insecure_secret(), _validate_production_config(), install_cafe_audit_hooks(), Cloudinary service for handling event banner images. Images are uploaded to the…, Cloudinary service for handling vendor profile images Images are uploaded to…, start_expiry_worker() (+5 more)
 
 ### Community 2 - "extensions.py"
 Cohesion: 0.09
-Nodes (9): PassRedemptionLog, PayAtCafeNotification, ProvisionalResult, VerificationCheck, Transactional outbox: SMTP retries never undo an owner-approval request., datetime, Adding hardware must not revive historical schedules or reset held capacity., EarlyStartTests (+1 more)
+Nodes (10): PassRedemptionLog, PayAtCafeNotification, ProvisionalResult, Image, VerificationCheck, Transactional outbox: SMTP retries never undo an owner-approval request., datetime, Adding hardware must not revive historical schedules or reset held capacity. (+2 more)
 
 ### Community 3 - "auth"
 Cohesion: 0.15
@@ -146,27 +146,27 @@ Nodes (47): admin_match_result(), close_event_check_in(), _emit(), _event_for_ve
 
 ### Community 5 - "app/routes.py"
 Cohesion: 0.08
-Nodes (50): add_console(), assign_console_to_multiple_bookings(), _assign_console_to_multiple_bookings_core(), _booking_start_eligibility(), check_db_connection(), create_or_update_console_type_override(), create_vendor_pass(), deactivate_console_type_override() (+42 more)
+Nodes (52): VendorTaxProfile, add_console(), assign_console_to_multiple_bookings(), _assign_console_to_multiple_bookings_core(), _booking_start_eligibility(), check_db_connection(), create_or_update_console_type_override(), create_vendor_pass() (+44 more)
 
 ### Community 6 - "ExtraServiceService"
 Cohesion: 0.07
-Nodes (25): Amenity, ExtraServiceCategory, ExtraServiceMenu, ExtraServiceMenuImage, add_extra_service_category(), add_extra_service_menu(), create_category(), create_menu_item() (+17 more)
+Nodes (27): Amenity, ExtraServiceCategory, ExtraServiceMenu, ExtraServiceMenuImage, add_extra_service_category(), add_extra_service_menu(), create_category(), create_menu_item() (+19 more)
 
 ### Community 7 - "websocket_service.py"
 Cohesion: 0.06
 Nodes (89): before_request, require_tournament_plan(), ensure_ist(), internal_send_unlock(), internal_store_updated(), post, Ensure a datetime is timezone-aware in IST (idempotent)., Internal endpoint to notify dashboard clients that store inventory/products… (+81 more)
 
 ### Community 8 - "KioskTests"
-Cohesion: 0.06
-Nodes (12): _vendor_slot_availability(), date, skipUnless, test_dated_session_slots_cover_midnight_without_repeating_previous_day(), test_qr_quote_uses_dated_schedule_and_ignores_other_templates(), OwnerPinTests, KioskTests, load() (+4 more)
+Cohesion: 0.05
+Nodes (13): _vendor_slot_availability(), date, skipUnless, test_dated_session_slots_cover_midnight_without_repeating_previous_day(), test_qr_quote_uses_dated_schedule_and_ignores_other_templates(), OwnerPinTests, KioskTests, load() (+5 more)
 
 ### Community 9 - "toggle_payment_method_for_vendor"
 Cohesion: 0.20
 Nodes (12): PaymentVendorMap, _build_payment_method_response(), _ensure_payment_method_catalog(), get_all_payment_methods_for_vendor(), get_payment_method_stats(), _method_ids_for_canonical(), _normalize_payment_method_name(), Get supported payment methods and vendor enablement state. (+4 more)
 
 ### Community 10 - "vendor_games.py"
-Cohesion: 0.15
-Nodes (21): add_game_to_consoles(), bulk_delete_game(), delete_game_image(), delete_vendor_game(), get_all_games(), get_available_games(), get_consoles_by_platform(), get_game_details() (+13 more)
+Cohesion: 0.07
+Nodes (30): add_game_to_consoles(), bulk_delete_game(), delete_game_image(), delete_vendor_game(), get_all_games(), get_available_games(), get_consoles_by_platform(), get_game_details() (+22 more)
 
 ### Community 11 - "Kiosk, dashboard and app integration guide: session extensions v1"
 Cohesion: 0.06
@@ -188,9 +188,9 @@ Nodes (17): Immutable commercial snapshot for each subscription purchase., Subsc
 Cohesion: 0.12
 Nodes (14): first_slot(), flows(), load_source(), overtime_route(), fixture, Cross-flow capacity regressions against isolated PostgreSQL schemas., Run the real overtime endpoint with unrelated mail/tax helpers stubbed., test_desk_failed_payment_rolls_back_capacity_and_booking() (+6 more)
 
-### Community 16 - "VendorGame"
-Cohesion: 0.13
-Nodes (9): ConsolePricingOffer, Time-based promotional pricing for console types (AvailableGames) Allows…, Check if this offer is active RIGHT NOW using IST. Returns True if current IST…, Calculate discount percentage, Convert to dictionary for API responses, Serialize VendorGame — price is always dynamically computed, Dynamically compute price from parent AvailableGame. - If an active…, Returns full pricing context: base price, offer price, offer details. Useful… (+1 more)
+### Community 16 - "BankTransferDetails"
+Cohesion: 0.29
+Nodes (3): BankTransferDetails, Return masked account number for UI display, Return masked UPI ID for UI display (mask first 4 characters)
 
 ### Community 17 - "razorpay_service.py"
 Cohesion: 0.19
@@ -225,8 +225,8 @@ Cohesion: 0.13
 Nodes (24): test_budget_duration_ignores_legacy_policy_limit_but_never_accepts_zero_price(), fund(), parametrize, Real transactional integration tests. Set CAFE_TEST_DATABASE_URL to a…, seed_booking(), test_active_booking_cancellation_or_refund_stops_session(), test_concurrent_duplicate_ack_does_not_double_capture(), test_disabled_cafe_wallet_does_not_reserve_or_debit() (+16 more)
 
 ### Community 25 - "test_subscription_checkout.py"
-Cohesion: 0.10
-Nodes (21): AdditionalDetails, AvailableGame, Booking, BookingExtraService, BookingSquadMember, HardwareSpecification, MaintenanceStatus, PriceAndCost (+13 more)
+Cohesion: 0.11
+Nodes (20): AdditionalDetails, AvailableGame, Booking, BookingExtraService, BookingSquadMember, HardwareSpecification, MaintenanceStatus, PriceAndCost (+12 more)
 
 ### Community 26 - "session_extensions.py"
 Cohesion: 0.12
@@ -244,9 +244,9 @@ Nodes (9): 1. Credentials and lifetime, 2. Login investigation, 3. Server time a
 Cohesion: 0.19
 Nodes (21): CafeSlotReservation, affordable_duration(), Quote the linked console using Console Pricing, never wallet-policy amounts., Longest whole-minute session the available wallet covers, within cafe limits., session_prices(), covered_slots(), _day(), ensure_console_window() (+13 more)
 
-### Community 30 - "env"
-Cohesion: 0.15
-Nodes (9): reports(), test_console_history_includes_qr_actual_session_and_blocks_other_cafe(), test_report_filters_validate_ranges(), test_topup_and_collection_are_visible_once_with_credit_movement(), env(), fixture, methods(), fixture (+1 more)
+### Community 30 - "test_cafe_audit_reports.py"
+Cohesion: 0.60
+Nodes (5): reports(), test_console_history_includes_qr_actual_session_and_blocks_other_cafe(), test_credit_movement_and_runtime_history_do_not_duplicate_qr(), test_report_filters_validate_ranges(), test_topup_and_collection_are_visible_once_with_credit_movement()
 
 ### Community 31 - "20260922_cafe_wallet.sql"
 Cohesion: 0.38
@@ -273,8 +273,8 @@ Cohesion: 0.40
 Nodes (6): _coerce_bool(), _default_vendor_notification_preferences(), _ensure_vendor_notification_preferences_table(), get_vendor_notification_preferences(), Any, upsert_vendor_notification_preferences()
 
 ### Community 37 - "session_extensions_controller.py"
-Cohesion: 0.12
-Nodes (43): list_reviews(), _proxy_get(), _proxy_headers(), _proxy_patch(), get, jwt_required, patch, respond_review() (+35 more)
+Cohesion: 0.20
+Nodes (27): answer(), body(), check_ready(), conflicting_mutation(), current_session(), decision(), device_continue(), device_row() (+19 more)
 
 ### Community 38 - "CafeError"
 Cohesion: 0.13
@@ -297,12 +297,12 @@ Cohesion: 0.67
 Nodes (3): console_catalog, vendors, vendor_console_overrides
 
 ### Community 43 - "vendor.py"
-Cohesion: 0.08
-Nodes (26): BankTransferDetails, Return masked account number for UI display, Return masked UPI ID for UI display (mask first 4 characters), BusinessRegistration, Document, DocumentSubmitted, OpeningDay, add_console() (+18 more)
+Cohesion: 0.10
+Nodes (23): BusinessRegistration, Document, DocumentSubmitted, OpeningDay, add_console(), check_db_connection(), delete_console(), get_all_device_for_vendor() (+15 more)
 
 ### Community 44 - "Console"
 Cohesion: 0.08
-Nodes (23): create_game(), route, Create a new game with optional image, update_game(), Console, Game, Create Game from RAWG API - image_url gets background_image automatically!, add_images_to_games() (+15 more)
+Nodes (23): create_game(), route, Create a new game with optional image, update_game(), upload_game_image(), Console, Game, Create Game from RAWG API - image_url gets background_image automatically! (+15 more)
 
 ### Community 63 - "passModels.py"
 Cohesion: 0.12
@@ -361,8 +361,8 @@ Cohesion: 0.07
 Nodes (54): calculate_controller_pricing(), _calculate_controller_total(), create_pricing_offer(), _default_squad_policy(), delete_pricing_offer(), get_active_pricing(), get_controller_pricing(), get_ist_now() (+46 more)
 
 ### Community 82 - "test_session_extensions.py"
-Cohesion: 0.22
-Nodes (26): reserve_slot(), test_credit_movement_and_runtime_history_do_not_duplicate_qr(), active(), engine(), extend(), Real PostgreSQL transactions: no money or slot updates are mocked., test_billing_ticks_do_not_invalidate_quote_revision_and_stop_is_not_blocked(), test_capacity_exhaustion_cannot_be_overridden_by_owner() (+18 more)
+Cohesion: 0.23
+Nodes (25): reserve_slot(), active(), engine(), extend(), Real PostgreSQL transactions: no money or slot updates are mocked., test_billing_ticks_do_not_invalidate_quote_revision_and_stop_is_not_blocked(), test_capacity_exhaustion_cannot_be_overridden_by_owner(), test_changed_quote_price_is_not_silently_charged() (+17 more)
 
 ### Community 83 - "PayoutTransaction"
 Cohesion: 0.50
@@ -371,6 +371,10 @@ Nodes (3): PayoutTransaction, create_payout(), Create a new payout transaction
 ### Community 85 - "Booking verification and kiosk 401 review — 10 October 2026"
 Cohesion: 0.29
 Nodes (6): Backend validation, Booking verification and kiosk 401 review — 10 October 2026, Confirmed failures in the supplied kiosk source, Errors, Team integration requirements (no kiosk code changed here), Unified device verification API
+
+### Community 86 - "test_payment_methods.py"
+Cohesion: 0.40
+Nodes (3): methods(), fixture, Exercise the production payment-settings handlers in a disposable DB.
 
 ### Community 87 - "get_extra_services"
 Cohesion: 0.50
@@ -399,16 +403,14 @@ Nodes (3): accepted_methods(), canonical_method(), require_method()
 ## Knowledge Gaps
 - **88 isolated node(s):** `ConsoleLinkStatus`, `ProvisionalResult`, `VerificationCheck`, `cafe_booking_claims`, `graphify` (+83 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **11 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **10 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `KioskTests` connect `KioskTests` to `Flask`?**
-  _High betweenness centrality (0.052) - this node is a cross-community bridge._
-- **Why does `Vendor` connect `vendor.py` to `auth`, `app/routes.py`, `ExtraServiceService`, `websocket_service.py`, `cafe_wallet_controller.py`, `access_controller.py`, `subscription_commerce.py`, `VendorGame`, `test_subscription_commerce.py`, `test_subscription_checkout.py`, `session_extensions.py`, `env`, `PhysicalAddress`, `session_extensions_controller.py`, `CafeError`, `subscription_service.py`, `ConsoleLinkSession`, `pricingController.py`, `PayoutTransaction`?**
-  _High betweenness centrality (0.029) - this node is a cross-community bridge._
-- **Why does `CafeError` connect `CafeError` to `cafe_audit_reports.py`, `app/routes.py`, `session_extensions_controller.py`, `ConsoleLinkSession`, `vendor.py`, `cafe_wallet_controller.py`, `access_controller.py`, `Console`, `session_extensions.py`, `local_window`?**
+- **Why does `Vendor` connect `vendor.py` to `auth`, `app/routes.py`, `ExtraServiceService`, `websocket_service.py`, `vendor_games.py`, `cafe_wallet_controller.py`, `access_controller.py`, `subscription_commerce.py`, `BankTransferDetails`, `test_subscription_commerce.py`, `test_subscription_checkout.py`, `session_extensions.py`, `PhysicalAddress`, `session_extensions_controller.py`, `CafeError`, `subscription_service.py`, `ConsoleLinkSession`, `pricingController.py`, `PayoutTransaction`?**
+  _High betweenness centrality (0.030) - this node is a cross-community bridge._
+- **Why does `CafeError` connect `CafeError` to `event_controller.py`, `cafe_audit_reports.py`, `app/routes.py`, `session_extensions_controller.py`, `ConsoleLinkSession`, `vendor.py`, `cafe_wallet_controller.py`, `access_controller.py`, `Console`, `session_extensions.py`, `local_window`?**
   _High betweenness centrality (0.025) - this node is a cross-community bridge._
 - **Are the 11 inferred relationships involving `datetime` (e.g. with `debug_force_expire()` and `test_activity_pages_filters_and_older_records()`) actually correct?**
   _`datetime` has 11 INFERRED edges - model-reasoned connections that need verification._
@@ -418,3 +420,5 @@ _Questions this graph is uniquely positioned to answer:_
   _`Flask` has 3 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `ConsoleLinkStatus`, `ProvisionalResult`, `VerificationCheck` to the rest of the system?**
   _88 weakly-connected nodes found - possible documentation gaps or missing edges._
+- **Should `event_controller.py` be split into smaller, more focused modules?**
+  _Cohesion score 0.051839464882943144 - nodes in this community are weakly interconnected._

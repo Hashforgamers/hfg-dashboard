@@ -144,6 +144,8 @@ def secure_start(fn=None, *, verify_only=False):
         identity = runtime_identity()
         if verify_only and identity['kind']!='kiosk':raise KioskError('kiosk_token_required',403)
         console_id = positive_id(data.get('console_id') or identity.get('console_id'))
+        g.kiosk_diagnostic={'identity_kind':identity['kind'],'vendor_id':identity['vendor_id'],
+            'linked_console_id':identity.get('console_id'),'requested_console_id':console_id}
         rate_limit(console_id)
         code = data.get('access_code') or data.get('accessCode')
         qr=data.get('qr')
@@ -202,6 +204,7 @@ def secure_start(fn=None, *, verify_only=False):
                 '''), {'bid': bid, 'vid': vendor_id}).mappings().first()
             if not target:
                 raise KioskError('booking_not_found', 404)
+            g.kiosk_diagnostic.update(booking_id=int(target['id']),assigned_console_ids=sorted(assigned_consoles(target)))
             for field, expected in [('booking_id', target['id']), ('vendor_id', vendor_id), ('game_id', target['game_id'])]:
                 if data.get(field) is not None and positive_id(data[field]) != int(expected):
                     raise KioskError('booking_scope_mismatch', 403)
