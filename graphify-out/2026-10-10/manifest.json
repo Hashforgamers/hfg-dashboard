@@ -690,8 +690,8 @@
     "semantic_hash": ""
   },
   "app/services/kiosk_runtime.py": {
-    "mtime": 1791618269.4955766,
-    "ast_hash": "62e85ec46146d87d375d4f2c14e57424",
+    "mtime": 1791666707.73312,
+    "ast_hash": "c239031dba40406c4f7bfc1a36354734",
     "semantic_hash": ""
   },
   "app/services/kiosk_security.py": {
@@ -720,8 +720,8 @@
     "semantic_hash": ""
   },
   "tests/test_kiosk_runtime.py": {
-    "mtime": 1791618481.6329856,
-    "ast_hash": "dbf180a505b7bee2e820ff15adbf40ac",
+    "mtime": 1791666707.7348762,
+    "ast_hash": "684b79e4d68cb44033fbf4c4f582a1c3",
     "semantic_hash": ""
   },
   "tests/test_websocket_bridge.py": {

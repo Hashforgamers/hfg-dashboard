@@ -166,6 +166,24 @@ class KioskTests(unittest.TestCase):
         self.assertEqual(db.session.execute(text('SELECT count(*) FROM kiosk_code_redemptions')).scalar(),0)
         self.assertEqual(self.calls,0)
 
+    def test_rejection_logs_reference_and_assignment_without_secrets(self):
+        controller=load('app/controllers/kiosk_controller.py',__name__=__name__,db=db,
+            **{name:security[name] for name in ('KioskError','runtime_identity','positive_id','check_scope','rate_limit')},
+            booking_window=runtime['booking_window'],expire_vendor=runtime['expire_vendor'],secure_start=runtime['secure_start'])
+        controller['install_kiosk_errors'](self.app)
+        @self.app.before_request
+        def reference():g.request_id='test-reference'
+        with self.assertLogs(self.app.logger,level='WARNING') as logs:
+            result=self.post('/start',{'console_id':11,'access_code':'123456'},token='link-b')
+        self.assertEqual(result.status_code,403)
+        self.assertEqual(result.json['code'],'booking_console_mismatch')
+        self.assertEqual(result.json['request_id'],'test-reference')
+        output=' '.join(logs.output)
+        self.assertIn('assigned_console_ids',output)
+        self.assertIn('test-reference',output)
+        self.assertNotIn('123456',output)
+        self.assertNotIn('link-b',output)
+
     def test_unaccepted_pay_at_cafe_cannot_verify_or_unlock(self):
         self.app.add_url_rule('/verify',view_func=runtime['secure_start'](lambda:None,verify_only=True),methods=['POST'])
         db.session.execute(text("UPDATE bookings SET status='pending_acceptance' WHERE id=5"));db.session.commit()
