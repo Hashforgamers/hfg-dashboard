@@ -5,6 +5,7 @@ uses a fresh schema; no production credentials or data are used.
 """
 import ast
 from datetime import datetime, timedelta, timezone, date, time
+from zoneinfo import ZoneInfo
 import os
 from pathlib import Path
 import sys
@@ -249,7 +250,7 @@ class KioskTests(unittest.TestCase):
                      ('_booking_start_eligibility','_assign_console_to_multiple_bookings_core','kiosk_start_session')]
         for fn in tree.body: fn.decorator_list=[]
         scope = dict(db=db,text=text,request=request,jsonify=jsonify,current_app=current_app,g=g,
-                     datetime=datetime,date=date,timedelta=timedelta,IST=runtime['IST'],dt_timezone=timezone,
+                     datetime=datetime,date=date,timedelta=timedelta,IST=ZoneInfo('Asia/Kolkata'),dt_timezone=timezone,
                      _resolve_console_group_from_name=lambda *a,**k:'pc',_invalidate_vendor_caches=Mock(),
                      KIOSK_GRACE_MIN=0,_emit_to_kiosk=Mock(),**models)
         exec(compile(tree,'<production kiosk start>','exec'),scope)
@@ -261,6 +262,9 @@ class KioskTests(unittest.TestCase):
                 result = self.app.make_response(runtime['secure_start'](scope['kiosk_start_session'])())
         self.assertEqual(result.status_code,200,result.json)
         self.assertEqual(result.json['data']['status'],'active')
+        expected_start,_=runtime['utc_window'](self.start.date(),self.start.time(),self.end.time())
+        self.assertEqual(result.json['data']['start_time'],expected_start.isoformat())
+        self.assertEqual(result.json['data']['end_time'].split('+')[-1],'00:00')
         self.assertEqual(db.session.execute(text('SELECT console_id FROM kiosk_code_redemptions')).scalar_one(),10)
         self.assertEqual(db.session.execute(text('SELECT book_status FROM vendor_1_dashboard')).scalar_one(),'current')
         self.assertFalse(db.session.execute(text('SELECT is_available FROM vendor_1_console_availability WHERE console_id=10')).scalar_one())
