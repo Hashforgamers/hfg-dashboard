@@ -213,6 +213,16 @@ class KioskTests(unittest.TestCase):
         self.assertEqual(started.status_code,200)
         self.assertEqual(self.calls,1)
 
+    def test_placeholder_pc_assignment_can_verify_and_start(self):
+        self.app.add_url_rule('/verify',view_func=runtime['secure_start'](lambda:None,verify_only=True),methods=['POST'])
+        db.session.execute(text("UPDATE bookings SET status='confirmed',squad_details='{\"assigned_console_ids\":[-1]}'::jsonb WHERE id=5"))
+        db.session.execute(text("UPDATE vendor_1_dashboard SET book_status='upcoming',console_id=-1 WHERE book_id=5"));db.session.commit()
+        self.assertEqual(self.post('/verify',{'access_code':'123456'}).status_code,200)
+        self.assertEqual(db.session.execute(text('SELECT console_id FROM vendor_1_dashboard WHERE book_id=5')).scalar(),-1)
+        self.assertEqual(db.session.execute(text('SELECT count(*) FROM kiosk_code_redemptions')).scalar(),0)
+        self.assertEqual(self.post('/start',{'console_id':10,'access_code':'123456'}).status_code,200)
+        self.assertEqual(db.session.execute(text('SELECT console_id FROM vendor_1_dashboard WHERE book_id=5')).scalar(),10)
+
     def test_alphanumeric_access_code_unlocks_assigned_pc(self):
         db.session.execute(text("UPDATE access_booking_codes SET access_code='MKY628' WHERE id=1"));db.session.commit()
         response=self.post('/start',{'console_id':10,'access_code':' mky628 '})
@@ -223,7 +233,7 @@ class KioskTests(unittest.TestCase):
         from sqlalchemy.ext.automap import automap_base
         from flask import current_app
         db.session.execute(text("ALTER TABLE consoles ADD COLUMN console_number integer DEFAULT 1, ADD COLUMN model_number text DEFAULT 'PC'"))
-        db.session.execute(text("UPDATE vendor_1_dashboard SET book_status='upcoming', console_id=NULL WHERE book_id=5"))
+        db.session.execute(text("UPDATE vendor_1_dashboard SET book_status='upcoming', console_id=-1 WHERE book_id=5"))
         db.session.execute(text("UPDATE bookings SET status='confirmed' WHERE id=5"))
         db.session.execute(text("UPDATE vendor_1_console_availability SET is_available=TRUE WHERE console_id=10"))
         db.session.commit()

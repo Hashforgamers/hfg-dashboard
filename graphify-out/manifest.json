@@ -460,8 +460,8 @@
     "semantic_hash": "51bdcca2e0986a849528ec83e4f54ff5"
   },
   "app/routes.py": {
-    "mtime": 1791399197.7319715,
-    "ast_hash": "450ce3459eae24821c15127b2c879991",
+    "mtime": 1791713172.96517,
+    "ast_hash": "6dde5845a65d3538e65cab102edb5b50",
     "semantic_hash": ""
   },
   "app/services/add_game_images.py": {
@@ -690,8 +690,8 @@
     "semantic_hash": ""
   },
   "app/services/kiosk_runtime.py": {
-    "mtime": 1791667172.9892933,
-    "ast_hash": "f53a041683ac82bcc1a120a275df9c84",
+    "mtime": 1791713172.9620235,
+    "ast_hash": "33e8cb7885c6eb37eb63d66c688d35c5",
     "semantic_hash": ""
   },
   "app/services/kiosk_security.py": {
@@ -720,8 +720,8 @@
     "semantic_hash": ""
   },
   "tests/test_kiosk_runtime.py": {
-    "mtime": 1791667198.591115,
-    "ast_hash": "3f36fb94007c668d21141fb5c00eaf4c",
+    "mtime": 1791713208.3056653,
+    "ast_hash": "75a61ff800a1f978c0c83cc97964e8d6",
     "semantic_hash": ""
   },
   "tests/test_websocket_bridge.py": {

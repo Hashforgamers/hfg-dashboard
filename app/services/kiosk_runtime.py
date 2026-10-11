@@ -27,8 +27,9 @@ def utc_window(day, start, end):
 
 def assigned_consoles(row):
     details = row.get('squad_details') or {}
-    ids = {int(cid) for cid in details.get('assigned_console_ids', [])}
-    if row.get('console_id'):
+    ids = {int(cid) for cid in details.get('assigned_console_ids', []) if int(cid)>0}
+    # Legacy onboarding/booking rows use -1 (and sometimes 0) for unassigned.
+    if row.get('console_id') and int(row['console_id'])>0:
         ids.add(int(row['console_id']))
     released = {int(cid) for cid in details.get('released_console_ids', [])}
     return ids - released
@@ -225,7 +226,7 @@ def secure_start(fn=None, *, verify_only=False):
                 raise KioskError('booking_not_accepted',409)
             if target['status'] in ('cancelled', 'canceled') or target['book_status'] not in ('upcoming', 'current'):
                 raise KioskError('session_ended', 409)
-            if target['console_id'] and console_id not in assigned_consoles(target):
+            if assigned_consoles(target) and console_id not in assigned_consoles(target):
                 raise KioskError('booking_console_mismatch', 403)
             if target['book_status'] == 'current':
                 window = booking_window(vendor_id, target['id'], console_id)
