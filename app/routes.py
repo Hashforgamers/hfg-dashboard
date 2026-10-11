@@ -2207,8 +2207,8 @@ def kiosk_start_session():
                     "console_id": int(console_id),
                     "data": {
                         "booking_id": int(booking_id),
-                        "start_time": IST.localize(merged_start).astimezone(dt_timezone.utc).isoformat(),
-                        "end_time": IST.localize(merged_end).astimezone(dt_timezone.utc).isoformat(),
+                        "start_time": merged_start.replace(tzinfo=IST).astimezone(dt_timezone.utc).isoformat(),
+                        "end_time": merged_end.replace(tzinfo=IST).astimezone(dt_timezone.utc).isoformat(),
                     },
                 },
             )
@@ -2243,8 +2243,8 @@ def kiosk_start_session():
                 "console_id": int(console_id),
                 "data": {
                     "booking_id": int(booking_id),
-                    "start_time": IST.localize(merged_start).astimezone(dt_timezone.utc).isoformat(),
-                    "end_time": IST.localize(merged_end).astimezone(dt_timezone.utc).isoformat(),
+                    "start_time": merged_start.replace(tzinfo=IST).astimezone(dt_timezone.utc).isoformat(),
+                    "end_time": merged_end.replace(tzinfo=IST).astimezone(dt_timezone.utc).isoformat(),
                     "user_id": user.id if user else None,
                     "user_name": user.name if user else None,
                     "vendor_id": vendor.id if vendor else None,
@@ -2269,8 +2269,8 @@ def kiosk_start_session():
             "unlock": {
                 "booking_id": int(booking_id),
                 "console_id": int(console_id),
-                "start_time": IST.localize(merged_start).astimezone(dt_timezone.utc).isoformat(),
-                "end_time": IST.localize(merged_end).astimezone(dt_timezone.utc).isoformat(),
+                "start_time": merged_start.replace(tzinfo=IST).astimezone(dt_timezone.utc).isoformat(),
+                "end_time": merged_end.replace(tzinfo=IST).astimezone(dt_timezone.utc).isoformat(),
                 "user_id": user.id if user else None,
                 "user_name": user.name if user else None,
                 "vendor_id": vendor.id if vendor else None,
