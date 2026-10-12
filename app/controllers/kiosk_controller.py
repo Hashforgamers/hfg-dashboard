@@ -6,6 +6,20 @@ from app.services.kiosk_runtime import booking_window, expire_vendor, secure_sta
 bp_kiosk = Blueprint('kiosk_runtime', __name__)
 
 
+@bp_kiosk.post('/api/phone/bookings/start-session')
+def phone_start_session():
+    """Owned phone ticket start; existing cafe-checkout auth never grants kiosk identity."""
+    from app.controllers.cafe_wallet_controller import gamer_required
+    from app.services.cafe_wallet_service import CafeError
+    from app.routes import kiosk_start_session
+    # Reuse the transaction/assignment handler, replacing only its auth wrapper.
+    try:
+        return gamer_required(secure_start(kiosk_start_session.__wrapped__, phone=True))()
+    except CafeError as error:
+        db.session.rollback()
+        return jsonify(status='error',code='phone_auth_required',message=error.message),error.status
+
+
 @bp_kiosk.get('/api/bookings/<int:booking_id>/remaining')
 def remaining(booking_id):
     identity = runtime_identity()
