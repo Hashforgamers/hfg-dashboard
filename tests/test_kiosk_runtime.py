@@ -76,6 +76,7 @@ class KioskTests(unittest.TestCase):
                 INSERT INTO users VALUES(77,'Player');
                 INSERT INTO access_booking_codes VALUES(1,'123456');
                 INSERT INTO bookings VALUES(5,100,1,'checked_in','{}');
+                ALTER TABLE bookings ADD COLUMN user_id integer DEFAULT 77;
                 INSERT INTO console_link_sessions VALUES(1,10,1,'machine-a','link-a','active',NULL,NULL),(2,11,1,'machine-b','link-b','active',NULL,NULL),(3,20,2,'machine-c','link-c','active',NULL,NULL);
                 INSERT INTO vendor_1_console_availability VALUES(10,100,FALSE),(11,100,TRUE);
             '''))
@@ -268,6 +269,35 @@ class KioskTests(unittest.TestCase):
         self.assertEqual(db.session.execute(text('SELECT console_id FROM kiosk_code_redemptions')).scalar_one(),10)
         self.assertEqual(db.session.execute(text('SELECT book_status FROM vendor_1_dashboard')).scalar_one(),'current')
         self.assertFalse(db.session.execute(text('SELECT is_available FROM vendor_1_console_availability WHERE console_id=10')).scalar_one())
+
+    def test_phone_owned_start_and_wrong_owner(self):
+        def start_phone():
+            return jsonify(ok=True)
+        handler=runtime['secure_start'](start_phone,phone=True)
+        with self.app.test_request_context(json={'booking_id':5,'console_id':10}):
+            g.cafe_user_id=77
+            response=self.app.make_response(handler())
+            self.assertEqual(response.status_code,200)
+            self.ws._emit_to_kiosk.assert_called()
+        with self.app.test_request_context(json={'booking_id':5,'console_id':10}):
+            g.cafe_user_id=78
+            with self.assertRaises(security['KioskError']) as caught:handler()
+            self.assertEqual(caught.exception.error_code,'booking_not_owned')
+        db.session.rollback()
+
+    def test_phone_rejects_assignment_and_unaccepted_booking(self):
+        handler=runtime['secure_start'](lambda:jsonify(ok=True),phone=True)
+        with self.app.test_request_context(json={'booking_id':5,'console_id':11}):
+            g.cafe_user_id=77
+            with self.assertRaises(security['KioskError']) as caught:handler()
+            self.assertEqual(caught.exception.error_code,'booking_console_mismatch')
+        db.session.rollback()
+        db.session.execute(text("UPDATE bookings SET status='pending_acceptance' WHERE id=5"));db.session.commit()
+        with self.app.test_request_context(json={'booking_id':5,'console_id':10}):
+            g.cafe_user_id=77
+            with self.assertRaises(security['KioskError']) as caught:handler()
+            self.assertEqual(caught.exception.error_code,'booking_not_accepted')
+        db.session.rollback()
 
     def test_released_squad_console_cannot_continue(self):
         db.session.execute(text("UPDATE bookings SET squad_details=CAST(:details AS jsonb) WHERE id=5"),

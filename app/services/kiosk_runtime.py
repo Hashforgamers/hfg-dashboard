@@ -135,14 +135,23 @@ def notify_console_runtime(vendor_id, console_ids):
         db.session.rollback()
 
 
-def secure_start(fn=None, *, verify_only=False):
-    if fn is None:return lambda handler:secure_start(handler,verify_only=verify_only)
+def secure_start(fn=None, *, verify_only=False, phone=False):
+    if fn is None:return lambda handler:secure_start(handler,verify_only=verify_only,phone=phone)
     @wraps(fn)
     def wrapped():
         data = request.get_json(silent=True) or {}
         if not isinstance(data, dict):
             raise KioskError('invalid_json', 400)
-        identity = runtime_identity()
+        if phone:
+            bid = positive_id(data.get('booking_id'))
+            owner = db.session.execute(text('''SELECT ag.vendor_id FROM bookings b
+                JOIN available_games ag ON ag.id=b.game_id WHERE b.id=:bid AND b.user_id=:uid'''),
+                {'bid':bid,'uid':g.cafe_user_id}).first()
+            if not owner: raise KioskError('booking_not_owned',403)
+            identity = {'kind':'gamer','vendor_id':int(owner.vendor_id)}
+            if data.get('additional_console_ids'): raise KioskError('invalid_console_ids',400)
+        else:
+            identity = runtime_identity()
         if verify_only and identity['kind']!='kiosk':raise KioskError('kiosk_token_required',403)
         console_id = positive_id(data.get('console_id') or identity.get('console_id'))
         g.kiosk_diagnostic={'identity_kind':identity['kind'],'vendor_id':identity['vendor_id'],
@@ -184,7 +193,7 @@ def secure_start(fn=None, *, verify_only=False):
                 if redemption and redemption.console_id != console_id:
                     raise KioskError('access_code_used', 409)
                 target = db.session.execute(text(f'''
-                    SELECT b.id, b.game_id, ag.vendor_id, d.book_status, d.console_id,
+                    SELECT b.id, b.user_id, b.game_id, ag.vendor_id, d.book_status, d.console_id,
                            d.date, d.start_time, d.end_time, b.status, b.squad_details
                     FROM bookings b JOIN available_games ag ON ag.id=b.game_id
                     JOIN VENDOR_{vendor_id}_DASHBOARD d ON d.book_id=b.id
@@ -197,7 +206,7 @@ def secure_start(fn=None, *, verify_only=False):
             else:
                 bid = positive_id(data.get('booking_id'))
                 target = db.session.execute(text(f'''
-                    SELECT b.id, b.game_id, ag.vendor_id, d.book_status, d.console_id,
+                    SELECT b.id, b.user_id, b.game_id, ag.vendor_id, d.book_status, d.console_id,
                            d.date, d.start_time, d.end_time, b.status, b.squad_details
                     FROM bookings b JOIN available_games ag ON ag.id=b.game_id
                     JOIN VENDOR_{vendor_id}_DASHBOARD d ON d.book_id=b.id
@@ -205,6 +214,8 @@ def secure_start(fn=None, *, verify_only=False):
                 '''), {'bid': bid, 'vid': vendor_id}).mappings().first()
             if not target:
                 raise KioskError('booking_not_found', 404)
+            if phone and target['user_id'] != g.cafe_user_id:
+                raise KioskError('booking_not_owned',403)
             g.kiosk_diagnostic.update(booking_id=int(target['id']),assigned_console_ids=sorted(assigned_consoles(target)))
             for field, expected in [('booking_id', target['id']), ('vendor_id', vendor_id), ('game_id', target['game_id'])]:
                 if data.get(field) is not None and positive_id(data[field]) != int(expected):
