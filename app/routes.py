@@ -5333,13 +5333,16 @@ def get_all_payment_methods_for_vendor(vendor_id):
         methods_data = _build_payment_method_response(vendor_id)
         enabled_count = sum(1 for method in methods_data if method.get("is_enabled"))
 
-        return jsonify({
+        response = jsonify({
             'success': True,
             'vendor_id': vendor_id,
             'payment_methods': methods_data,
+            'enabled_payment_methods': [method['method_name'] for method in methods_data if method['is_enabled']],
             'total_available_methods': len(methods_data),
             'vendor_enabled_methods': enabled_count,
-        }), 200
+        })
+        response.headers['Cache-Control'] = 'no-store'
+        return response, 200
     except Exception as e:
         current_app.logger.error(f"Error fetching payment methods for vendor {vendor_id}: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500

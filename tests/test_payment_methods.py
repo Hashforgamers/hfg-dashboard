@@ -40,7 +40,10 @@ def methods(env):
 
 def test_all_six_methods_and_authenticated_idempotent_selection(methods):
     e=methods;c=e.app.test_client();path='/api/vendor/1/paymentMethods'
-    result=c.get(path).json
+    response=c.get(path)
+    assert response.headers['Cache-Control']=='no-store'
+    result=response.json
+    assert set(result['enabled_payment_methods'])=={m['method_name'] for m in result['payment_methods'] if m['is_enabled']}
     assert len(result['payment_methods'])==6
     assert {m['method_name'] for m in result['payment_methods']}=={'hash_wallet','cafe_wallet','hash_global_pass','cafe_specific_pass','payment_gateway','pay_at_cafe'}
     change={'pay_method_id':1,'is_enabled':False}
