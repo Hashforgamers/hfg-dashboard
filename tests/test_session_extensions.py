@@ -303,7 +303,9 @@ def test_migration_creates_complete_schema_from_scratch(env):
         for name in names:e.db.session.execute(text(f'DROP TABLE IF EXISTS {name} CASCADE'))
         e.db.session.commit()
         conn=e.db.engine.raw_connection()
-        try:conn.cursor().execute((Path(__file__).parents[1]/'sql/20261007_kiosk_extensions.sql').read_text());conn.commit()
+        try:
+            conn.cursor().execute((Path(__file__).parents[1]/'sql/20261007_kiosk_extensions.sql').read_text())
+            conn.cursor().execute((Path(__file__).parents[1]/'sql/20261013_pc_command_ack.sql').read_text());conn.commit()
         finally:conn.close()
         columns={c['name'] for c in inspect(e.db.engine).get_columns('kiosk_runtime_sessions')}
         assert {'event_sequence','console_claim','revision','credit_mode'}<=columns
@@ -416,3 +418,88 @@ def test_public_availability_stream_cannot_select_private_rooms(env):
         socket.emit('session.updated',{'private':True},room='vendor_1')
         assert not client.get_received('/cafe-availability')
         client.disconnect(namespace='/cafe-availability')
+
+
+def test_elapsed_boundary_keeps_pc_claim_and_meters_until_explicit_stop(env,monkeypatch):
+    e=env
+    with e.app.app_context():
+        c=engine();row,qr=active(e);w=e.db.session.get(e.m.CafeWallet,(1,1));w.balance=0;e.db.session.commit()
+        boundary=row.reserved_until;now=boundary+timedelta(minutes=1)
+        class Clock(datetime):
+            @classmethod
+            def utcnow(cls):return now
+        monkeypatch.setattr(c,'datetime',Clock)
+        c.tick()
+        e.db.session.expire_all();row=e.db.session.get(sys.modules['app.models.session_extension'].RuntimeSession,row.id)
+        assert row.ended_at is None and row.console_claim==1
+        assert c.snapshot(row)['play_allowed']
+        assert row.status=='overtime_pending'
+        due=c.snapshot(row)['billing']['amount_due_paise'];assert due>0
+        c.tick();e.db.session.expire_all()
+        assert c.snapshot(row)['billing']['amount_due_paise']==due
+        now=boundary+timedelta(minutes=2)
+        c.tick();e.db.session.expire_all()
+        assert c.snapshot(row)['billing']['amount_due_paise']>=due
+        assert len([p for p in c.segments(row) if p.is_overrun])==1
+        c.finish(row,now);e.db.session.commit()
+        assert row.ended_at==now and row.console_claim is None
+
+
+def test_shared_snapshot_qr_starting_then_acknowledged_and_auth(env):
+    e=env
+    with e.app.app_context():
+        fund(e,amount=20000)
+        qr=e.s.reserve(1,1,e.db.session.get(e.Link,1),60,'canonical-start-key');e.db.session.commit()
+        client=e.app.test_client();path='/api/cafe/1/session-state'
+        assert client.get(path).status_code==401
+        header=auth(staff_token(e,'owner'))
+        result=client.get(path,headers=header)
+        assert result.status_code==200,result.json
+        item=result.json['items'][0]
+        assert item['lifecycle_state']=='starting' and item['device_state']=='unconfirmed'
+        assert result.headers['Cache-Control']=='private, no-store'
+        result=client.post('/api/cafe/agent/ack',headers=auth('agent-secret'),json={'session_id':qr.id,'command_token':qr.command_token,'success':True})
+        assert result.status_code==200,result.json
+        item=client.get(path,headers=header).json['items'][0]
+        assert item['lifecycle_state']=='active' and item['device_state']=='confirmed'
+        assert engine().RuntimeSession.query.filter_by(source_id=qr.id).count()==1
+
+
+def test_pricing_failure_does_not_trap_gamer_or_allow_false_settlement(env,monkeypatch):
+    e=env
+    with e.app.app_context():
+        c=engine();row,qr=active(e);end=row.reserved_until+timedelta(minutes=1)
+        pricing=sys.modules['app.services.cafe_session_pricing']
+        def unavailable(*a,**kw):raise e.s.CafeError('Price unavailable',409)
+        monkeypatch.setattr(pricing,'session_prices',unavailable)
+        c.finish(row,end);e.db.session.commit()
+        assert row.ended_at==end and row.console_claim is None
+        state=c.snapshot(row)
+        assert state['billing']['requires_reconciliation'] and not state['billing']['is_final']
+        assert state['billing']['payment_status']=='reconciliation_required'
+        with pytest.raises(e.s.CafeError,match='Reconcile'):
+            c.receipt(row,{}, {'id':'owner','name':'Owner'})
+
+
+def test_booking_snapshot_separates_payment_from_pc_confirmation(env):
+    e=env
+    with e.app.app_context():
+        c=engine();local,_=c.local_window(datetime.utcnow(),datetime.utcnow())
+        start=local-timedelta(minutes=1);end=local+timedelta(minutes=20)
+        for name,kind in [('user_id','integer'),('game_id','integer'),('username','varchar')]:
+            e.db.session.execute(text(f'ALTER TABLE vendor_1_dashboard ADD COLUMN {name} {kind}'))
+        e.db.session.execute(text('ALTER TABLE transactions ADD COLUMN mode_of_payment varchar,ADD COLUMN source_channel varchar'))
+        e.db.session.execute(text("INSERT INTO bookings(id,user_id,game_id,slot_id,status,squad_details) VALUES(999,1,100,100,'checked_in','{}')"))
+        e.db.session.execute(text("INSERT INTO vendor_1_dashboard(console_id,book_status,book_id,date,start_time,end_time,user_id,game_id,username) VALUES(1,'current',999,:day,:start,:end,1,100,'Test')"),{'day':start.date(),'start':start.time(),'end':end.time()})
+        e.db.session.execute(text("INSERT INTO transactions(id,booking_id,vendor_id,user_id,booking_type,amount,settlement_status,mode_of_payment,source_channel) VALUES(1,999,1,1,'booking',50,'paid','cafe_wallet','app')"));e.db.session.commit()
+        response=e.app.test_client().get('/api/cafe/1/session-state',headers=auth(staff_token(e,'owner')))
+        assert response.status_code==200,response.json
+        item=response.json['items'][0]
+        assert item['billing']['initial_payment_method']=='cafe_wallet' and item['billing']['amount_due_paise']==0
+        assert item['billing']['initial_collected_paise']==5000
+        assert item['device_state']=='unconfirmed' and item['lifecycle_state']=='starting'
+        from test_cafe_wallet import gamer
+        client=e.app.test_client();path='/api/cafe/1/session-state/mine'
+        assert len(client.get(path,headers=auth(gamer(e,1))).json['items'])==1
+        assert client.get(path,headers=auth(gamer(e,2))).json['items']==[]
+        assert client.get(path).status_code==401

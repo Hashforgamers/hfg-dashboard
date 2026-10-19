@@ -1,14 +1,27 @@
 """New kiosk protocol; legacy clients remain on their existing endpoints."""
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, g
 from sqlalchemy.exc import IntegrityError
 from flask_jwt_extended import jwt_required, get_jwt
 from app.extension.extensions import db
 from app.models.session_extension import RuntimeSession, ExtensionQuote, SessionNotice, SessionExtensionPolicy
 from app.services import session_extensions as service
 from app.services.cafe_wallet_service import CafeError, integer
-from app.controllers.cafe_wallet_controller import agent_link, staff_actor
+from app.controllers.cafe_wallet_controller import agent_link, staff_actor, gamer_required
 
 bp_extensions=Blueprint('session_extensions',__name__)
+
+@bp_extensions.get('/api/cafe/<int:vendor_id>/session-state')
+@jwt_required()
+def unified_session_state(vendor_id):
+    staff_actor(vendor_id,'dashboard.view')
+    from app.services.session_state import cafe_sessions
+    return jsonify(items=cafe_sessions(vendor_id),server_time=service.stamp(service.datetime.utcnow()),timezone='Asia/Kolkata')
+
+@bp_extensions.get('/api/cafe/<int:vendor_id>/session-state/mine')
+@gamer_required
+def owned_session_state(vendor_id):
+    from app.services.session_state import cafe_sessions
+    return jsonify(items=cafe_sessions(vendor_id,user_id=g.cafe_user_id),server_time=service.stamp(service.datetime.utcnow()),timezone='Asia/Kolkata')
 
 @bp_extensions.after_request
 def private_session_response(response):
@@ -114,6 +127,22 @@ def settlement(vendor_id,runtime_id):
     if data.get('method')=='waiver': staff_actor(vendor_id,'wallet.adjust')
     service.receipt(row,data,actor);return answer(row)
 
+@bp_extensions.post('/api/cafe/<int:vendor_id>/extensions/<runtime_id>/reconcile')
+@jwt_required()
+def reconcile_final_pricing(vendor_id,runtime_id):
+    check_ready();staff_actor(vendor_id,'wallet.adjust');row=service.lock_row(runtime_id,vendor_id=vendor_id)
+    if not row.ended_at:raise CafeError('End play before final pricing reconciliation',409)
+    ended,stop=row.ended_at,row.stop_at
+    try:
+        row.ended_at=None;row.stop_at=None
+        service.meter_overrun(row,ended);service.accrue(row,ended,close=True)
+    finally:
+        row.ended_at=ended;row.stop_at=stop
+    row.reason=None
+    row.status='ended_unsettled' if service.snapshot(row)['billing']['amount_due_paise']>0 else 'settled'
+    service.changed(row)
+    return answer(row)
+
 @bp_extensions.get('/api/cafe/<int:vendor_id>/extension-policy')
 @jwt_required()
 def read_policy(vendor_id):
@@ -153,7 +182,10 @@ def gamer_extension_snapshot(runtime_id):
     def read():
         check_ready();row=RuntimeSession.query.filter_by(id=runtime_id,user_id=g.cafe_user_id).first()
         if not row: raise CafeError('Session not found',404)
-        return jsonify(service.snapshot(row))
+        row=service.lock_row(row.id)
+        if not row.ended_at:
+            service.meter_overrun(row,service.datetime.utcnow());service.accrue(row)
+        return answer(row)
     return read()
 
 
@@ -164,6 +196,7 @@ def staff_snapshot(vendor_id,runtime_id):
     row=service.lock_row(runtime_id,vendor_id=vendor_id)
     if not row.ended_at:
         before=sum(part.charged for part in service.segments(row))
+        service.meter_overrun(row,service.datetime.utcnow())
         service.accrue(row)
         if sum(part.charged for part in service.segments(row))!=before:service.changed(row,state_changed=False)
     return answer(row)

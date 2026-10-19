@@ -84,6 +84,8 @@ class KioskTests(unittest.TestCase):
             migration = (ROOT / 'sql/20260922_kiosk_runtime.sql').read_text().replace('BEGIN;', '').replace('COMMIT;', '')
             conn.execute(text(migration))
             conn.execute(text(migration))
+            commands=(ROOT/'sql/20261013_pc_command_ack.sql').read_text().replace('BEGIN;','').replace('COMMIT;','')
+            conn.execute(text(commands));conn.execute(text(commands))
         now = datetime.now(runtime['IST']).replace(tzinfo=None)
         self.start = now - timedelta(minutes=1)
         self.end = now + timedelta(minutes=20)
@@ -100,9 +102,15 @@ class KioskTests(unittest.TestCase):
         fake_security.__dict__.update(security)
         fake_runtime = ModuleType('app.services.kiosk_runtime')
         fake_runtime.__dict__.update(runtime)
+        fake_commands=ModuleType('app.services.pc_commands')
+        fake_commands.__dict__.update(load('app/services/pc_commands.py',db=db,KioskError=security['KioskError']))
+        fake_extensions=ModuleType('app.services.session_extensions')
+        fake_extensions.ready=lambda:False
+        fake_extensions.attach=Mock()
         self.modules = patch.dict(sys.modules, {'app.routes': fake_routes,
             'app.services.websocket_service': fake_ws, 'app.services.kiosk_runtime': fake_runtime,
-            'app.services.kiosk_security': fake_security})
+            'app.services.kiosk_security': fake_security,'app.services.pc_commands':fake_commands,
+            'app.services.session_extensions':fake_extensions})
         self.modules.start()
         self.ws = fake_ws
         @self.app.errorhandler(security['KioskError'])
@@ -283,6 +291,21 @@ class KioskTests(unittest.TestCase):
             g.cafe_user_id=78
             with self.assertRaises(security['KioskError']) as caught:handler()
             self.assertEqual(caught.exception.error_code,'booking_not_owned')
+        db.session.rollback()
+
+    def test_command_identity_acknowledgement_scope_and_replay(self):
+        from app.services.pc_commands import issue,acknowledge
+        first=issue(1,10,5);db.session.commit()
+        self.assertEqual(issue(1,10,5)['command_id'],first['command_id'])
+        other={'kind':'kiosk','vendor_id':1,'console_id':11}
+        with self.assertRaises(security['KioskError']):acknowledge(other,{'command_id':first['command_id'],'success':True})
+        db.session.rollback()
+        identity={'kind':'kiosk','vendor_id':1,'console_id':10}
+        result=acknowledge(identity,{'command_id':first['command_id'],'success':True});db.session.commit()
+        self.assertTrue(result['acknowledged'])
+        self.assertTrue(acknowledge(identity,{'command_id':first['command_id'],'success':True})['acknowledged'])
+        db.session.rollback()
+        with self.assertRaises(security['KioskError']):acknowledge(identity,{'command_id':first['command_id'],'success':False})
         db.session.rollback()
 
     def test_phone_rejects_assignment_and_unaccepted_booking(self):

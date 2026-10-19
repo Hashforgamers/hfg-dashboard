@@ -5,6 +5,47 @@ from app.services.kiosk_runtime import booking_window, expire_vendor, secure_sta
 
 bp_kiosk = Blueprint('kiosk_runtime', __name__)
 
+@bp_kiosk.get('/api/kiosk/session/commands')
+def pending_commands():
+    """Reconnect recovery: only commands still applicable to this linked PC."""
+    from sqlalchemy import text
+    from app.services.pc_commands import ready,delivery,newer_player
+    identity=runtime_identity()
+    if identity['kind']!='kiosk':raise KioskError('kiosk_token_required',403)
+    if not ready():raise KioskError('command_migration_required',503)
+    rows=db.session.execute(text('''SELECT booking_id,action FROM pc_session_commands
+        WHERE vendor_id=:vid AND console_id=:cid AND state='pending' ORDER BY created_at DESC LIMIT 30'''),
+        {'vid':identity['vendor_id'],'cid':identity['console_id']}).mappings().all()
+    result=[]
+    for row in rows:
+        try:window=booking_window(identity['vendor_id'],row['booking_id'],identity['console_id'])
+        except KioskError:continue
+        # Lock commands are scoped to the old session; the client must never
+        # apply them to its current session. Return that reference explicitly.
+        if row['action']=='unlock' and window['status']!='active':continue
+        if row['action']=='lock' and window['status']=='active':continue
+        if row['action']=='lock' and newer_player(identity['vendor_id'],identity['console_id'],row['booking_id']):continue
+        result.append(dict(delivery(identity['vendor_id'],identity['console_id'],row['booking_id'],row['action']),
+            session_ref={'kind':'booking','id':str(row['booking_id'])},snapshot=window))
+    response=jsonify(commands=result)
+    response.headers['Cache-Control']='private, no-store'
+    return response
+
+
+@bp_kiosk.post('/api/kiosk/session/command-ack')
+def command_ack():
+    from app.services.pc_commands import acknowledge
+    identity=runtime_identity()
+    if identity['kind']!='kiosk':raise KioskError('kiosk_token_required',403)
+    result=acknowledge(identity,request.get_json(silent=True))
+    db.session.commit()
+    from app.services.websocket_service import socketio
+    try:
+        socketio.emit('session.updated',{'vendor_id':identity['vendor_id'],'console_id':identity['console_id']},room=f"vendor_{identity['vendor_id']}")
+    except Exception:
+        current_app.logger.exception('Committed command acknowledgement notification failed')
+    return jsonify(result),200
+
 
 @bp_kiosk.post('/api/phone/bookings/start-session')
 def phone_start_session():

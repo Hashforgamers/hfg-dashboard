@@ -98,10 +98,13 @@ def booking_window(vendor_id, booking_id, console_id):
             result.update(runtime=state,end_time=state['reserved_until'],stop_at=state['stop_at'],
                 auto_lock_at_end=False,play_allowed=state['play_allowed'],status='active' if state['play_allowed'] else 'expired')
             result['seconds_remaining']=max(0,int((managed.reserved_until-datetime.utcnow()).total_seconds())) if state['play_allowed'] else 0
+    from app.services.pc_commands import delivery
+    result['delivery']=delivery(vendor_id,console_id,booking_id)
+    result['session_ref']={'kind':'booking','id':str(booking_id)}
     return result
 
 
-def notify_console_runtime(vendor_id, console_ids):
+def notify_console_runtime(vendor_id, console_ids, ended_booking_id=None):
     """Publish committed dashboard state to each linked PC, including squad PCs."""
     from app.services.websocket_service import _emit_to_kiosk
     try:
@@ -122,12 +125,32 @@ def notify_console_runtime(vendor_id, console_ids):
                     active = window
                     break
             if active:
+                from app.services.session_extensions import ready,attach
+                if ready():
+                    from app.models.console_link_session import ConsoleLinkSession
+                    link=ConsoleLinkSession.query.filter_by(vendor_id=vendor_id,console_id=cid,status='active').first()
+                    if link:
+                        attach(link,{'kind':'booking','id':str(active['booking_id'])})
+                        active=booking_window(vendor_id,active['booking_id'],cid)
+                from app.services.pc_commands import issue
+                active['delivery']=issue(vendor_id,cid,active['booking_id']) or {'state':'unconfirmed','acknowledged':False}
+                db.session.commit()
                 _emit_to_kiosk(cid, 'unlock_request', dict(active, type='unlock_request'))
             else:
-                _emit_to_kiosk(cid, 'session_expired', {
+                # A booking release/reconnect must never lock another QR gamer.
+                if db.session.execute(text("SELECT to_regclass('cafe_play_sessions')")).scalar():
+                    if db.session.execute(text("SELECT 1 FROM cafe_play_sessions WHERE vendor_id=:vid AND console_id=:cid AND state IN ('reserved','active') LIMIT 1"),{'vid':vendor_id,'cid':cid}).scalar():
+                        continue
+                payload={
                     'console_id': cid, 'vendor_id': int(vendor_id),
                     'reason': 'dashboard_session_ended',
-                })
+                }
+                if ended_booking_id:
+                    from app.services.pc_commands import issue
+                    payload['session_ref']={'kind':'booking','id':str(ended_booking_id)}
+                    payload['delivery']=issue(vendor_id,cid,int(ended_booking_id),'lock')
+                    db.session.commit()
+                _emit_to_kiosk(cid, 'session_expired', payload)
     except Exception:
         # An event failure must not turn a committed assignment into an API error.
         current_app.logger.exception('Dashboard kiosk state notification failed')
@@ -231,6 +254,12 @@ def secure_start(fn=None, *, verify_only=False, phone=False):
                 window = booking_window(vendor_id, target['id'], console_id)
                 if window['status'] != 'active':
                     raise KioskError('access_code_used', 409)
+                if not verify_only and window.get('delivery',{}).get('state')=='failed':
+                    from app.services.pc_commands import issue
+                    window['delivery']=issue(vendor_id,console_id,int(target['id']),retry_failed=True)
+                    db.session.commit()
+                    from app.services.websocket_service import _emit_to_kiosk
+                    _emit_to_kiosk(console_id,'unlock_request',dict(window,type='unlock_request'))
                 db.session.rollback()
                 return jsonify(dict(status='success',data=window,**({'verified':True,'can_start':True} if verify_only else {}))), 200
             if target['status'] in ('pending_acceptance','pending_verified','verification_failed','rejected'):
@@ -271,6 +300,16 @@ def secure_start(fn=None, *, verify_only=False, phone=False):
             window = booking_window(vendor_id, target['id'], console_id)
             if window['status'] != 'active':
                 raise KioskError('session_not_active', 409)
+            from app.services.pc_commands import issue
+            from app.services.session_extensions import ready,attach
+            if ready():
+                from app.models.console_link_session import ConsoleLinkSession
+                link=ConsoleLinkSession.query.filter_by(vendor_id=vendor_id,console_id=console_id,status='active').first()
+                if link:
+                    attach(link,{'kind':'booking','id':str(target['id'])})
+                    window=booking_window(vendor_id,target['id'],console_id)
+            window['delivery']=issue(vendor_id,console_id,int(target['id'])) or {'state':'unconfirmed','acknowledged':False}
+            window['session_ref']={'kind':'booking','id':str(target['id'])}
             db.session.commit()
             g.kiosk_transaction = False
             from app.routes import _invalidate_vendor_caches

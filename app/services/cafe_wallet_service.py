@@ -85,6 +85,9 @@ def wallet(vendor_id, user_id):
     # Vendor row serializes first account creation and all money operations within a cafe.
     # This also gives checkout, settings and shift closure a consistent lock order.
     from app.models.vendor import Vendor
+    if db.engine.dialect.name=='postgresql':
+        from app.services.kiosk_security import vendor_lock
+        vendor_lock(vendor_id)
     if not Vendor.query.filter_by(id=vendor_id).populate_existing().with_for_update().first():
         raise CafeError('Cafe not found', 404)
     row = CafeWallet.query.filter_by(vendor_id=vendor_id, user_id=user_id).populate_existing().with_for_update().first()
@@ -319,6 +322,9 @@ def expire_sessions():
         (CafePlaySession.state.in_(['active','reserved'])) | CafePlaySession.id.in_(claims)).distinct().all()}
     vendor_ids.update(r[0] for r in db.session.query(CafeContinuation.vendor_id).filter_by(state='pending').distinct().all())
     if vendor_ids:
+        if db.engine.dialect.name=='postgresql':
+            from app.services.kiosk_security import vendor_lock
+            for vendor_id in sorted(vendor_ids):vendor_lock(vendor_id)
         Vendor.query.filter(Vendor.id.in_(vendor_ids)).order_by(Vendor.id).populate_existing().with_for_update().all()
     pending = CafePlaySession.query.filter(CafePlaySession.state == 'reserved', CafePlaySession.deadline <= now).all()
     from app.models.console_link_session import ConsoleLinkSession
