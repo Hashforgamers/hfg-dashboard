@@ -51,6 +51,7 @@ class ExtensionSegment(db.Model):
     credit_due = db.Column(db.BigInteger, nullable=False, default=0)
     credit_paid = db.Column(db.BigInteger, nullable=False, default=0)
     closed = db.Column(db.Boolean, nullable=False, default=False)
+    is_overrun = db.Column(db.Boolean, nullable=False, default=False)
     __table_args__ = (db.UniqueConstraint('runtime_id','starts_at'),
         db.CheckConstraint('amount >= 0 AND funding >= 0 AND funding <= amount AND captured >= 0 AND captured <= funding AND charged >= 0 AND charged <= amount AND credit_due >= 0 AND credit_paid >= 0 AND credit_paid <= credit_due'),)
 

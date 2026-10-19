@@ -206,6 +206,9 @@ def set_policy(vendor_id):
     actor = staff_actor(vendor_id, 'account.manage')
     settings = validate_policy(request.get_json(silent=True))
     from app.models.vendor import Vendor
+    if db.engine.dialect.name=='postgresql':
+        from app.services.kiosk_security import vendor_lock
+        vendor_lock(vendor_id)
     Vendor.query.filter_by(id=vendor_id).populate_existing().with_for_update().one()
     before = policy(vendor_id)
     if settings['self_service'] and db.engine.dialect.name == 'postgresql':
@@ -343,6 +346,9 @@ def shifts(vendor_id):
 def open_shift(vendor_id):
     actor = staff_actor(vendor_id, 'wallet.topup')
     from app.models.vendor import Vendor
+    if db.engine.dialect.name=='postgresql':
+        from app.services.kiosk_security import vendor_lock
+        vendor_lock(vendor_id)
     Vendor.query.filter_by(id=vendor_id).populate_existing().with_for_update().one()
     existing = CafeShift.query.filter_by(open_key=f"{vendor_id}:{actor['id']}").first()
     if existing:
@@ -361,6 +367,9 @@ def open_shift(vendor_id):
 def close_shift(vendor_id, shift_id):
     actor = staff_actor(vendor_id, 'wallet.topup')
     from app.models.vendor import Vendor
+    if db.engine.dialect.name=='postgresql':
+        from app.services.kiosk_security import vendor_lock
+        vendor_lock(vendor_id)
     Vendor.query.filter_by(id=vendor_id).populate_existing().with_for_update().one()
     row = CafeShift.query.filter_by(id=shift_id, vendor_id=vendor_id, actor_id=actor['id']).populate_existing().with_for_update().first()
     if not row:
@@ -571,6 +580,9 @@ def agent_ack():
     if type(body.get('success')) is not bool:
         raise CafeError('success must be boolean')
     row = acknowledge(body.get('session_id'), link, body.get('command_token'), body['success'])
+    if row.state=='active' and row.kind=='wallet':
+        from app.services.session_extensions import ready,attach
+        if ready():attach(link,{'kind':'self_qr','id':row.id})
     db.session.commit()
     from app.services.cafe_slot_reservations import notify_slot_changes
     notify_slot_changes(row)
@@ -656,6 +668,9 @@ def food_order():
     from app.models.vendor import Vendor
     body = request.get_json(silent=True) or {}
     link = food_context(body)
+    if db.engine.dialect.name=='postgresql':
+        from app.services.kiosk_security import vendor_lock
+        vendor_lock(link.vendor_id)
     Vendor.query.filter_by(id=link.vendor_id).populate_existing().with_for_update().one()
     settings = policy(link.vendor_id)
     if not settings['food_ordering']:

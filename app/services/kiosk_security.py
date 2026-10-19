@@ -224,7 +224,8 @@ def transactional_device(fn):
             _invalidate_vendor_caches(vendor_id)
             g.kiosk_transaction = False
             from app.services.kiosk_runtime import notify_console_runtime
-            notify_console_runtime(vendor_id, [console_id] + additional)
+            notify_console_runtime(vendor_id, [console_id] + additional,
+                ended_booking_id=body.get('booking_id') if booking_id is None else None)
             return response
         except Exception:
             db.session.rollback()

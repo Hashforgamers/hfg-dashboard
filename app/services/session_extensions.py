@@ -54,14 +54,15 @@ def snapshot(row):
         'console_id':row.console_id,'vendor_id':row.vendor_id,'revision':row.revision,'event_sequence':row.event_sequence,'state':row.status,
         'server_time':stamp(now),'started_at':stamp(row.started_at),'paid_until':stamp(row.paid_until),
         'reserved_until':stamp(row.reserved_until),'stop_at':stamp(row.stop_at),'auto_lock_at_end':False,
-        'play_allowed':row.ended_at is None and now<min(row.reserved_until,row.stop_at or row.reserved_until),
+        'play_allowed':row.ended_at is None and (row.stop_at is None or now<row.stop_at),
         'last_seen_at':stamp(row.last_seen_at),'ended_at':stamp(row.ended_at),'extension':{'mode':row.credit_mode,'rolling_enabled':row.rolling,'reason_code':row.reason,'request_id':pending.id if pending else None,'status':pending.status if pending else row.status,'requested_price_paise':pending.amount if pending else None},
         'billing':{'currency':'INR','payment_method':'pay_at_desk' if row.source_kind=='booking' else 'cafe_wallet',
-          'has_extension':bool(parts),'payment_status':'amount_due' if total-funded-collected-waived>0 else 'extension_reserved' if row.ended_at is None and any(p.amount>p.funding+p.credit_paid for p in parts) else 'settled' if row.ended_at else 'prepaid',
+          'has_extension':bool(parts),'payment_status':'reconciliation_required' if row.reason=='billing_unavailable' else 'amount_due' if total-funded-collected-waived>0 else 'extension_reserved' if row.ended_at is None and any(p.amount>p.funding+p.credit_paid for p in parts) else 'settled' if row.ended_at else 'prepaid',
           'total_paise':total,'wallet_funded_paise':funded,'collected_paise':collected,
           'waived_paise':waived,'credit_due_paise':total-funded-collected-waived,'amount_due_paise':total-funded-collected-waived,
           'net_cafe_balance_paise':(w.balance if w else 0)-debt(row.vendor_id,row.user_id),
-          'as_of':stamp(row.billed_at),'is_final':row.ended_at is not None}}
+          'as_of':stamp(row.billed_at),'is_final':row.ended_at is not None and row.reason!='billing_unavailable',
+          'requires_reconciliation':row.reason=='billing_unavailable'}}
 
 def changed(row, state_changed=True, availability_changed=False):
     if state_changed: row.revision+=1
@@ -115,7 +116,8 @@ def attach(link,ref):
     Console.query.filter_by(id=link.console_id,vendor_id=link.vendor_id).with_for_update().one()
     old=RuntimeSession.query.filter_by(source_kind=ref['kind'],source_id=source,console_id=link.console_id).first()
     if old: return old
-    if datetime.utcnow()>=end: raise CafeError('Enroll before the funded boundary; settle existing overtime first',409)
+    # An already-running legacy session may reconnect after its paid boundary.
+    # Keep its original times; overtime reconciliation must not restart the clock.
     occupied=RuntimeSession.query.filter_by(console_claim=link.console_id).first()
     if occupied:
         if ref['kind']=='booking' and occupied.source_kind=='booking' and int(source) in occupied.booking_ids:
@@ -169,7 +171,11 @@ def quote(row):
         'requires_owner_approval':row.source_kind=='self_qr' and amount>fund and settings(row.vendor_id)['self_qr_credit_mode']=='owner_approval'}
 
 def grant(row,q,owner=False):
-    if row.ended_at or q.starts_at!=row.reserved_until: raise CafeError('Session or extension boundary changed',409)
+    if row.ended_at or q.starts_at<row.reserved_until: raise CafeError('Session or extension boundary changed',409)
+    meter_overrun(row,q.starts_at)
+    accrue(row,q.starts_at)
+    for previous in segments(row):
+        if previous.is_overrun and previous.ends_at<=q.starts_at:previous.closed=True
     if row.last_seen_at<datetime.utcnow()-timedelta(seconds=60): raise CafeError('Kiosk is offline; reconnect before extending',409)
     w=runtime_wallet(row)
     if quoted_amount(row,q)!=q.amount: raise CafeError('Price changed; accept a fresh quote',409)
@@ -255,7 +261,7 @@ def accrue(row,now=None,close=False):
             db.session.add(SessionCreditEntry(id=uid(),runtime_id=row.id,segment_id=part.id,amount=credit_delta,kind='charge',
                 idempotency_key=f'credit:{part.id}:{used-funded}'))
         part.charged=used;part.credit_due=used-funded
-        if close or now>=part.ends_at:
+        if close or (now>=part.ends_at and not part.is_overrun):
             unused=part.funding-part.captured
             w.reserved-=unused;part.closed=True
             if unused: ledger(w,'extension_release',0,{'id':'runtime','name':'Session runtime'},'release-ext:'+part.id,
@@ -263,9 +269,37 @@ def accrue(row,now=None,close=False):
     row.billed_at=now
     db.session.flush()
 
+def meter_overrun(row,now):
+    """Record actual play beyond a reservation without granting a conflicting slot."""
+    if row.ended_at or row.stop_at or now<=row.reserved_until:return
+    parts=segments(row)
+    previous=next((p for p in reversed(parts) if p.is_overrun and not p.closed),None)
+    start=previous.starts_at if previous else max([row.reserved_until]+[p.ends_at for p in parts])
+    if now<=start:return
+    from app.services.cafe_session_pricing import session_prices
+    local,_=local_window(start,start)
+    seconds=max(1,math.ceil((now-start).total_seconds()));minutes=(seconds+59)//60
+    prices=session_prices(db.session.get(ConsoleLinkSession,row.link_id),[{'minutes':minutes}],
+        now=local,check_capacity=False,startup_buffer_seconds=0,check_console=False,allow_short_duration=True)
+    if not prices or prices[0]['amount'] is None:
+        raise CafeError('Overtime pricing unavailable; staff must reconcile before settlement',409)
+    amount=(prices[0]['amount']*seconds+minutes*60-1)//(minutes*60)
+    if previous:
+        previous.ends_at=now;previous.amount=max(previous.amount,amount)
+    else:
+        db.session.add(ExtensionSegment(id=uid(),runtime_id=row.id,starts_at=start,ends_at=now,amount=amount,
+            funding=0,captured=0,charged=0,credit_due=0,credit_paid=0,closed=False,is_overrun=True))
+    db.session.flush()
+
 def finish(row,at=None):
     if row.ended_at: return row
-    row.ended_at=min(at or datetime.utcnow(),row.reserved_until,row.stop_at or datetime.max)
+    stop_time=min(at or datetime.utcnow(),row.stop_at or datetime.max)
+    billing_unavailable=False
+    try:meter_overrun(row,stop_time)
+    except CafeError:
+        billing_unavailable=True;row.reason='billing_unavailable'
+        notice(row,'billing_unavailable',stopped_at=stamp(stop_time))
+    row.ended_at=stop_time
     accrue(row,row.ended_at,close=True);row.rolling=False;row.console_claim=None;row.status='ended_unsettled';row.stop_at=row.ended_at
     for pending in ExtensionQuote.query.filter(ExtensionQuote.runtime_id==row.id,ExtensionQuote.status.in_(['approval_pending','conflict_pending','consent_required','credit_limit'])).all():
         pending.status='cancelled' if row.ended_at<pending.starts_at else 'expired'
@@ -300,7 +334,7 @@ def finish(row,at=None):
         if db.engine.dialect.name=='postgresql':
             db.session.execute(text(f'UPDATE VENDOR_{int(row.vendor_id)}_CONSOLE_AVAILABILITY SET is_available=true WHERE console_id=:cid'),{'cid':row.console_id})
     due=sum(p.credit_due-p.credit_paid for p in segments(row))
-    if not due: row.status='settled'
+    if not due and not billing_unavailable: row.status='settled'
     notice(row,'session_ended',amount_due_paise=due);changed(row,availability_changed=True)
     return row
 
@@ -332,6 +366,7 @@ def continue_session(row,qid,body):
     return q
 
 def receipt(row,body,actor):
+    if row.reason=='billing_unavailable':raise CafeError('Reconcile overtime pricing before collecting final settlement',409)
     idem=key(body.get('idempotency_key'));amount=integer(body.get('amount_paise'))
     method=body.get('method');reason=str(body.get('reason') or '').strip();fp=fingerprint([row.id,amount,method,reason])
     old=SessionReceipt.query.filter_by(vendor_id=row.vendor_id,idempotency_key=idem).first()
@@ -373,6 +408,7 @@ def tick():
         try:
             row=lock_row(rid);now=datetime.utcnow()
             previous_charge=sum(p.charged for p in segments(row));previous_sequence=row.event_sequence
+            meter_overrun(row,now)
             accrue(row,now)
             link=db.session.get(ConsoleLinkSession,row.link_id)
             if not link or link.status!='active':
@@ -386,7 +422,10 @@ def tick():
                 if not statuses or all(s in ('cancelled','canceled','completed') for s in statuses):
                     finish(row,now);db.session.commit();continue
             if row.stop_at and now>=row.stop_at: finish(row,row.stop_at)
-            elif now>=row.reserved_until: finish(row,row.reserved_until)
+            elif now>=row.reserved_until:
+                if row.status!='overtime_pending':
+                    row.status='overtime_pending';row.reason='staff_resolution_required'
+                    notice(row,'overtime_pending');changed(row)
             elif row.last_seen_at<now-timedelta(seconds=60):
                 if row.status!='offline':
                     row.status='offline';row.reason='kiosk_offline';notice(row,'kiosk_offline');changed(row)
@@ -420,6 +459,12 @@ def tick():
             db.session.commit()
         except Exception:
             db.session.rollback();current_app.logger.exception('Extension reconciliation failed runtime=%s',rid)
+            try:
+                row=lock_row(rid)
+                row.reason='billing_unavailable';row.status='staff_resolution_required'
+                notice(row,'billing_unavailable');changed(row);db.session.commit()
+            except Exception:
+                db.session.rollback();current_app.logger.exception('Could not record reconciliation failure runtime=%s',rid)
     dispatch()
 
 
