@@ -3309,7 +3309,8 @@ def get_vendor_dashboard(vendor_id):
             {"icon": "FileCheck", "label": "Verified Documents"},
         ],
         "cafeProfile": {
-            "name": vendor.cafe_name,
+            "name": vendor.public_name,
+            "displayName": vendor.display_name or "",
             "avatar": avatar,
             "membershipStatus": "Premium Member",
             "avatar": vendor.images[0].path if vendor.images else "",
@@ -3323,6 +3324,7 @@ def get_vendor_dashboard(vendor_id):
         },
         "businessDetails": {
             "businessName": vendor.cafe_name,
+            "displayName": vendor.display_name or "",
             "businessType": "Gaming Cafe",
             "phone": vendor.contact_info.phone if vendor.contact_info else "",
             "website": vendor.website.url if vendor.website else "",
@@ -4450,6 +4452,16 @@ def update_business_details(vendor_id):
         if not vendor:
             return jsonify({'success': False, 'message': 'Vendor not found'}), 404
 
+        # Public branding is independent of the registered business name.
+        if "displayName" in data:
+            raw_name = data["displayName"]
+            if raw_name is not None and not isinstance(raw_name, str):
+                return jsonify(success=False, message="Display name must be text"), 400
+            display_name = " ".join((raw_name or "").split())
+            if len(display_name) > 120 or any(ord(char) < 32 for char in display_name):
+                return jsonify(success=False, message="Display name must be at most 120 characters without control characters"), 400
+            vendor.display_name = display_name or None
+
         # --- Cafe/Business Name ---
         business_name = data.get("businessName")
         if business_name:
@@ -4510,6 +4522,7 @@ def update_business_details(vendor_id):
                     physical_address.country = data["country"]
 
         db.session.commit()
+        _invalidate_vendor_caches(vendor_id)
 
         # ✅ Return updated vendor data
         return jsonify({
@@ -4518,6 +4531,8 @@ def update_business_details(vendor_id):
             'data': {
                 'vendorId': vendor.id,
                 'businessName': vendor.cafe_name,
+                'displayName': vendor.display_name or '',
+                'publicName': vendor.public_name,
                 'phone': vendor.contact_info.phone if vendor.contact_info else None,
                 'email': vendor.contact_info.email if vendor.contact_info else None,
                 'website': vendor.website.url if vendor.website else None,

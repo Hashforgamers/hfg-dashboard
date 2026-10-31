@@ -129,7 +129,7 @@ def gamer_wallet_summary(vendor, row):
     reserved = row.reserved if row else 0
     from app.services.session_extensions import ready, debt
     due=debt(vendor.id,row.user_id) if row and ready() else 0
-    return dict(credit_due_paise=due,net_balance_paise=balance-due,vendor_id=vendor.id, cafe_name=vendor.cafe_name, currency='INR',
+    return dict(credit_due_paise=due,net_balance_paise=balance-due,vendor_id=vendor.id, cafe_name=vendor.public_name, currency='INR',
                 balance=balance, reserved=reserved, available_balance=balance-reserved,
                 topup_at_cafe_only=True)
 
@@ -489,7 +489,7 @@ def checkout_details(link, user_id, include_bookings=False):
     row = CafeWallet.query.filter_by(vendor_id=link.vendor_id, user_id=user_id).first()
     from app.services.payment_methods import accepted_methods
     result = dict(enabled_payment_methods=sorted(accepted_methods(link.vendor_id)),
-        cafe_name=db.session.get(Vendor, link.vendor_id).cafe_name,
+        cafe_name=db.session.get(Vendor, link.vendor_id).public_name,
         console_number=db.session.get(Console, link.console_id).console_number,
         vendor_id=link.vendor_id, console_id=link.console_id, policy=policy(link.vendor_id),
         available_balance=(row.balance-row.reserved) if row else 0)

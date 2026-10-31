@@ -48,6 +48,10 @@ def env(monkeypatch):
         __tablename__='vendors'
         id=db.Column(db.Integer,primary_key=True)
         cafe_name=db.Column(db.String,default='Test Cafe')
+        display_name=db.Column(db.String(120))
+        @property
+        def public_name(self):
+            return (self.display_name or '').strip() or self.cafe_name
     class User(db.Model):
         __tablename__='users'
         id=db.Column(db.Integer,primary_key=True)
