@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 
 import jwt
 import pytest
+from sqlalchemy import text
 
 from test_cafe_wallet import env, auth, gamer, fund, staff_token
 
@@ -165,3 +166,16 @@ def test_topup_establishes_customer_contact_access(env):
         token = staff_token(e,role='owner')
     row = e.app.test_client().get('/api/cafe/1/gamers?q=Asha',headers=auth(token)).json[0]
     assert row['phone']=='9876543210' and row['contact_masked'] is False
+
+
+def test_wallet_uses_display_name_and_keeps_business_name(env):
+    e=env
+    with e.app.app_context():
+        vendor=e.db.session.execute(text("SELECT id FROM vendors LIMIT 1")).scalar()
+        e.db.session.execute(text("UPDATE vendors SET display_name='Neon Arena' WHERE id=:id"), {'id':vendor})
+        e.db.session.commit()
+    response=e.app.test_client().get(f'/api/cafe/{vendor}/wallet',headers=auth(gamer(e)))
+    assert response.status_code==200
+    assert response.json['cafe_name']=='Neon Arena'
+    with e.app.app_context():
+        assert e.db.session.execute(text("SELECT cafe_name FROM vendors WHERE id=:id"), {'id':vendor}).scalar()=='Test Cafe'
