@@ -394,7 +394,7 @@ def get_transaction_report(to_date, from_date, vendor_id):
                 "slotDate": txn.booking_date.strftime("%Y-%m-%d") if txn.booking_date else None,
                 "playDate": txn.booked_date.strftime("%Y-%m-%d") if txn.booked_date else None,
                 "slotTime": txn.booking_time.strftime("%I:%M %p") if txn.booking_time else None,
-                "userName": user_name,
+                "userName": user_name or txn.user_name,
                 "amount": txn.amount,
                 "originalAmount": txn.original_amount,
                 "discountedAmount": txn.discounted_amount,
@@ -2790,6 +2790,14 @@ def get_landing_page_vendor(vendor_id):
 
         booking_ids = [row.book_id for row in result]
         assigned_console_labels: Dict[int, str] = {}
+        payment_states = {}
+        if booking_ids:
+            for booking_id, status in db.session.query(Transaction.booking_id, Transaction.settlement_status).filter(
+                Transaction.vendor_id == vendor_id, Transaction.booking_id.in_(booking_ids),
+                Transaction.amount > 0,
+            ).distinct():
+                payment_states.setdefault(booking_id, set()).add(str(status or "").lower())
+
         if booking_ids:
             meals_lookup = set(
                 r[0] for r in db.session.query(BookingExtraService.booking_id)
@@ -2894,7 +2902,11 @@ def get_landing_page_vendor(vendor_id):
                 squad_details["assigned_console_labels"] = assigned_label_list
             squad_member_names = [m.get("name") for m in squad_members if m.get("name")]
 
+            statuses = payment_states.get(row.book_id, set())
+            settlement = ("pending" if statuses & {"pending", "unpaid", "due"} else
+                          "completed" if statuses and statuses <= {"completed", "settled", "paid", "done"} else None)
             booking_data = {
+                "settlement_status": settlement,
                 "slotId": row.slot_id,
                 "bookingId": row.book_id,
                 "access_code": row.gamer_access_code if booking_record_status not in terminal_booking_statuses else None,
