@@ -5700,6 +5700,7 @@ def create_vendor_pass(vendor_id):
             name=data['name'],
             price=float(data['price']),
             description=data.get('description'),
+            pc_only=data.get('pc_only') is True,
             pass_mode=pass_mode,
             days_valid=int(data['days_valid']),  # ✅ Always required
             total_hours=float(data['total_hours']) if data.get('total_hours') else None,
