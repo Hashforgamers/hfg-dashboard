@@ -83,7 +83,10 @@ def format_upcoming_booking_from_upstream(data: Dict[str, Any]) -> Optional[Dict
             "game": data.get("game"),
             "consoleType": console_fragment,   # e.g., "Console-3"
             "time": time_block,                # "07:00 PM - 08:00 PM"
-            "status": status_label,            # "Confirmed"
+            "status": status_label,
+            "vendorId": data.get("vendorId") or data.get("vendor_id"),
+            "settlement_status": data.get("settlement_status"),
+            "payment_use_case": data.get("payment_use_case"),            # "Confirmed"
             "game_id": data.get("game_id"),
             "date": data.get("date"),
             "slot_price": data.get("slot_price"),
