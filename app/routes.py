@@ -645,6 +645,7 @@ def get_consoles(vendor_id):
                 hs.ram_size,
                 hs.storage_capacity,
                 hs.console_model_type,
+                hs.screen_size_inches,
                 ms.available_status,
                 ca_agg.is_available_int,
                 COALESCE(cur.game_id, ca_agg.occupied_game_id, ca_agg.any_game_id) AS game_id,
@@ -818,6 +819,7 @@ def get_consoles(vendor_id):
                 "collectibleAmount": pending_due,
                 "hasPendingCollection": pending_due > 0,
                 "consoleModelType": row.console_model_type if row.console_model_type else None,
+                "screenSizeInches": row.screen_size_inches,
                 "kioskLinked": bool(row.link_session_id) if row.link_session_id is not None else False,
                 "kioskId": row.kiosk_id,
                 "kioskLinkSessionId": row.link_session_id,
@@ -1082,6 +1084,15 @@ def update_console(vendor_id):
             if clean_name:
                 console.model_number = clean_name
 
+        if "screenSizeInches" in console_details:
+            try:
+                screen_size = ConsoleService.normalize_screen_size(console_details["screenSizeInches"])
+            except ValueError as error:
+                db.session.rollback()
+                return jsonify(error=str(error)), 400
+        else:
+            screen_size = console.hardware_specifications.screen_size_inches if console.hardware_specifications else None
+
         # Fetch or create hardware relation.
         hardware_spec = console.hardware_specifications
         if hardware_spec is None:
@@ -1105,6 +1116,7 @@ def update_console(vendor_id):
         hardware_spec.storage_capacity = normalized_hw.get("storageCapacity")
         hardware_spec.connectivity = normalized_hw.get("connectivity")
         hardware_spec.console_model_type = normalized_hw.get("consoleModelType")
+        hardware_spec.screen_size_inches = screen_size
 
         maintenance = console.maintenance_status
         status_value = console_details.get("status")

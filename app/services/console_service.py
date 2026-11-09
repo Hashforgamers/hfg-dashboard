@@ -536,7 +536,19 @@ class ConsoleService:
                         f"hardwareSpecifications.{field}"
                     )
 
+        try:
+            ConsoleService.normalize_screen_size(hardware_data.get("screenSizeInches"))
+        except ValueError as error:
+            return str(error)
         return None
+
+    @staticmethod
+    def normalize_screen_size(value):
+        if value is None or str(value).strip() == "":
+            return None
+        if isinstance(value, bool) or not str(value).strip().isdigit() or not 20 <= int(value) <= 120:
+            raise ValueError("TV screen size must be a whole number between 20 and 120 inches.")
+        return int(value)
 
     @staticmethod
     def normalize_hardware_spec(console_type, hardware_data, vendor_id=None):
@@ -561,6 +573,7 @@ class ConsoleService:
             "storageCapacity": source.get("storageCapacity"),
             "connectivity": None,
             "consoleModelType": source.get("consoleModelType"),
+            "screenSizeInches": ConsoleService.normalize_screen_size(source.get("screenSizeInches")),
         }
 
     @staticmethod
@@ -637,6 +650,7 @@ class ConsoleService:
                 storage_capacity=normalized_hardware.get("storageCapacity"),
                 connectivity=normalized_hardware.get("connectivity"),
                 console_model_type=normalized_hardware.get("consoleModelType"),
+                screen_size_inches=normalized_hardware.get("screenSizeInches"),
             )
             db.session.add(hardware_spec)
 
@@ -814,6 +828,7 @@ class ConsoleService:
                     "storageCapacity": hardware.storage_capacity if hardware else None,
                     "connectivity": hardware.connectivity if hardware else None,
                     "consoleModelType": hardware.console_model_type if hardware else None,
+                    "screenSizeInches": hardware.screen_size_inches if hardware else None,
                 },
             )
 
@@ -835,6 +850,7 @@ class ConsoleService:
                     "storageCapacity": normalized_hardware.get("storageCapacity"),
                     "connectivity": normalized_hardware.get("connectivity"),
                     "consoleModelType": normalized_hardware.get("consoleModelType"),
+                    "screenSizeInches": normalized_hardware.get("screenSizeInches"),
                 },
                 "maintenanceStatus": {
                     "availableStatus": maintenance.available_status if maintenance else None,
