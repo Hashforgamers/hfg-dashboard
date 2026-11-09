@@ -11,6 +11,7 @@ class HardwareSpecification(db.Model):
     ram_size = Column(String(50), nullable=True)
     storage_capacity = Column(String(50), nullable=True)
     connectivity = Column(String(200), nullable=True)
+    screen_size_inches = Column(Integer, nullable=True)
     console_model_type = Column(String(200), nullable=True)
     
     # Foreign key and relationship to Console
