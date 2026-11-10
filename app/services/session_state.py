@@ -41,7 +41,7 @@ def cafe_sessions(vendor_id,user_id=None):
             items.append({'session_id':f'booking:{row["book_id"]}:{cid or "unassigned"}',
               'session_ref':{'kind':'booking','id':str(row['book_id'])},'runtime_id':runtime.id if runtime else None,
               'booking_id':row['book_id'],'vendor_id':vendor_id,'console_id':cid,'console_number':getattr(console,'console_number',None),
-              'console_name':getattr(console,'model_number',None),'customer_name':row.get('username'),
+              'console_type':getattr(console,'console_type',None),'console_name':getattr(console,'model_number',None),'customer_name':row.get('username'),
               'lifecycle_state':state,'allocation_state':'occupied' if row['book_status']=='current' else 'reserved' if cid else 'unassigned',
               'device_state':device_state,'delivery':delivered,'timing':dict(window or {},actual_start_time=delivered.get('acknowledged_at')),'runtime':extension,
               'booking_channel':payment['source_channel'] if payment else 'unknown',

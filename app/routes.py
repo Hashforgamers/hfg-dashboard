@@ -1372,6 +1372,10 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
         if is_pc_squad and len(selected_console_ids) > required_console_count:
             selected_console_ids = selected_console_ids[:required_console_count]
 
+        reserved_ids = squad_details.get("desk_console_ids") or []
+        if reserved_ids and set(selected_console_ids) != set(reserved_ids):
+            return jsonify({"error": "Start this session on its reserved consoles. Change the booking to use a different variant."}), 409
+
         for selected_console_id in selected_console_ids:
             stale_current = db.session.execute(
                 text(f"""
@@ -1740,6 +1744,12 @@ def _assign_console_to_multiple_bookings_core(console_id, additional_console_ids
         return {"error": f"PC squad booking requires {required_console_count} consoles"}, 400
     if is_pc_squad and len(selected_console_ids) > required_console_count:
         selected_console_ids = selected_console_ids[:required_console_count]
+
+    for bid in booking_ids:
+        item = Booking.query.filter_by(id=int(bid)).first()
+        reserved_ids = (item.squad_details or {}).get("desk_console_ids", []) if item else []
+        if reserved_ids and set(selected_console_ids) != set(reserved_ids):
+            return {"error": "These bookings must start on their reserved consoles. Start different console assignments separately."}, 409
 
     for selected_console_id in selected_console_ids:
         stale_current = db.session.execute(
