@@ -15,12 +15,12 @@ def validator():
     return scope['normalize_screen_size']
 
 
-@pytest.mark.parametrize('value,expected', [(None,None),('',None),('  ',None),(55,55),('65',65),(20,20),(120,120)])
+@pytest.mark.parametrize('value,expected', [(None,None),('',None),('  ',None),(55,55),('65',65),(1,1),(1000,1000),(43,43),(85,85)])
 def test_screen_size_accepts_real_sizes_and_unset(value, expected):
     assert validator()(value) == expected
 
 
-@pytest.mark.parametrize('value', [True, False, 19, 121, -1, 55.5, '55 inches', 'NaN'])
+@pytest.mark.parametrize('value', [True, False, 0, 1001, -1, 55.5, '55 inches', 'NaN'])
 def test_screen_size_rejects_invalid_values(value):
     with pytest.raises(ValueError):
         validator()(value)

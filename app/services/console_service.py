@@ -546,8 +546,8 @@ class ConsoleService:
     def normalize_screen_size(value):
         if value is None or str(value).strip() == "":
             return None
-        if isinstance(value, bool) or not str(value).strip().isdigit() or not 20 <= int(value) <= 120:
-            raise ValueError("TV screen size must be a whole number between 20 and 120 inches.")
+        if isinstance(value, bool) or not str(value).strip().isdigit() or not 1 <= int(value) <= 1000:
+            raise ValueError("TV screen size must be a whole number between 1 and 1000 inches.")
         return int(value)
 
     @staticmethod
