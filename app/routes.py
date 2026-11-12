@@ -329,6 +329,40 @@ def _derive_booking_outcome(lifecycle_status: str, booking_record_status: str):
     # Default terminal outcome for historical sessions.
     return "played", "Played", "Completed"
 
+def _group_checkout_transactions(rows):
+    """Combine slot charges from the same checkout for the report."""
+    from math import fsum
+
+    money_fields = (
+        "amount", "originalAmount", "discountedAmount", "baseAmount", "mealsAmount",
+        "controllerAmount", "waiveOffAmount", "appFeeAmount", "netAmount", "taxableAmount",
+        "cgstAmount", "sgstAmount", "igstAmount", "totalWithTax",
+    )
+    group_fields = (
+        "userId", "slotDate", "playDate", "bookingType", "modeOfPayment", "paymentUseCase",
+        "settlementStatus", "sourceChannel", "staffId", "gstRate",
+    )
+    groups = {}
+    for row, checkout_id, game_id in rows:
+        if checkout_id is not None and row["bookingType"] in {"direct", "pay_at_cafe"}:
+            key = (checkout_id, game_id, *(row[field] for field in group_fields))
+        else:
+            key = (None, row["id"])
+        groups.setdefault(key, []).append(row)
+
+    result = []
+    for charges in groups.values():
+        booking_ids = {charge["bookingId"] for charge in charges}
+        if len(charges) == 1 or len(booking_ids) != len(charges):
+            result.extend(charges)
+            continue
+        summary = dict(charges[0], bookingId=min(booking_ids))
+        for field in money_fields:
+            summary[field] = round(fsum(float(charge[field] or 0) for charge in charges), 2)
+        result.append(summary)
+    return result
+
+
 @dashboard_service.route('/transactionReport/<int:vendor_id>/<string:to_date>/<string:from_date>', methods=['GET'])
 def get_transaction_report(to_date, from_date, vendor_id):
     try:
@@ -339,7 +373,9 @@ def get_transaction_report(to_date, from_date, vendor_id):
             from_date = datetime.strptime(from_date, "%Y%m%d").date()
 
         rows = (
-            db.session.query(Transaction, User.name.label("user_name"))
+            db.session.query(Transaction, User.name.label("user_name"), Booking.access_code_id, Booking.game_id)
+            .select_from(Transaction)
+            .outerjoin(Booking, Booking.id == Transaction.booking_id)
             .outerjoin(User, User.id == Transaction.user_id)
             .filter(
                 Transaction.vendor_id == vendor_id,
@@ -354,7 +390,7 @@ def get_transaction_report(to_date, from_date, vendor_id):
         )
 
         result = []
-        for txn, user_name in rows:
+        for txn, user_name, checkout_id, game_id in rows:
             base_amount = float(txn.base_amount or 0)
             meals_amount = float(txn.meals_amount or 0)
             controller_amount = float(txn.controller_amount or 0)
@@ -388,7 +424,7 @@ def get_transaction_report(to_date, from_date, vendor_id):
             app_fee_amount = float(getattr(txn, "app_fee_amount", 0) or 0)
             net_amount = round(float(txn.amount or 0) - app_fee_amount, 2)
 
-            result.append({
+            result.append(({
                 "id": txn.id,
                 "bookingId": txn.booking_id,
                 "slotDate": txn.booking_date.strftime("%Y-%m-%d") if txn.booking_date else None,
@@ -420,9 +456,9 @@ def get_transaction_report(to_date, from_date, vendor_id):
                 "sgstAmount": sgst_amount,
                 "igstAmount": igst_amount,
                 "totalWithTax": total_with_tax,
-            })
+            }, checkout_id, game_id))
 
-        return jsonify(result), 200
+        return jsonify(_group_checkout_transactions(result)), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
