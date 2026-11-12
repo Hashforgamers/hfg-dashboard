@@ -5696,6 +5696,22 @@ def get_vendor_passes_by_mode(vendor_id):
     return get_vendor_passes(vendor_id)
 
 
+def _normalize_pass_type_id(value):
+    """Accept an optional integer ID, including blank form selections."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        value = value.strip()
+        if not value:
+            return None
+        if not value.isascii() or not value.isdecimal():
+            raise ValueError('pass_type_id must be a positive integer or blank')
+        value = int(value)
+    if type(value) is not int or not 1 <= value <= 2147483647:
+        raise ValueError('pass_type_id must be a positive integer or blank')
+    return value
+
+
 @dashboard_service.route('/vendor/<int:vendor_id>/passes', methods=['POST'])  # ✅ FIXED: Removed /create
 def create_vendor_pass(vendor_id):
     """Create new pass (date-based or hour-based)"""
@@ -5730,7 +5746,7 @@ def create_vendor_pass(vendor_id):
         # Create pass
         new_pass = CafePass(
             vendor_id=vendor_id,
-            pass_type_id=data.get('pass_type_id'),
+            pass_type_id=_normalize_pass_type_id(data.get('pass_type_id')),
             name=data['name'],
             price=float(data['price']),
             description=data.get('description'),
@@ -5762,6 +5778,7 @@ def create_vendor_pass(vendor_id):
         }), 201
         
     except ValueError as ve:
+        db.session.rollback()
         return jsonify({'error': f'Invalid data format: {str(ve)}'}), 400
     except Exception as e:
         db.session.rollback()
@@ -5793,7 +5810,7 @@ def update_vendor_pass(vendor_id, pass_id):
         if 'days_valid' in data:  # ✅ Can update for both types
             cafe_pass.days_valid = int(data['days_valid'])
         if 'pass_type_id' in data:
-            cafe_pass.pass_type_id = data['pass_type_id']
+            cafe_pass.pass_type_id = _normalize_pass_type_id(data['pass_type_id'])
         
         # Mode-specific updates
         if cafe_pass.pass_mode == 'hour_based':
@@ -5827,6 +5844,7 @@ def update_vendor_pass(vendor_id, pass_id):
         }), 200
         
     except ValueError as ve:
+        db.session.rollback()
         return jsonify({'error': f'Invalid data format: {str(ve)}'}), 400
     except Exception as e:
         db.session.rollback()
