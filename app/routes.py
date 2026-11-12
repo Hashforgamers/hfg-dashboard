@@ -3490,8 +3490,8 @@ def get_your_gamers(vendor_id):
         promo_results = db.session.execute(text(f"""
             SELECT transaction_id, discount_applied
             FROM {promo_table}
-            WHERE transaction_id IN :ids
-        """), {"ids": tuple(trans_ids)}).fetchall()
+            WHERE transaction_id = ANY(:ids)
+        """), {"ids": trans_ids}).fetchall()
 
         promo_dict = {row.transaction_id: row.discount_applied for row in promo_results}
 
@@ -3507,7 +3507,8 @@ def get_your_gamers(vendor_id):
             user_obj = users.get(user_id)
             booking = bookings.get(booking_id)
 
-            if not user_obj or not booking:
+            imported_session = trans.source_channel == "excel_import" and trans.booking_type == "historical_session"
+            if not user_obj or (not booking and not imported_session):
                 continue
 
             phone = user_obj.contact_info.phone if user_obj.contact_info else "N/A"
