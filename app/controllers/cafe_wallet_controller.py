@@ -800,19 +800,28 @@ def live_qr_sessions(vendor_id):
     from app.services.cafe_continuation_service import snapshot
     from app.models.user import User
     from app.models.console import Console
-    rows = CafePlaySession.query.filter_by(vendor_id=vendor_id).filter(
-        or_(CafePlaySession.state.in_(['reserved','active']),
-            and_(CafePlaySession.due_amount>0,CafePlaySession.settled_at.is_(None)),
-            CafePlaySession.id.in_(db.session.query(CafeContinuation.parent_id).filter_by(vendor_id=vendor_id,state='pending')))
-    ).order_by(CafePlaySession.created_at.desc()).all()
     items=[]
-    for row in rows:
-        user=db.session.get(User,row.user_id);console=db.session.get(Console,row.console_id)
-        items.append(dict(snapshot(row),gamer_name=getattr(user,'name',None) or f'Gamer {row.user_id}',
-                          console_number=getattr(console,'console_number',row.console_id)))
+    # Notifications only need approval requests; avoid computing every live bill.
+    if request.args.get('requests_only') != '1':
+        query = db.session.query(CafePlaySession, User.name, Console.console_number).outerjoin(
+            User, User.id == CafePlaySession.user_id).outerjoin(
+            Console, Console.id == CafePlaySession.console_id).filter(
+            CafePlaySession.vendor_id == vendor_id,
+            or_(CafePlaySession.state.in_(['reserved','active']),
+                and_(CafePlaySession.due_amount>0,CafePlaySession.settled_at.is_(None)),
+                CafePlaySession.id.in_(db.session.query(CafeContinuation.parent_id).filter_by(vendor_id=vendor_id,state='pending'))))
+        # Regular bookings are already supplied by the dashboard booking feed.
+        # Keep the default response compatible with existing clients.
+        if request.args.get('exclude_existing_bookings') == '1':
+            query = query.filter(CafePlaySession.kind != 'existing_booking')
+        for row, name, console_number in query.order_by(CafePlaySession.created_at.desc()).all():
+            items.append(dict(snapshot(row),gamer_name=name or f'Gamer {row.user_id}',
+                              console_number=console_number if console_number is not None else row.console_id))
     requests=[]
-    for row in CafeContinuation.query.filter_by(vendor_id=vendor_id,state='pending').all():
-        email=db.session.get(CafeOwnerEmail,row.id)
+    pending = db.session.query(CafeContinuation, CafeOwnerEmail).outerjoin(
+        CafeOwnerEmail, CafeOwnerEmail.request_id == CafeContinuation.id).filter(
+        CafeContinuation.vendor_id == vendor_id, CafeContinuation.state == 'pending').all()
+    for row, email in pending:
         requests.append(dict(serialize(row),email_delivery={
             'sent': bool(email and email.sent_at), 'error': email.last_error if email else 'Email not queued'}))
     return jsonify(items=items,requests=requests)

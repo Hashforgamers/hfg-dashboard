@@ -304,3 +304,29 @@ def test_wallet_overtime_due_frozen_on_release_without_negative_wallet(env):
         assert e.m.CafeLedger.query.filter_by(kind='session_collection',session_id=parent.id).count()==1
         assert e.db.session.get(e.m.CafeWallet,(1,1)).balance==balance
 
+
+
+def test_live_feed_projections_skip_unused_snapshots(env, monkeypatch):
+    e = env
+    with e.app.app_context():
+        parent = started(e)
+        pending = request_more(e, parent)
+        e.db.session.commit()
+        client = e.app.test_client()
+        headers = auth(staff_token(e, role='owner'))
+        full = client.get('/api/cafe/1/sessions/live', headers=headers)
+        assert full.status_code == 200
+        assert full.json['items'][0]['gamer_name']
+        snapshot = Mock(wraps=services().snapshot)
+        monkeypatch.setattr(services(), 'snapshot', snapshot)
+        only_requests = client.get('/api/cafe/1/sessions/live?requests_only=1', headers=headers)
+        assert only_requests.status_code == 200
+        assert only_requests.json == dict(items=[], requests=full.json['requests'])
+        snapshot.assert_not_called()
+        parent.kind = 'existing_booking'
+        e.db.session.commit()
+        filtered = client.get('/api/cafe/1/sessions/live?exclude_existing_bookings=1', headers=headers)
+        assert filtered.status_code == 200 and filtered.json['items'] == []
+        assert filtered.json['requests'][0]['id'] == pending.id
+        snapshot.assert_not_called()
+        assert client.get('/api/cafe/2/sessions/live?requests_only=1', headers=headers).status_code == 403
