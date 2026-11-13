@@ -6,6 +6,8 @@ from app.models.console import Console
 from app.models.availableGame import AvailableGame, available_game_console
 from app.models.consolePricingOffer import ConsolePricingOffer
 from sqlalchemy.orm import joinedload
+from sqlalchemy import text, bindparam
+from app.services.console_catalog_service import normalize_console_slug
 from datetime import datetime
 import pytz
 import threading
@@ -60,6 +62,26 @@ def _offer_is_active_now(offer, now_ist):
     return True
 
 
+def _game_catalog_platforms(game_ids):
+    if not game_ids:
+        return {}
+    rows = db.session.execute(text("""
+        SELECT gcc.game_id, cc.slug
+        FROM game_console_catalog gcc
+        JOIN console_catalog cc ON cc.id = gcc.console_catalog_id
+        WHERE gcc.game_id IN :game_ids AND gcc.is_active = true AND cc.is_active = true
+    """).bindparams(bindparam("game_ids", expanding=True)), {"game_ids": list(game_ids)}).mappings()
+    platforms = {}
+    for row in rows:
+        platforms.setdefault(row["game_id"], []).append(row["slug"])
+    return platforms
+
+
+def _incompatible_consoles(consoles, supported_platforms):
+    supported = {normalize_console_slug(value) for value in supported_platforms}
+    return [c.id for c in consoles if normalize_console_slug(c.console_type) not in supported]
+
+
 # ==================== AVAILABLE GAMES (PLATFORM TYPES) ====================
 
 @vendor_games_bp.route('/vendor/<int:vendor_id>/available-games', methods=['GET'])
@@ -73,6 +95,9 @@ def get_available_games(vendor_id):
         'consoles': [{
             'id': c.id,
             'console_number': c.console_number,
+            'console_type': c.console_type,
+            'serial_number': c.serial_number,
+            'description': c.description,
             'brand': c.brand,
             'model_number': c.model_number
         } for c in ag.consoles]
@@ -141,7 +166,8 @@ def get_all_games():
         games = GameService.search_games(search)
     else:
         games = GameService.get_all_games()
-    return jsonify([game.to_dict() for game in games])
+    platforms = _game_catalog_platforms([game.id for game in games])
+    return jsonify([{**game.to_dict(), 'supported_platforms': platforms.get(game.id, [])} for game in games])
 
 
 @vendor_games_bp.route('/games/<int:game_id>', methods=['GET'])
@@ -331,6 +357,12 @@ def add_game_to_consoles(vendor_id):
 
     if len(consoles) != len(console_ids):
         return jsonify({'error': 'One or more console IDs are invalid or do not belong to this vendor'}), 400
+
+    supported = _game_catalog_platforms([game.id]).get(game.id, [])
+    if not supported:
+        return jsonify({'error': 'This game has no active catalog platforms. Ask an administrator to configure them.'}), 400
+    if _incompatible_consoles(consoles, supported):
+        return jsonify({'error': 'One or more consoles are incompatible with this game. Choose a supported platform.'}), 400
 
     try:
         added_count = 0
