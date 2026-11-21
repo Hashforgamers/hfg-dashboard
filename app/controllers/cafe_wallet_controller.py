@@ -488,7 +488,11 @@ def checkout_details(link, user_id, include_bookings=False):
     from app.models.console import Console
     row = CafeWallet.query.filter_by(vendor_id=link.vendor_id, user_id=user_id).first()
     from app.services.payment_methods import accepted_methods
-    result = dict(enabled_payment_methods=sorted(accepted_methods(link.vendor_id)),
+    accepted = accepted_methods(link.vendor_id)
+    # The self-service QR flow can only collect cafe wallet funds today. Other
+    # accepted methods require a separate booking checkout or staff collection.
+    result = dict(enabled_payment_methods=sorted(accepted),
+        qr_payment_methods=(['cafe_wallet'] if 'cafe_wallet' in accepted else []),
         cafe_name=db.session.get(Vendor, link.vendor_id).public_name,
         console_number=db.session.get(Console, link.console_id).console_number,
         vendor_id=link.vendor_id, console_id=link.console_id, policy=policy(link.vendor_id),
@@ -534,8 +538,9 @@ def checkout():
         from app.services.cafe_booking_service import reserve_booking
         session = reserve_booking(link, g.cafe_user_id, body['booking_id'], body.get('idempotency_key'))
     else:
-        if body.get('payment_method') != 'cafe_wallet':
-            raise CafeError('Select cafe wallet.')
+        method = body.get('payment_method')
+        if method not in ('cafe_wallet',):
+            raise CafeError('This QR checkout currently supports cafe wallet only. Use a supported booking checkout or visit the cafe desk.', 400)
         if type(body.get('use_available_balance',False)) is not bool:
             raise CafeError('use_available_balance must be boolean')
         session = reserve(link.vendor_id, g.cafe_user_id, link, body.get('minutes'), body.get('idempotency_key'),
