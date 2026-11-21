@@ -293,6 +293,90 @@ class KioskTests(unittest.TestCase):
             self.assertEqual(caught.exception.error_code,'booking_not_owned')
         db.session.rollback()
 
+    def scanned_pc_qr(self):
+        """Real resolve_qr/signer from the cafe controller, with links read from this schema."""
+        from types import SimpleNamespace
+        from urllib.parse import urlencode
+        from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
+        service = ast.parse((ROOT/'app/services/cafe_wallet_service.py').read_text())
+        service.body = [n for n in service.body if isinstance(n, ast.ClassDef) and n.name == 'CafeError']
+        errors = {}
+        exec(compile(service, '<cafe errors>', 'exec'), errors)
+        tree = ast.parse((ROOT/'app/controllers/cafe_wallet_controller.py').read_text())
+        tree.body = [n for n in tree.body if (isinstance(n, ast.FunctionDef) and n.name in ('signer', 'resolve_qr'))
+                     or (isinstance(n, ast.Assign) and any(getattr(t, 'id', None) == 'QR_VALIDITY_SECONDS' for t in n.targets))]
+        def get(_model, link_id):
+            row = db.session.execute(text('SELECT id, console_id, vendor_id, status FROM console_link_sessions WHERE id=:id'),
+                                     {'id': link_id}).mappings().first()
+            return SimpleNamespace(**row) if row else None
+        scope = dict(current_app=self.app, URLSafeTimedSerializer=URLSafeTimedSerializer, BadSignature=BadSignature,
+                     SignatureExpired=SignatureExpired, CafeError=errors['CafeError'], ConsoleLinkSession=object,
+                     db=SimpleNamespace(session=SimpleNamespace(get=get)))
+        exec(compile(tree, '<cafe qr>', 'exec'), scope)
+        controller = ModuleType('app.controllers.cafe_wallet_controller')
+        controller.resolve_qr = scope['resolve_qr']
+        service_module = ModuleType('app.services.cafe_wallet_service')
+        service_module.CafeError = errors['CafeError']
+        self.qr_modules = patch.dict(sys.modules, {'app.controllers.cafe_wallet_controller': controller,
+                                                   'app.services.cafe_wallet_service': service_module})
+        self.qr_modules.start()
+        self.addCleanup(self.qr_modules.stop)
+        def checkout_url(link_id):
+            return 'https://hashforgamers.com/cafe/checkout?' + urlencode({'qr': scope['signer']().dumps({'link_id': link_id})})
+        return checkout_url
+
+    def phone_start(self, console_id, user_id=77):
+        handler = runtime['secure_start'](lambda: jsonify(ok=True), phone=True)
+        with self.app.test_request_context(json={'booking_id': 5, 'console_id': console_id, 'vendor_id': 1, 'game_id': 100}):
+            g.cafe_user_id = user_id
+            try:
+                return self.app.make_response(handler())
+            finally:
+                db.session.rollback()
+
+    def test_phone_start_accepts_scanned_pc_checkout_qr(self):
+        # The ticket scanner forwards the PC's checkout URL as console_id when it is not a number.
+        checkout_url = self.scanned_pc_qr()
+        response = self.phone_start(checkout_url(1))
+        self.assertEqual(response.status_code, 200, response.json)
+        self.assertEqual(self.ws._emit_to_kiosk.call_args[0][0], 10)
+        self.ws._emit_to_kiosk.reset_mock()
+        bare_token = checkout_url(1).split('qr=', 1)[1]
+        from urllib.parse import unquote
+        self.assertEqual(self.phone_start(unquote(bare_token)).status_code, 200)
+        self.assertEqual(self.ws._emit_to_kiosk.call_args[0][0], 10)
+
+    def test_phone_start_keeps_numeric_and_json_console_ids(self):
+        self.scanned_pc_qr()
+        for value in (10, '10', ' 10 ', '{"type":"scan_and_play","console_id":10,"kiosk_id":"machine-a"}'):
+            self.ws._emit_to_kiosk.reset_mock()
+            response = self.phone_start(value)
+            self.assertEqual(response.status_code, 200, (value, response.json))
+            self.assertEqual(self.ws._emit_to_kiosk.call_args[0][0], 10)
+
+    def test_phone_start_scanned_qr_rejections(self):
+        checkout_url = self.scanned_pc_qr()
+        cases = [
+            (checkout_url(2), 'booking_console_mismatch'),   # same cafe, PC not assigned to the ticket
+            (checkout_url(3), 'booking_scope_mismatch'),     # PC belongs to another cafe
+            ('https://hashforgamers.com/cafe/checkout?qr=forged', 'pc_qr_expired'),
+            ('https://hashforgamers.com/somewhere-else', 'invalid_pc_qr'),
+            ('{"kiosk_id":"machine-a"}', 'invalid_id'),
+            ('{not json', 'invalid_pc_qr'),
+            ('', 'invalid_id'),
+        ]
+        for value, code in cases:
+            with self.assertRaises(security['KioskError'], msg=value) as caught:
+                self.phone_start(value)
+            self.assertEqual(caught.exception.error_code, code, value)
+        db.session.execute(text("UPDATE console_link_sessions SET status='ended' WHERE id=1"));db.session.commit()
+        with self.assertRaises(security['KioskError']) as caught:
+            self.phone_start(checkout_url(1))
+        self.assertEqual(caught.exception.error_code, 'pc_qr_expired')
+        with self.assertRaises(security['KioskError']) as caught:
+            self.phone_start(checkout_url(1), user_id=78)
+        self.assertEqual(caught.exception.error_code, 'booking_not_owned')
+
     def test_command_identity_acknowledgement_scope_and_replay(self):
         from app.services.pc_commands import issue,acknowledge
         first=issue(1,10,5);db.session.commit()
