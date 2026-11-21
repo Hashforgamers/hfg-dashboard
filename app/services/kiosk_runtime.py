@@ -158,6 +158,43 @@ def notify_console_runtime(vendor_id, console_ids, ended_booking_id=None):
         db.session.rollback()
 
 
+def scanned_console_id(value, vendor_id):
+    """Console id for a phone ticket start, from whatever the scanned PC QR held.
+
+    The locked PC shows its signed cafe checkout URL (``...?qr=<token>``). The
+    Hash app's ticket scanner forwards that raw value as ``console_id`` when it
+    is not a number, so resolve it to the linked PC instead of rejecting it.
+    A plain database console id (int or digit string) is used as before.
+    """
+    if isinstance(value, str):
+        value = value.strip()
+        if value.startswith('{'):
+            import json
+            try:
+                parsed = json.loads(value)
+            except ValueError:
+                raise KioskError('invalid_pc_qr', 400)
+            if not isinstance(parsed, dict):
+                raise KioskError('invalid_pc_qr', 400)
+            value = parsed.get('console_id', parsed.get('consoleId'))
+            if isinstance(value, str):
+                value = value.strip()
+    try:
+        return positive_id(value)
+    except KioskError:
+        if not isinstance(value, str) or not value:
+            raise
+    from app.controllers.cafe_wallet_controller import resolve_qr
+    from app.services.cafe_wallet_service import CafeError
+    try:
+        link = resolve_qr(value)
+    except CafeError as error:
+        raise KioskError('pc_qr_expired' if error.status == 410 else 'invalid_pc_qr', error.status)
+    if int(link.vendor_id) != int(vendor_id):
+        raise KioskError('booking_scope_mismatch', 403)
+    return positive_id(link.console_id)
+
+
 def secure_start(fn=None, *, verify_only=False, phone=False):
     if fn is None:return lambda handler:secure_start(handler,verify_only=verify_only,phone=phone)
     @wraps(fn)
@@ -176,7 +213,10 @@ def secure_start(fn=None, *, verify_only=False, phone=False):
         else:
             identity = runtime_identity()
         if verify_only and identity['kind']!='kiosk':raise KioskError('kiosk_token_required',403)
-        console_id = positive_id(data.get('console_id') or identity.get('console_id'))
+        if phone and data.get('console_id') is not None:
+            console_id = scanned_console_id(data['console_id'], identity['vendor_id'])
+        else:
+            console_id = positive_id(data.get('console_id') or identity.get('console_id'))
         g.kiosk_diagnostic={'identity_kind':identity['kind'],'vendor_id':identity['vendor_id'],
             'linked_console_id':identity.get('console_id'),'requested_console_id':console_id}
         rate_limit(console_id)

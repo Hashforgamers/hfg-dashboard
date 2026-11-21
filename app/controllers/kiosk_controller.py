@@ -96,6 +96,8 @@ def install_kiosk_errors(app):
             'console_mismatch':'The requested console does not match this linked PC. Check its linked database console ID.',
             'booking_scope_mismatch':'The ticket booking, game or cafe does not match the request.',
             'session_not_active':'This booking is outside its scheduled play window.',
+            'invalid_pc_qr':'This QR code is not a valid PC code. Scan the QR shown on the PC.',
+            'pc_qr_expired':'This PC QR has expired or the PC was re-linked. Scan the fresh code on the PC.',
             'rate_limited':'Too many attempts. Please wait one minute.'}
         response = jsonify({'status': 'error', 'code': exc.error_code,'message':messages.get(exc.error_code,exc.error_code.replace('_',' ').capitalize()),'request_id':reference})
         response.status_code = exc.code
