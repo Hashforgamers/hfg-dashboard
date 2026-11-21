@@ -4,6 +4,16 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.services.link_service import list_vendor_pcs, create_link, close_link
 from app.services.subscription_service import get_vendor_pc_limit
 from app.models.console_link_session import ConsoleLinkSession
+from app.models.console import Console
+from app.extension.extensions import db
+
+
+def station_name(console):
+    """The station name the dashboard shows: the console's saved name, else `PC <number>`."""
+    if console is None:
+        return None
+    name = (console.model_number or '').strip()
+    return name or f"PC {console.console_number}"
 
 bp_vendor_pc = Blueprint('vendor_pc', __name__, url_prefix='/api/vendors/<int:vendor_id>/pcs')
 
@@ -43,6 +53,8 @@ def get_pcs(vendor_id):
             "remaining_capacity": max(0, limit - active),
             "pcs": [{
                 "id": c.id, "number": c.console_number, "brand": c.brand, "model": c.model_number,
+                # Same station name the dashboard shows (Gaming Stations card title).
+                "name": station_name(c),
                 "linked": c.id in active_console_ids
             } for c in pcs]
         }), 200
@@ -81,6 +93,7 @@ def link_pc(vendor_id):
             "socket_path": "/socket.io",
             "session_expires_in": None,
             "console_id": sess.console_id,
+            "console_name": station_name(db.session.get(Console, sess.console_id)),
             "vendor_id": sess.vendor_id
         }), 201
     except SQLAlchemyError as e:
