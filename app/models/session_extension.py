@@ -7,6 +7,9 @@ class SessionExtensionPolicy(db.Model):
     vendor_id = db.Column(db.Integer, primary_key=True)
     credit_mode = db.Column(db.String(24), nullable=False, default='automatic')
     credit_limit = db.Column(db.BigInteger)
+    # Owner opt-in: a kiosk may extend a Self QR session past the wallet and
+    # bill the rest as owed. Recorded as cafe policy, never as player consent.
+    kiosk_auto_extend = db.Column(db.Boolean, nullable=False, default=False)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
 class RuntimeSession(db.Model):
@@ -29,6 +32,10 @@ class RuntimeSession(db.Model):
     stop_at = db.Column(db.DateTime)
     rolling = db.Column(db.Boolean, nullable=False, default=False)
     credit_consent = db.Column(db.Boolean, nullable=False, default=False)
+    # Why unfunded time may be billed as owed: player_consent (the player
+    # accepted on screen) or cafe_policy (kiosk auto-extend under the cafe's
+    # opt-in). Null means no credit was authorized.
+    credit_basis = db.Column(db.String(24))
     credit_mode = db.Column(db.String(24), nullable=False)
     credit_limit = db.Column(db.BigInteger)
     revision = db.Column(db.Integer, nullable=False, default=1)
@@ -52,6 +59,7 @@ class ExtensionSegment(db.Model):
     credit_paid = db.Column(db.BigInteger, nullable=False, default=0)
     closed = db.Column(db.Boolean, nullable=False, default=False)
     is_overrun = db.Column(db.Boolean, nullable=False, default=False)
+    credit_basis = db.Column(db.String(24))
     __table_args__ = (db.UniqueConstraint('runtime_id','starts_at'),
         db.CheckConstraint('amount >= 0 AND funding >= 0 AND funding <= amount AND captured >= 0 AND captured <= funding AND charged >= 0 AND charged <= amount AND credit_due >= 0 AND credit_paid >= 0 AND credit_paid <= credit_due'),)
 
@@ -117,6 +125,7 @@ class SessionCreditEntry(db.Model):
     segment_id = db.Column(db.String(36), db.ForeignKey('kiosk_extension_segments.id'), nullable=False)
     amount = db.Column(db.BigInteger, nullable=False)
     kind = db.Column(db.String(24), nullable=False)
+    credit_basis = db.Column(db.String(24))
     idempotency_key = db.Column(db.String(100), nullable=False, unique=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 

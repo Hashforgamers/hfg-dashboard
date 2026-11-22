@@ -306,6 +306,7 @@ def test_migration_creates_complete_schema_from_scratch(env):
         try:
             conn.cursor().execute((Path(__file__).parents[1]/'sql/20261007_kiosk_extensions.sql').read_text())
             conn.cursor().execute((Path(__file__).parents[1]/'sql/20261013_pc_command_ack.sql').read_text());conn.commit()
+            conn.cursor().execute((Path(__file__).parents[1]/'sql/20261122_kiosk_auto_extend.sql').read_text());conn.commit()
         finally:conn.close()
         columns={c['name'] for c in inspect(e.db.engine).get_columns('kiosk_runtime_sessions')}
         assert {'event_sequence','console_claim','revision','credit_mode'}<=columns
@@ -503,3 +504,89 @@ def test_booking_snapshot_separates_payment_from_pc_confirmation(env):
         assert len(client.get(path,headers=auth(gamer(e,1))).json['items'])==1
         assert client.get(path,headers=auth(gamer(e,2))).json['items']==[]
         assert client.get(path).status_code==401
+
+
+def auto_extend_policy(e,enabled=True,**extra):
+    model=sys.modules['app.models.session_extension']
+    e.db.session.add(model.SessionExtensionPolicy(vendor_id=1,credit_mode='automatic',kiosk_auto_extend=enabled,**extra));e.db.session.commit()
+
+def kiosk_extend(e,row,key='kiosk-auto-extend-key',**override):
+    c=engine();q,_=c.quote(row);e.db.session.commit()
+    body={'quote_id':q.id,'revision':row.revision,'idempotency_key':key,'credit_consent':False,'initiated_by':'kiosk_auto_extend'}
+    body.update(override)
+    return q,body
+
+
+def test_kiosk_auto_extend_needs_cafe_opt_in_and_is_never_player_consent(env):
+    e=env
+    with e.app.app_context():
+        c=engine();row,qr=active(e);w=e.db.session.get(e.m.CafeWallet,(1,1));w.balance=0;e.db.session.commit()
+        q,body=kiosk_extend(e,row)
+        with pytest.raises(e.s.CafeError) as err: c.continue_session(row,q.id,body)
+        assert 'not enabled' in err.value.message
+        e.db.session.rollback()
+        assert not c.segments(row)
+        auto_extend_policy(e)
+        q,body=kiosk_extend(e,row,key='kiosk-auto-extend-on')
+        c.continue_session(row,q.id,body);e.db.session.commit()
+        assert q.status=='granted' and row.credit_consent is False and row.credit_basis=='cafe_policy'
+        part=c.segments(row)[0]
+        assert part.credit_basis=='cafe_policy' and part.funding==0
+        c.accrue(row,part.ends_at);e.db.session.commit()
+        model=sys.modules['app.models.session_extension']
+        entries=model.SessionCreditEntry.query.filter_by(runtime_id=row.id,kind='charge').all()
+        assert entries and all(x.credit_basis=='cafe_policy' for x in entries)
+        bill=c.snapshot(row)['billing']
+        assert bill['credit_basis']=='cafe_policy' and bill['cafe_policy_credit_paise']==part.credit_due>0
+        assert bill['player_consent_credit_paise']==0 and bill['amount_due_paise']==part.credit_due
+        # Replaying the same request is idempotent; flipping the flag is a conflict.
+        assert c.continue_session(row,q.id,body) is q
+        with pytest.raises(e.s.CafeError): c.continue_session(row,q.id,dict(body,initiated_by=None))
+
+
+def test_kiosk_auto_extend_rejects_faked_consent_and_unknown_initiator(env):
+    e=env
+    with e.app.app_context():
+        c=engine();row,qr=active(e);auto_extend_policy(e)
+        q,body=kiosk_extend(e,row,credit_consent=True)
+        with pytest.raises(e.s.CafeError) as err: c.continue_session(row,q.id,body)
+        assert 'consent' in err.value.message
+        e.db.session.rollback()
+        q,body=kiosk_extend(e,row,key='kiosk-bad-initiator',initiated_by='someone')
+        with pytest.raises(e.s.CafeError): c.continue_session(row,q.id,body)
+        e.db.session.rollback()
+        assert row.credit_consent is False and row.credit_basis is None and not c.segments(row)
+
+
+def test_kiosk_auto_extend_wallet_first_and_credit_limit_still_apply(env):
+    e=env
+    with e.app.app_context():
+        c=engine();row,qr=active(e);w=e.db.session.get(e.m.CafeWallet,(1,1));w.balance=100;e.db.session.commit()
+        auto_extend_policy(e,credit_limit=0)
+        q,body=kiosk_extend(e,row)
+        c.continue_session(row,q.id,body);e.db.session.commit()
+        # Wallet-funded part is granted; the unfunded rest waits on the limit.
+        parts=c.segments(row)
+        assert len(parts)==1 and parts[0].funding==parts[0].amount and parts[0].credit_basis is None
+        assert q.status=='credit_limit' and row.status=='credit_limit'
+
+
+def test_player_consent_still_recorded_as_player_consent(env):
+    e=env
+    with e.app.app_context():
+        c=engine();row,qr=active(e);w=e.db.session.get(e.m.CafeWallet,(1,1));w.balance=0;e.db.session.commit()
+        q,_=extend(e,row,consent=True)
+        assert q.status=='granted' and row.credit_basis=='player_consent'
+        assert c.segments(row)[0].credit_basis=='player_consent'
+
+
+def test_kiosk_capability_follows_owner_opt_in(env):
+    e=env
+    with e.app.app_context():
+        client=e.app.test_client()
+        first=client.get('/api/kiosk/session',headers=auth('agent-secret'))
+        assert first.status_code==200 and 'kiosk_auto_extend_v1' not in first.json['capabilities']
+        auto_extend_policy(e)
+        second=client.get('/api/kiosk/session',headers=auth('agent-secret'))
+        assert 'kiosk_auto_extend_v1' in second.json['capabilities']
+        assert engine().settings(1)['kiosk_auto_extend'] is True

@@ -23,10 +23,28 @@ def ready():
         return bool(db.session.execute(text("SELECT to_regclass('kiosk_runtime_sessions')")).scalar())
     return inspect(db.engine).has_table('kiosk_runtime_sessions')
 
+PLAYER_CONSENT='player_consent'
+CAFE_POLICY='cafe_policy'
+PAY_AT_DESK='pay_at_desk'
+KIOSK_AUTO_EXTEND='kiosk_auto_extend'
+
 def settings(vendor_id):
     row=db.session.get(SessionExtensionPolicy,vendor_id)
     return {'self_qr_credit_mode':row.credit_mode if row else 'automatic',
-            'credit_limit_paise':row.credit_limit if row else None,'reminder_seconds':300}
+            'credit_limit_paise':row.credit_limit if row else None,
+            'kiosk_auto_extend':bool(row and row.kiosk_auto_extend),'reminder_seconds':300}
+
+def credit_authorized(row,config=None):
+    """Unfunded Self QR time may become credit only on the player's own
+    acceptance or, for kiosk auto-extend, while the cafe's opt-in is on."""
+    if row.credit_basis==CAFE_POLICY:
+        return bool((config or settings(row.vendor_id))['kiosk_auto_extend'])
+    return bool(row.credit_consent)
+
+def missing_credit_reason(row):
+    if row.credit_basis==CAFE_POLICY:
+        return 'Kiosk auto-extend credit is not enabled for this cafe; player consent required'
+    return 'Credit consent required'
 
 def notice(row,kind,**details):
     dedupe=f"{row.id}:{kind}:{details.get('request_id') or row.reserved_until.isoformat()}"
@@ -55,11 +73,14 @@ def snapshot(row):
         'server_time':stamp(now),'started_at':stamp(row.started_at),'paid_until':stamp(row.paid_until),
         'reserved_until':stamp(row.reserved_until),'stop_at':stamp(row.stop_at),'auto_lock_at_end':False,
         'play_allowed':row.ended_at is None and (row.stop_at is None or now<row.stop_at),
-        'last_seen_at':stamp(row.last_seen_at),'ended_at':stamp(row.ended_at),'extension':{'mode':row.credit_mode,'rolling_enabled':row.rolling,'reason_code':row.reason,'request_id':pending.id if pending else None,'status':pending.status if pending else row.status,'requested_price_paise':pending.amount if pending else None},
+        'last_seen_at':stamp(row.last_seen_at),'ended_at':stamp(row.ended_at),'extension':{'mode':row.credit_mode,'rolling_enabled':row.rolling,'reason_code':row.reason,'request_id':pending.id if pending else None,'status':pending.status if pending else row.status,'requested_price_paise':pending.amount if pending else None,'credit_basis':row.credit_basis},
         'billing':{'currency':'INR','payment_method':'pay_at_desk' if row.source_kind=='booking' else 'cafe_wallet',
           'has_extension':bool(parts),'payment_status':'reconciliation_required' if row.reason=='billing_unavailable' else 'amount_due' if total-funded-collected-waived>0 else 'extension_reserved' if row.ended_at is None and any(p.amount>p.funding+p.credit_paid for p in parts) else 'settled' if row.ended_at else 'prepaid',
           'total_paise':total,'wallet_funded_paise':funded,'collected_paise':collected,
           'waived_paise':waived,'credit_due_paise':total-funded-collected-waived,'amount_due_paise':total-funded-collected-waived,
+          'credit_basis':row.credit_basis,
+          'cafe_policy_credit_paise':sum(p.credit_due for p in parts if p.credit_basis==CAFE_POLICY),
+          'player_consent_credit_paise':sum(p.credit_due for p in parts if p.credit_basis==PLAYER_CONSENT),
           'net_cafe_balance_paise':(w.balance if w else 0)-debt(row.vendor_id,row.user_id),
           'as_of':stamp(row.billed_at),'is_final':row.ended_at is not None and row.reason!='billing_unavailable',
           'requires_reconciliation':row.reason=='billing_unavailable'}}
@@ -198,7 +219,8 @@ def grant(row,q,owner=False):
     if row.source_kind=='self_qr' and credit:
         limit_hit=row.credit_limit is not None and credit_exposure(row)+credit>row.credit_limit
         approval_needed=row.credit_mode=='owner_approval' and not owner
-        if not row.credit_consent or limit_hit or approval_needed:
+        authorized=credit_authorized(row,config)
+        if not authorized or limit_hit or approval_needed:
             if fund>0:
                 duration=max(1,math.ceil((q.ends_at-q.starts_at).total_seconds()))
                 funded_seconds=int(duration*fund//q.amount)
@@ -211,25 +233,26 @@ def grant(row,q,owner=False):
                     db.session.add(part_quote);db.session.flush()
                     grant(row,part_quote)
                     q.starts_at=funded_end;q.amount-=paid;q.pricing_basis=basis
-                    q.status='consent_required' if not row.credit_consent else 'credit_limit' if limit_hit else 'approval_pending'
+                    q.status='consent_required' if not authorized else 'credit_limit' if limit_hit else 'approval_pending'
                     row.status=q.status;row.reason=q.status
                     notice(row,'approval_required' if q.status=='approval_pending' else q.status,request_id=q.id,amount=q.amount)
                     changed(row);return False
-            if not row.credit_consent: raise CafeError('Credit consent required',409)
+            if not authorized: raise CafeError(missing_credit_reason(row),409)
             if limit_hit: raise CafeError('Cafe credit limit reached',409)
             q.status='approval_pending';row.status='approval_pending';row.reason='owner_approval_required'
             notice(row,'approval_required',request_id=q.id,amount=q.amount);changed(row);return False
     try: hold_slots(SimpleNamespace(id=row.id,vendor_id=row.vendor_id),new)
     except ValueError as exc: raise CafeError(str(exc),409) from exc
+    basis=(PAY_AT_DESK if row.source_kind!='self_qr' else row.credit_basis or PLAYER_CONSENT) if credit else None
     part=ExtensionSegment(id=uid(),runtime_id=row.id,starts_at=q.starts_at,ends_at=q.ends_at,amount=q.amount,
-        funding=fund,captured=0,charged=0,credit_due=0,credit_paid=0,closed=False)
+        funding=fund,captured=0,charged=0,credit_due=0,credit_paid=0,closed=False,credit_basis=basis)
     db.session.add(part);w.reserved+=fund
     if fund:
         ledger(w,'extension_reserve',0,{'id':'runtime','name':'Session runtime'},'reserve-ext:'+part.id,
             fingerprint([part.id,fund]),session_id=row.source_id,reason='Reserved wallet funding for continuation')
     row.reserved_until=q.ends_at;row.status='active';row.reason=None;row.stop_at=None;q.status='granted'
     notice(row,'extension_granted',price_paise=q.amount,credit_authorized_paise=credit)
-    if credit and row.source_kind=='self_qr': notice(row,'credit_authorized',amount_paise=credit)
+    if credit and row.source_kind=='self_qr': notice(row,'credit_authorized',amount_paise=credit,credit_basis=basis)
     changed(row,availability_changed=True);return True
 
 def accrue(row,now=None,close=False):
@@ -259,7 +282,7 @@ def accrue(row,now=None,close=False):
         if credit_delta:
             if row.source_kind=='self_qr' and part.credit_due==0: notice(row,'wallet_exhausted',amount_due_paise=credit_delta)
             db.session.add(SessionCreditEntry(id=uid(),runtime_id=row.id,segment_id=part.id,amount=credit_delta,kind='charge',
-                idempotency_key=f'credit:{part.id}:{used-funded}'))
+                credit_basis=part.credit_basis,idempotency_key=f'credit:{part.id}:{used-funded}'))
         part.charged=used;part.credit_due=used-funded
         if close or (now>=part.ends_at and not part.is_overrun):
             unused=part.funding-part.captured
@@ -339,20 +362,29 @@ def finish(row,at=None):
     return row
 
 def continue_session(row,qid,body):
-    idem=key(body.get('idempotency_key'));fp=fingerprint([row.id,qid,body.get('credit_consent')])
+    initiated=body.get('initiated_by')
+    # Fingerprint unchanged for requests without the flag so in-flight replays still match.
+    fp=fingerprint([row.id,qid,body.get('credit_consent')]+([initiated] if initiated is not None else []))
+    idem=key(body.get('idempotency_key'))
     replay=ExtensionQuote.query.filter_by(idempotency_key=idem).first()
     if replay:
         if replay.runtime_id!=row.id or replay.fingerprint!=fp: raise CafeError('Idempotency conflict',409)
         return replay
     if type(body.get('credit_consent',False)) is not bool: raise CafeError('credit_consent must be boolean')
+    if initiated not in (None,'player',KIOSK_AUTO_EXTEND): raise CafeError('initiated_by must be player or kiosk_auto_extend')
+    if initiated==KIOSK_AUTO_EXTEND and body.get('credit_consent') is True:
+        # A kiosk cannot accept credit on the player's behalf.
+        raise CafeError('A kiosk_auto_extend request cannot carry player credit consent')
     q=ExtensionQuote.query.filter_by(id=qid,runtime_id=row.id).with_for_update().first()
     if not q or q.status!='quoted' or q.expires_at<=datetime.utcnow(): raise CafeError('Quote expired',409)
     if row.revision!=body.get('revision') or q.revision!=row.revision: raise CafeError('Stale session revision',409)
     for old in ExtensionQuote.query.filter(ExtensionQuote.runtime_id==row.id,ExtensionQuote.id!=q.id,ExtensionQuote.status.in_(['approval_pending','conflict_pending','consent_required','credit_limit'])).all():
         old.status='superseded'
     row.rolling=True;row.credit_consent=body.get('credit_consent',False)
+    row.credit_basis=CAFE_POLICY if initiated==KIOSK_AUTO_EXTEND else PLAYER_CONSENT if row.credit_consent else None
     audit(row.vendor_id,{'id':f'kiosk-{row.link_id}','name':f'PC {row.console_id}'},'extension.continue_requested',
-        {'runtime_id':row.id,'quote_id':q.id,'credit_consent':row.credit_consent})
+        {'runtime_id':row.id,'quote_id':q.id,'credit_consent':row.credit_consent,
+         'initiated_by':initiated or 'player','credit_basis':row.credit_basis})
     q.idempotency_key=idem;q.fingerprint=fp
     try:
         with db.session.begin_nested(): grant(row,q)
@@ -432,7 +464,7 @@ def tick():
             elif row.rolling and row.status in ('approval_pending','credit_limit','consent_required'):
                 pending=ExtensionQuote.query.filter(ExtensionQuote.runtime_id==row.id,ExtensionQuote.status.in_(['approval_pending','credit_limit','consent_required'])).first()
                 config=settings(row.vendor_id);w=runtime_wallet(row)
-                if pending and (w.balance>w.reserved or (row.credit_consent and (config['self_qr_credit_mode']=='automatic' or row.status=='credit_limit') and (config['credit_limit_paise'] is None or credit_exposure(row)+pending.amount<=config['credit_limit_paise']))):
+                if pending and (w.balance>w.reserved or (credit_authorized(row,config) and (config['self_qr_credit_mode']=='automatic' or row.status=='credit_limit') and (config['credit_limit_paise'] is None or credit_exposure(row)+pending.amount<=config['credit_limit_paise']))):
                     try:
                         with db.session.begin_nested(): grant(row,pending)
                     except CafeError as exc:
