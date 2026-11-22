@@ -466,6 +466,14 @@ class KioskTests(unittest.TestCase):
         self.assertEqual([c.args[:2] for c in self.ws._emit_to_kiosk.call_args_list],
                          [(10,'session_expired'),(11,'unlock_request')])
 
+    def test_upstream_started_booking_unlocks_but_never_locks(self):
+        db.session.execute(text("UPDATE bookings SET squad_details=' {\"assigned_console_ids\":[11],\"released_console_ids\":[10]}'::jsonb WHERE id=5"))
+        db.session.commit()
+        with self.app.test_request_context():
+            runtime['notify_console_runtime'](1, [10,11], unlock_only=True)
+        self.assertEqual([c.args[:2] for c in self.ws._emit_to_kiosk.call_args_list],
+                         [(11,'unlock_request')])
+
     def test_release_notifies_lock_after_commit(self):
         result = self.post('/release/100/10/1', {'booking_id':5})
         self.assertEqual(result.status_code,200)

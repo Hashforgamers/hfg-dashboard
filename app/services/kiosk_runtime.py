@@ -104,8 +104,10 @@ def booking_window(vendor_id, booking_id, console_id):
     return result
 
 
-def notify_console_runtime(vendor_id, console_ids, ended_booking_id=None):
-    """Publish committed dashboard state to each linked PC, including squad PCs."""
+def notify_console_runtime(vendor_id, console_ids, ended_booking_id=None, unlock_only=False):
+    """Publish committed dashboard state to each linked PC, including squad PCs.
+
+    unlock_only: for bookings started by another service; never send a lock."""
     from app.services.websocket_service import _emit_to_kiosk
     try:
         rows = db.session.execute(text(f"""
@@ -136,6 +138,8 @@ def notify_console_runtime(vendor_id, console_ids, ended_booking_id=None):
                 active['delivery']=issue(vendor_id,cid,active['booking_id']) or {'state':'unconfirmed','acknowledged':False}
                 db.session.commit()
                 _emit_to_kiosk(cid, 'unlock_request', dict(active, type='unlock_request'))
+            elif unlock_only:
+                continue
             else:
                 # A booking release/reconnect must never lock another QR gamer.
                 if db.session.execute(text("SELECT to_regclass('cafe_play_sessions')")).scalar():

@@ -57,6 +57,14 @@ _lock = threading.Lock()
 _last_forced_reconnect = 0.0
 _RECONNECT_BACKOFF = 5.0   
 
+# Upstream callbacks run on the socket client's thread, outside any request.
+_bridge_app = None
+
+# hfg-booking sends most booking changes twice (vendor room + admin tap, and
+# some paths emit "booking" to both). Relay each change to the dashboard once.
+_recent_upstream: Dict[tuple, float] = {}
+_DEDUPE_WINDOW_SECS = 5.0
+
 # Heartbeat tracking
 _last_admin_heartbeat = 0.0
 _last_pong = 0.0
@@ -121,6 +129,80 @@ def _mark_pong():
     _last_pong = now
     _last_admin_heartbeat = now  # treat any upstream response as heartbeat
 
+def _seen_recently(key: tuple) -> bool:
+    """True when the same upstream change was already relayed moments ago."""
+    now = time.time()
+    with _lock:
+        for k, ts in list(_recent_upstream.items()):
+            if now - ts > _DEDUPE_WINDOW_SECS:
+                _recent_upstream.pop(k, None)
+        if key in _recent_upstream:
+            return True
+        _recent_upstream[key] = now
+        return False
+
+
+def _run_in_app(fn, *args):
+    """Run DB work from an upstream callback inside the Flask app context."""
+    app = _bridge_app
+    if app is None:
+        return None
+    with app.app_context():
+        try:
+            return fn(*args)
+        finally:
+            try:
+                db.session.remove()
+            except Exception:
+                pass
+
+
+def _booking_consoles(vendor_id: int, booking_id: int, hinted: Optional[int]):
+    table = f"VENDOR_{int(vendor_id)}_DASHBOARD"
+    row = db.session.execute(text(f"""
+        SELECT d.console_id, d.book_status, b.squad_details
+        FROM {table} d JOIN bookings b ON b.id = d.book_id
+        WHERE d.book_id = :bid
+    """), {"bid": int(booking_id)}).mappings().first()
+    if not row or str(row["book_status"] or "").lower() != "current":
+        return []
+    from app.services.kiosk_runtime import assigned_consoles
+    consoles = assigned_consoles(row)
+    if not consoles and hinted and hinted > 0:
+        consoles = {int(hinted)}
+    return sorted(consoles)
+
+
+def _unlock_started_booking(vendor_id, booking_id, console_id=None):
+    """A booking that hfg-booking started (desk walk-in, kiosk continuation)
+    must unlock its PC the same way a dashboard start does. The kiosk only
+    listens to this service, so without this it stayed locked until staff
+    pressed Start again. Unlock-only: an idle console is never locked here."""
+    try:
+        vendor_id = int(vendor_id or 0)
+        booking_id = int(booking_id or 0)
+        hinted = int(console_id or 0)
+    except (TypeError, ValueError):
+        return
+    if vendor_id <= 0 or booking_id <= 0:
+        return
+    if _seen_recently(("unlock", vendor_id, booking_id)):
+        return
+
+    def work():
+        consoles = _booking_consoles(vendor_id, booking_id, hinted)
+        db.session.rollback()
+        if not consoles:
+            return
+        from app.services.kiosk_runtime import notify_console_runtime
+        notify_console_runtime(vendor_id, consoles, unlock_only=True)
+
+    try:
+        _run_in_app(work)
+    except Exception:
+        _log_err("Kiosk unlock for upstream booking failed vendor=%s booking=%s", vendor_id, booking_id)
+
+
 # -----------------------------------------------------------------------------
 # Downstream emit (to dashboard clients)
 # -----------------------------------------------------------------------------
@@ -129,7 +211,7 @@ def _emit_downstream_to_vendor(vendor_id: Optional[int], event: str, data: Dict[
         if vendor_id is not None:
             # The snapshot endpoints use short in-process caches. Invalidate before
             # notifying clients so an immediate refresh cannot replay pre-event data.
-            if event in {"booking", "upcoming_booking", "current_slot", "console_availability", "booking_payment_update", "pay_at_cafe_accepted", "pay_at_cafe_rejected"}:
+            if event in {"booking", "upcoming_booking", "current_slot", "console_availability", "booking_payment_update", "pay_at_cafe_accepted", "pay_at_cafe_rejected", "kiosk_session_extended", "booking_updated"}:
                 try:
                     from app.routes import _invalidate_vendor_caches
                     _invalidate_vendor_caches(int(vendor_id))
@@ -218,6 +300,9 @@ def _handle_upstream_booking(data: Dict[str, Any]):
         _mark_pong()
         vendor_id = data.get("vendorId") or data.get("vendor_id")
         booking_id = data.get("bookingId") or data.get("booking_id")
+        if booking_id and _seen_recently(("booking", str(vendor_id), str(booking_id),
+                                          str(data.get("status")), str(data.get("booking_status")))):
+            return
         _log_info("[Upstream booking] vendor=%s bookingId=%s", vendor_id, booking_id)
 
         # Always relay raw event for general consumers
@@ -283,6 +368,11 @@ def _handle_upstream_current_slot(data: Dict[str, Any]):
         except Exception:
             _log_warn("Failed emitting booking_slots_updated for current_slot vendor=%s", vendor_id)
         _log_info("Relayed current_slot vendor=%s bookingId=%s", vendor_id, data.get("bookingId") or data.get("book_id"))
+        _unlock_started_booking(
+            vendor_id,
+            data.get("bookingId") or data.get("booking_id") or data.get("bookId") or data.get("book_id"),
+            data.get("console_id") or data.get("consoleId"),
+        )
     except Exception:
         _log_err("Error handling upstream current_slot payload")
 
@@ -344,6 +434,36 @@ def _handle_upstream_booking_payment_update(data: Dict[str, Any]):
     except Exception:
         _log_err("Error handling upstream booking_payment_update payload")
 
+def _handle_upstream_kiosk_session_extended(data: Dict[str, Any]):
+    try:
+        _mark_pong()
+        vendor_id = data.get("vendorId") or data.get("vendor_id")
+        _emit_downstream_to_vendor(vendor_id, "kiosk_session_extended", data)
+        _emit_downstream_to_vendor(vendor_id, "booking_slots_updated", {
+            "vendor_id": vendor_id,
+            "booking_id": data.get("booking_id"),
+            "slot_id": data.get("slot_id"),
+            "status": data.get("book_status"),
+            "event": "kiosk_session_extended",
+        })
+        if data.get("auto_started"):
+            _unlock_started_booking(vendor_id, data.get("booking_id"), data.get("console_id"))
+    except Exception:
+        _log_err("Error handling upstream kiosk_session_extended payload")
+
+
+def _relay_upstream(event: str):
+    """Relay a vendor-scoped upstream event to the dashboard unchanged."""
+    def handler(data=None):
+        try:
+            _mark_pong()
+            data = data if isinstance(data, dict) else {}
+            _emit_downstream_to_vendor(data.get("vendorId") or data.get("vendor_id"), event, data)
+        except Exception:
+            _log_err("Error relaying upstream %s", event)
+    return handler
+
+
 def _connect_upstream():
     headers = {}
     if BOOKING_AUTH_TOKEN:
@@ -379,77 +499,26 @@ def _register_upstream_handlers():
 
     # Booking payload handlers (namespace-aware, server uses default namespace unless configured)
     ns = _ns()
-    if ns:
-        @_upstream_sio.on("booking", namespace=ns)
-        def _on_booking_ns(data):
-            _handle_upstream_booking(data)
 
-        @_upstream_sio.on("booking_admin", namespace=ns)
-        def _on_booking_admin_ns(data):
-            _handle_upstream_booking(data)
+    def _on_pong_health(_data=None):
+        _mark_pong()
 
-        @_upstream_sio.on("current_slot", namespace=ns)
-        def _on_current_slot_ns(data):
-            _handle_upstream_current_slot(data)
-
-        @_upstream_sio.on("console_availability", namespace=ns)
-        def _on_console_availability_ns(data):
-            _handle_upstream_console_availability(data)
-
-        # Upstream health echo listener: server replies with "pong_health"
-        @_upstream_sio.on("pong_health", namespace=ns)
-        def _on_pong_health_ns(_data=None):
-            _mark_pong()
-            _log_info("Received upstream pong_health")
-
-        @_upstream_sio.on("pay_at_cafe_accepted", namespace=ns)
-        def _on_pay_at_cafe_accepted_ns(data):
-            _handle_upstream_pay_at_cafe_event("pay_at_cafe_accepted", data)
-
-        @_upstream_sio.on("pay_at_cafe_rejected", namespace=ns)
-        def _on_pay_at_cafe_rejected_ns(data):
-            _handle_upstream_pay_at_cafe_event("pay_at_cafe_rejected", data)
-
-        @_upstream_sio.on("booking_payment_update", namespace=ns)
-        def _on_booking_payment_update_ns(data):
-            _handle_upstream_booking_payment_update(data)
-    else:
-        @_upstream_sio.on("booking")
-        def _on_booking(data):
-            _handle_upstream_booking(data)
-
-        @_upstream_sio.on("booking_admin")
-        def _on_booking_admin(data):
-            _handle_upstream_booking(data)
-
-        @_upstream_sio.on("current_slot")
-        def _on_current_slot(data):
-            _handle_upstream_current_slot(data)
-
-        @_upstream_sio.on("console_availability")
-        def _on_console_availability(data):
-            _handle_upstream_console_availability(data)
-
-        @_upstream_sio.on("pong_health")
-        def _on_pong_health(_data=None):
-            _mark_pong()
-            try:
-                nonce = _data.get("nonce") if isinstance(_data, dict) else None
-            except Exception:
-                nonce = None
-            _log_info("Received upstream pong_health (event) nonce=%s payload=%s", nonce, _data)
-
-        @_upstream_sio.on("pay_at_cafe_accepted")
-        def _on_pay_at_cafe_accepted(data):
-            _handle_upstream_pay_at_cafe_event("pay_at_cafe_accepted", data)
-
-        @_upstream_sio.on("pay_at_cafe_rejected")
-        def _on_pay_at_cafe_rejected(data):
-            _handle_upstream_pay_at_cafe_event("pay_at_cafe_rejected", data)
-
-        @_upstream_sio.on("booking_payment_update")
-        def _on_booking_payment_update(data):
-            _handle_upstream_booking_payment_update(data)
+    handlers = {
+        "booking": _handle_upstream_booking,
+        "booking_admin": _handle_upstream_booking,
+        "current_slot": _handle_upstream_current_slot,
+        "console_availability": _handle_upstream_console_availability,
+        "pong_health": _on_pong_health,
+        "pay_at_cafe_accepted": lambda data: _handle_upstream_pay_at_cafe_event("pay_at_cafe_accepted", data),
+        "pay_at_cafe_rejected": lambda data: _handle_upstream_pay_at_cafe_event("pay_at_cafe_rejected", data),
+        "booking_payment_update": _handle_upstream_booking_payment_update,
+        # Previously emitted by hfg-booking but never relayed:
+        "kiosk_session_extended": _handle_upstream_kiosk_session_extended,
+        "booking_updated": _relay_upstream("booking_updated"),
+        "gamers_credit_updated": _relay_upstream("gamers_credit_updated"),
+    }
+    for event, handler in handlers.items():
+        _upstream_sio.on(event, handler, namespace=ns or "/")
 
 
 # --- helper ack callback for health pings ----------------------------------
@@ -533,11 +602,13 @@ def _health_check_loop():
 # Public: start upstream bridge
 # -----------------------------------------------------------------------------
 def start_upstream_bridge(app):
-    global _started_upstream
+    global _started_upstream, _bridge_app
     with _lock:
         if _started_upstream:
             return
         _started_upstream = True
+    if app is not None:
+        _bridge_app = app
 
     _register_upstream_handlers()
 
@@ -610,6 +681,20 @@ def register_dashboard_events():
                 _join_upstream_vendor(int(vendor_id))
         except Exception as e:
             _log_err("dashboard_join_vendor error: %s", e)
+
+    @socketio.on("booking_accepted")
+    def _on_booking_accepted(data=None):
+        # NotificationPanel emits this after accepting; share it with the
+        # vendor's other open dashboards (upcoming-booking listens for it).
+        try:
+            identity = _socket_identity()
+            data = data if isinstance(data, dict) else {}
+            vendor_id = int(data.get("vendorId") or data.get("vendor_id") or 0)
+            if identity["kind"] != "vendor" or vendor_id != identity["vendor_id"]:
+                return
+            socketio.emit("booking_accepted", data, room=f"vendor_{vendor_id}", include_self=False)
+        except Exception as e:
+            _log_warn("booking_accepted relay failed: %s", e)
 
     @socketio.on("kiosk_join")
     def _on_kiosk_join(data=None):
