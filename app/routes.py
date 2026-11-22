@@ -738,6 +738,19 @@ def get_consoles(vendor_id):
         return response, 200
 
     try:
+        # A busy flag with no live session behind it (booking closed elsewhere)
+        # must not keep the station "Occupied" until someone presses Release.
+        try:
+            from app.services.kiosk_runtime import heal_console_availability
+            from app.services.kiosk_security import vendor_lock
+            if db.engine.dialect.name == 'postgresql':
+                vendor_lock(vendor_id)
+                if heal_console_availability(vendor_id):
+                    _invalidate_vendor_caches(int(vendor_id))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception("Stale console heal failed vendor=%s", vendor_id)
         availability_table = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
         booking_table = f"VENDOR_{vendor_id}_DASHBOARD"
         sql_query = text(f"""
@@ -1483,27 +1496,14 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
         if reserved_ids and set(selected_console_ids) != set(reserved_ids):
             return jsonify({"error": "Start this session on its reserved consoles. Change the booking to use a different variant."}), 409
 
+        # Free only flags with no live owner. The old check looked at desk
+        # bookings alone and could take a PC from an active QR/kiosk session.
+        from app.services.kiosk_runtime import heal_console_availability
+        from app.services.kiosk_security import vendor_lock
+        if db.engine.dialect.name == 'postgresql':
+            vendor_lock(int(vendor_id))
+        heal_console_availability(int(vendor_id))
         for selected_console_id in selected_console_ids:
-            stale_current = db.session.execute(
-                text(f"""
-                    SELECT 1
-                    FROM {booking_table_name}
-                    WHERE console_id = :console_id
-                      AND book_status = 'current'
-                    LIMIT 1
-                """),
-                {"console_id": selected_console_id},
-            ).fetchone()
-            if not stale_current:
-                db.session.execute(
-                    text(f"""
-                        UPDATE {console_table_name}
-                        SET is_available = TRUE
-                        WHERE console_id = :console_id
-                    """),
-                    {"console_id": selected_console_id},
-                )
-
             sql_check_availability = text(f"""
                 SELECT MIN(CASE WHEN is_available THEN 1 ELSE 0 END) AS is_available_int
                 FROM {console_table_name}
@@ -2784,6 +2784,18 @@ def get_landing_page_vendor(vendor_id):
             {},
         )
         db.session.commit()
+        # The sync above closes bookings without freeing their PCs; free them now.
+        try:
+            from app.services.kiosk_runtime import heal_console_availability
+            from app.services.kiosk_security import vendor_lock
+            if db.engine.dialect.name == 'postgresql':
+                vendor_lock(vendor_id)
+                if heal_console_availability(vendor_id):
+                    _invalidate_vendor_caches(int(vendor_id))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception("Stale console heal failed vendor=%s", vendor_id)
 
         # Self-heal overdue upcoming rows as "discarded" (no-show), not completed.
         overdue_upcoming_rows = db.session.execute(
@@ -2861,6 +2873,26 @@ def get_landing_page_vendor(vendor_id):
         net_pending_amount = max(pending_amount - pending_app_fees, 0.0)
         net_cleared_amount = max(net_earnings - net_pending_amount, 0.0)
 
+        # Played-but-unpaid bookings (pay at cafe, pay after the session, a
+        # cancelled QR) must stay collectable after the session is closed.
+        # Credit-account charges are collected on the monthly statement instead.
+        awaiting_payment_ids = [int(r[0]) for r in db.session.execute(text("""
+            SELECT t.booking_id
+            FROM transactions t
+            JOIN bookings d ON d.id = t.booking_id
+            WHERE t.vendor_id = :vendor_id
+              AND t.settlement_status = 'pending'
+              AND LOWER(COALESCE(d.status, '')) = 'completed'
+              AND LOWER(COALESCE(t.mode_of_payment, '')) NOT IN ('monthly_credit', 'credit')
+              AND t.booked_date >= :since
+            GROUP BY t.booking_id
+            HAVING SUM(CASE WHEN COALESCE(t.total_with_tax, 0) > 0 THEN t.total_with_tax
+                            ELSE COALESCE(t.amount, 0) END) > 0.01
+            ORDER BY MAX(t.booked_date) DESC
+            LIMIT 50
+        """), {"vendor_id": vendor_id, "since": today_ist - timedelta(days=30)}).fetchall()]
+        awaiting_payment_set = set(awaiting_payment_ids)
+
         # Fetch bookings from vendor-specific dashboard table (single query).
         sql_fetch_bookings = text(f"""
             SELECT 
@@ -2902,6 +2934,7 @@ def get_landing_page_vendor(vendor_id):
             LEFT JOIN consoles c ON c.id = b.console_id
             WHERE (b.date BETWEEN :history_from_date AND :history_to_date)
                OR (b.book_status = 'current' AND d.status NOT IN ('completed', 'cancelled', 'canceled', 'no_show', 'discarded'))
+               OR b.book_id = ANY(CAST(:awaiting_payment_ids AS int[]))
             ORDER BY b.date ASC, b.start_time ASC, b.book_id ASC
         """)
         result = db.session.execute(
@@ -2910,6 +2943,7 @@ def get_landing_page_vendor(vendor_id):
                 "vendor_id": vendor_id,
                 "history_from_date": history_from_date,
                 "history_to_date": history_to_date,
+                "awaiting_payment_ids": awaiting_payment_ids,
             },
         ).fetchall()
 
@@ -2982,8 +3016,13 @@ def get_landing_page_vendor(vendor_id):
         managed_by_booking={}
         from app.services.session_extensions import ready as extensions_ready, RuntimeSession, snapshot as extension_snapshot
         if extensions_ready():
+            # Keep a recently ended kiosk run attached: its clock stopped at the PC,
+            # so check out must not price "extra time" from the scheduled end.
+            from sqlalchemy import or_ as _or
             for runtime in RuntimeSession.query.filter_by(vendor_id=vendor_id,source_kind='booking').filter(
-                    RuntimeSession.ended_at.is_(None)).all():
+                    _or(RuntimeSession.ended_at.is_(None),
+                        RuntimeSession.ended_at >= datetime.utcnow() - timedelta(hours=12))
+                    ).order_by(RuntimeSession.started_at.asc()).all():
                 for bid in runtime.booking_ids:
                     managed_by_booking.setdefault(int(bid),{})[str(runtime.console_id)]=extension_snapshot(runtime)
 
@@ -3115,7 +3154,13 @@ def get_landing_page_vendor(vendor_id):
 
             is_terminal = booking_record_status in terminal_booking_statuses
 
-            if is_terminal:
+            if is_terminal and booking_record_status == "completed" and int(row.book_id) in awaiting_payment_set:
+                # Session is over and the PC is free; only the bill is left.
+                slot_data["awaitingPayment"] = True
+                current_slots.append(slot_data)
+                if history_from_date <= row.date <= history_to_date:
+                    history_bookings.append(booking_data)
+            elif is_terminal:
                 history_bookings.append(booking_data)
             elif lifecycle_status == "upcoming":
                 upcoming_bookings.append(booking_data)
