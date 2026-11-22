@@ -59,10 +59,9 @@ def booking_window(vendor_id, booking_id, console_id):
         SELECT d.*, b.squad_details, b.access_code_id, b.status AS booking_status
         FROM {table} d JOIN bookings b ON b.id = d.book_id
         WHERE d.user_id = :uid AND d.game_id = :gid
-          AND b.access_code_id IS NOT DISTINCT FROM :code_id
           AND d.book_status IN ('current', 'completed')
         ORDER BY d.date, d.start_time
-    '''), {'uid': anchor['user_id'], 'gid': anchor['game_id'], 'code_id': anchor['access_code_id']}).mappings().all()
+    '''), {'uid': anchor['user_id'], 'gid': anchor['game_id']}).mappings().all()
     group = [anchor]
     # Extend only a contiguous window actually assigned to this console.
     for row in rows:
@@ -341,6 +340,8 @@ def secure_start(fn=None, *, verify_only=False, phone=False):
                 db.session.rollback()
                 return response
             db.session.flush()
+            # Next slots the gamer already bought run on in this same session.
+            adopt_follow_on_bookings(vendor_id, console_id=console_id)
             window = booking_window(vendor_id, target['id'], console_id)
             if window['status'] != 'active':
                 raise KioskError('session_not_active', 409)
@@ -397,11 +398,12 @@ def heal_console_availability(vendor_id):
                 AND (ps.state='active' OR (ps.state='reserved' AND ps.deadline>timezone('UTC', now()))))""" if has('cafe_play_sessions') else ''
     runtime_guard = """AND NOT EXISTS (SELECT 1 FROM kiosk_runtime_sessions rs
               WHERE rs.vendor_id=:vid AND rs.console_id=ca.console_id AND rs.ended_at IS NULL)""" if has('kiosk_runtime_sessions') else ''
+    maintenance_guard = """AND NOT EXISTS (SELECT 1 FROM maintenance_status ms WHERE ms.console_id=ca.console_id
+              AND lower(COALESCE(ms.available_status, '')) IN ('under maintenance', 'maintenance'))""" if has('maintenance_status') else ''
     rows = db.session.execute(text(f"""
         UPDATE VENDOR_{vendor_id}_CONSOLE_AVAILABILITY ca SET is_available=TRUE
         WHERE ca.is_available=FALSE
-          AND NOT EXISTS (SELECT 1 FROM maintenance_status ms WHERE ms.console_id=ca.console_id
-              AND lower(COALESCE(ms.available_status, '')) IN ('under maintenance', 'maintenance'))
+          {maintenance_guard}
           AND NOT EXISTS (
               SELECT 1 FROM VENDOR_{vendor_id}_DASHBOARD d LEFT JOIN bookings b ON b.id=d.book_id
               WHERE d.book_status='current' AND (d.console_id=ca.console_id OR EXISTS (
@@ -414,6 +416,138 @@ def heal_console_availability(vendor_id):
         RETURNING ca.console_id
     """), {'vid': vendor_id}).scalars().all()
     return sorted(set(int(cid) for cid in rows))
+
+# A gamer who buys the next slot back-to-back keeps playing: the follow-on
+# booking joins the running session (same PC, same code) instead of waiting
+# for a second scan. Pay-at-cafe slots still awaiting acceptance stay out.
+ADOPTABLE_BOOKING_STATUSES = ('confirmed', 'checked_in')
+
+
+def _is_squad(row):
+    details = row.get('squad_details') or {}
+    return bool(details.get('enabled')) and int(details.get('player_count') or 1) > 1
+
+
+def adopt_follow_on_bookings(vendor_id, console_id=None):
+    """Promote each live session's contiguous same-gamer, same-game upcoming
+    bookings onto its PC and stretch the enrolled runtime to cover them.
+    Caller holds vendor_lock and commits. Returns {console_id: [booking ids]}."""
+    vendor_id = positive_id(vendor_id)
+    table = f'VENDOR_{vendor_id}_DASHBOARD'
+    now = datetime.now(timezone.utc)
+    current = db.session.execute(text(f'''
+        SELECT d.book_id, d.user_id, d.game_id, d.console_id, d.date, d.start_time, d.end_time,
+               b.squad_details
+        FROM {table} d JOIN bookings b ON b.id=d.book_id
+        WHERE d.book_status='current' AND d.user_id IS NOT NULL
+          AND b.status NOT IN ('cancelled','canceled','completed')
+    ''')).mappings().all()
+    chains = {}
+    for row in current:
+        consoles = assigned_consoles(row)
+        if len(consoles) != 1 or _is_squad(row):
+            continue  # Squads keep explicit desk starts.
+        cid = next(iter(consoles))
+        if console_id is not None and cid != int(console_id):
+            continue
+        try:
+            _, finish = utc_window(row['date'], row['start_time'], row['end_time'])
+        except KioskError:
+            continue
+        key = (int(row['user_id']), int(row['game_id']), cid)
+        chain = chains.setdefault(key, {'end': finish, 'anchor': int(row['book_id'])})
+        if finish > chain['end']:
+            chain.update(end=finish, anchor=int(row['book_id']))
+    # A session long past its end is stale, not live; never stretch it.
+    chains = {k: v for k, v in chains.items() if v['end'] >= now - timedelta(minutes=30)}
+    if not chains:
+        return {}
+    today = datetime.now(IST).date()
+    upcoming = db.session.execute(text(f'''
+        SELECT d.book_id, d.user_id, d.game_id, d.console_id, d.date, d.start_time, d.end_time,
+               b.squad_details
+        FROM {table} d JOIN bookings b ON b.id=d.book_id
+        WHERE d.book_status='upcoming' AND d.user_id = ANY(:uids)
+          AND d.date BETWEEN :d0 AND :d1 AND b.status IN :statuses
+        ORDER BY d.date, d.start_time, d.book_id
+    ''').bindparams(__import__('sqlalchemy').bindparam('statuses', expanding=True)),
+        {'uids': sorted({k[0] for k in chains}), 'd0': today - timedelta(days=1),
+         'd1': today + timedelta(days=1), 'statuses': list(ADOPTABLE_BOOKING_STATUSES)}).mappings().all()
+    from app.routes import _share_chain_access_code
+    adopted = {}
+    for (uid, gid, cid), chain in chains.items():
+        old_end = chain['end']
+        for row in upcoming:
+            if int(row['user_id']) != uid or int(row['game_id']) != gid or _is_squad(row):
+                continue
+            consoles = assigned_consoles(row)
+            reserved = {int(c) for c in (row.get('squad_details') or {}).get('desk_console_ids', []) or []}
+            if (consoles and consoles != {cid}) or (reserved and reserved != {cid}):
+                continue
+            try:
+                begin, finish = utc_window(row['date'], row['start_time'], row['end_time'])
+            except KioskError:
+                continue
+            if begin != chain['end'] or finish <= now:
+                continue
+            bid = int(row['book_id'])
+            try:
+                with db.session.begin_nested():
+                    _share_chain_access_code([chain['anchor'], bid])
+                    moved = db.session.execute(text(f'''UPDATE {table} SET book_status='current', console_id=:cid
+                        WHERE book_id=:bid AND book_status='upcoming' '''), {'cid': cid, 'bid': bid}).rowcount
+                    if moved != 1:
+                        continue
+                    db.session.execute(text("UPDATE bookings SET status='checked_in' WHERE id=:bid AND status IN :st")
+                        .bindparams(__import__('sqlalchemy').bindparam('st', expanding=True)),
+                        {'bid': bid, 'st': list(ADOPTABLE_BOOKING_STATUSES)})
+                    import json
+                    db.session.execute(text('''UPDATE bookings
+                        SET squad_details = COALESCE(CAST(squad_details AS jsonb), '{}'::jsonb) || CAST(:patch AS jsonb)
+                        WHERE id=:bid'''), {'bid': bid, 'patch': json.dumps({
+                            'assigned_console_ids': [cid], 'assigned_at': datetime.utcnow().isoformat(),
+                            'joined_session_of': chain['anchor']})})
+            except Exception:
+                # Another gamer holds this PC for that slot (console guard): leave it to the desk.
+                current_app.logger.warning('Could not join booking %s to the session on console %s', bid, cid, exc_info=True)
+                continue
+            chain['end'] = finish
+            chain['anchor'] = bid
+            adopted.setdefault(cid, []).append(bid)
+        if cid in adopted:
+            _stretch_runtime(vendor_id, cid, uid, old_end, chain['end'], adopted[cid])
+    if adopted:
+        db.session.execute(text(f'UPDATE VENDOR_{vendor_id}_CONSOLE_AVAILABILITY SET is_available=FALSE WHERE console_id=ANY(:ids)'),
+                           {'ids': sorted(adopted)})
+        current_app.logger.info('Joined back-to-back bookings vendor=%s %s', vendor_id, adopted)
+    return adopted
+
+
+def _stretch_runtime(vendor_id, console_id, user_id, old_end, new_end, booking_ids):
+    """Move the enrolled PC session's paid boundary to the end of the chain, so
+    the kiosk keeps playing (it plays until reserved_until)."""
+    if db.engine.dialect.name != 'postgresql' or not db.session.execute(text("SELECT to_regclass('kiosk_runtime_sessions')")).scalar():
+        return
+    from app.services.session_extensions import RuntimeSession, changed
+    row = RuntimeSession.query.filter_by(vendor_id=vendor_id, console_id=console_id, ended_at=None,
+                                         source_kind='booking', user_id=user_id).populate_existing().with_for_update().first()
+    if not row:
+        return
+    old = old_end.astimezone(timezone.utc).replace(tzinfo=None)
+    new = new_end.astimezone(timezone.utc).replace(tzinfo=None)
+    # A paid extension already runs past the old slot end: that time is bought
+    # twice, so leave it for staff rather than silently overlap billing.
+    if row.reserved_until > old + timedelta(seconds=1) or row.stop_at is not None:
+        current_app.logger.warning('Runtime %s already extended past %s; not stretching to %s', row.id, old, new)
+        return
+    row.paid_until = max(row.paid_until or new, new)
+    row.reserved_until = new
+    row.booking_ids = list(dict.fromkeys([*(row.booking_ids or []), *booking_ids]))
+    if row.status == 'overtime_pending':
+        row.status, row.reason = 'active', None
+    row.notice_boundary = None
+    changed(row)
+
 
 def expire_vendor(vendor_id):
     """Finalize elapsed/cancelled rows even with no connected kiosk."""
@@ -445,8 +579,17 @@ def expire_vendor(vendor_id):
         db.session.execute(text("UPDATE bookings SET status='completed' WHERE id=ANY(:ids) AND status NOT IN ('cancelled','canceled')"), {'ids': expired})
         for cid in candidates - occupied:
             db.session.execute(text(f'UPDATE VENDOR_{vendor_id}_CONSOLE_AVAILABILITY SET is_available=TRUE WHERE console_id=:cid'), {'cid': cid})
+    joined = adopt_follow_on_bookings(vendor_id)
     healed = set(heal_console_availability(vendor_id)) - candidates
     db.session.commit()
+    if joined:
+        from app.routes import _invalidate_vendor_caches
+        from app.services.websocket_service import socketio
+        _invalidate_vendor_caches(vendor_id)
+        for cid, ids in joined.items():
+            # A refresh signal only: the dashboard reloads Live/Upcoming from the snapshot.
+            socketio.emit('booking_queue_updated', {'vendorId': vendor_id, 'console_id': cid, 'booking_ids': ids,
+                                                    'reason': 'joined_session'}, room=f'vendor_{vendor_id}')
     if expired or healed:
         from app.routes import _invalidate_vendor_caches
         from app.services.websocket_service import socketio, _emit_to_kiosk
