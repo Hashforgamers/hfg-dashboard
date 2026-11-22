@@ -37,9 +37,12 @@ def ledger_report(vendor_id,args):
         'Booking settlement: '||COALESCE(t.settlement_status,'unknown'),'booking_record'
         FROM transactions t LEFT JOIN users u ON u.id=t.user_id WHERE t.vendor_id=:vendor"""
     if db.session.execute(text("SELECT to_regclass('kiosk_session_credit_ledger')")).scalar():
-        sql+=""" UNION ALL SELECT 'credit:'||c.id,c.created_at,'credit_'||c.kind,c.amount,NULL,
+        has_basis=db.session.execute(text("SELECT 1 FROM information_schema.columns WHERE table_name='kiosk_session_credit_ledger' AND column_name='credit_basis'")).scalar()
+        # Cafe-policy credit (kiosk auto-extend) is labelled apart from player-consented credit.
+        label="'Session credit '||c.kind||COALESCE(' ('||replace(c.credit_basis,'_',' ')||')','')" if has_basis else "'Session credit '||c.kind"
+        sql+=f""" UNION ALL SELECT 'credit:'||c.id,c.created_at,'credit_'||c.kind,c.amount,NULL,
             'System / linked collection',COALESCE(u.name,'Guest'),r.user_id,r.id,NULL,NULL,
-            'Session credit '||c.kind,'credit_debt' FROM kiosk_session_credit_ledger c
+            {label},'credit_debt' FROM kiosk_session_credit_ledger c
             JOIN kiosk_runtime_sessions r ON r.id=c.runtime_id LEFT JOIN users u ON u.id=r.user_id WHERE r.vendor_id=:vendor"""
     return page_query(sql,p,"occurred_at>=:start AND occurred_at<:end AND (:kind='' OR kind=:kind)")
 

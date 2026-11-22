@@ -55,15 +55,22 @@ def answer(row,status=200):
     result=service.snapshot(row);db.session.commit();service.dispatch()
     return jsonify(result),status
 
+def kiosk_capabilities(vendor_id):
+    # kiosk_auto_extend_v1 is listed only while the owner has opted in, so a
+    # kiosk can tell whether unfunded auto-extend time will be billed as owed.
+    caps=['session_extensions_v1']
+    if service.settings(vendor_id)['kiosk_auto_extend']: caps.append('kiosk_auto_extend_v1')
+    return caps
+
 @bp_extensions.get('/api/kiosk/session')
 def current_session():
     check_ready();link=agent_link()
     row=RuntimeSession.query.filter_by(link_id=link.id,ended_at=None).order_by(RuntimeSession.started_at.desc()).first()
     if not row:
-        return jsonify(session=None,capabilities=['session_extensions_v1'],server_time=service.stamp(service.datetime.utcnow()))
+        return jsonify(session=None,capabilities=kiosk_capabilities(link.vendor_id),server_time=service.stamp(service.datetime.utcnow()))
     service.seen(row)
     result=service.snapshot(row);db.session.commit();service.dispatch()
-    return jsonify(session=result,capabilities=['session_extensions_v1'])
+    return jsonify(session=result,capabilities=kiosk_capabilities(link.vendor_id))
 
 @bp_extensions.post('/api/kiosk/session/extension/quote')
 def extension_quote():
@@ -156,12 +163,16 @@ def update_policy(vendor_id):
     data=body();mode=data.get('self_qr_credit_mode');limit=data.get('credit_limit_paise')
     if mode not in ('automatic','owner_approval'): raise CafeError('Choose automatic or owner_approval')
     if limit is not None: integer(limit,0)
+    auto=data.get('kiosk_auto_extend')
+    if auto is not None and type(auto) is not bool: raise CafeError('kiosk_auto_extend must be boolean')
     from app.services.cafe_wallet_service import wallet, audit
     from app.models.vendor import Vendor
     Vendor.query.filter_by(id=vendor_id).with_for_update().one()
     row=db.session.get(SessionExtensionPolicy,vendor_id)
     if not row: row=SessionExtensionPolicy(vendor_id=vendor_id);db.session.add(row)
     row.credit_mode=mode;row.credit_limit=limit;row.updated_at=service.datetime.utcnow()
+    if auto is not None: row.kiosk_auto_extend=auto
+    elif row.kiosk_auto_extend is None: row.kiosk_auto_extend=False
     audit(vendor_id,actor,'extension.policy_changed',data);db.session.commit()
     return jsonify(service.settings(vendor_id))
 
