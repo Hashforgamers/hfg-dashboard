@@ -74,7 +74,13 @@ def preview(vendor_id, data):
                       recurring_paise=recurring, extra_pc_monthly=float(extra_price))
     if target['pc_limit']>10000: raise ValueError('Total PC capacity cannot exceed 10000')
     if extra and 'kiosk' not in target['entitlements']: raise ValueError('Additional PCs require the kiosk feature')
-    active_links=ConsoleLinkSession.query.filter_by(vendor_id=vendor_id,status='active').count()
+    active_links=None
+    try:
+        # Paired Console Lock TVs do not take PC kiosk seats.
+        from app.services.console_tv import ready as console_tv_ready, count_pc_links
+        if console_tv_ready(): active_links=count_pc_links(vendor_id)
+    except ImportError: pass
+    if active_links is None: active_links=ConsoleLinkSession.query.filter_by(vendor_id=vendor_id,status='active').count()
     if target['pc_limit'] < active_links: raise ValueError('Unlink PCs above the new plan limit before changing plans')
     if active_links and 'kiosk' not in target['entitlements']: raise ValueError('Unlink kiosks before selecting a plan without kiosk access')
     action='new'; charge=recurring; start=now; end=now+relativedelta(months=CYCLES[cycle])
