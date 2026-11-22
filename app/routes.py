@@ -363,6 +363,67 @@ def _group_checkout_transactions(rows):
     return result
 
 
+def _transaction_local_stamp(txn):
+    """Transactions store UTC date/time; Excel history imports store cafe-local time."""
+    if not txn.booking_date:
+        return None
+    moment = datetime.combine(txn.booking_date, txn.booking_time or datetime.min.time())
+    if str(txn.source_channel or "") == "excel_import":
+        return moment
+    return moment.replace(tzinfo=dt_timezone.utc).astimezone(IST).replace(tzinfo=None)
+
+
+# Desk money held in the cafe wallet ledger (top-ups, extra-time and food
+# collections, refunds). Wallet spend is not listed: it was already counted
+# when the money came in as a top-up.
+CAFE_LEDGER_REPORT_KINDS = {
+    "topup": ("wallet_topup", "Wallet top-up"),
+    "session_collection": ("extra_time_collection", "Extra time collected"),
+    "food_collection": ("food_collection", "Food collected"),
+    "refund": ("wallet_refund", "Wallet refund"),
+}
+
+
+def _cafe_wallet_report_rows(vendor_id, from_date, to_date):
+    try:
+        from app.models.cafe_wallet import CafeLedger
+    except ImportError:
+        return []
+    if not db.session.execute(text("SELECT to_regclass('cafe_wallet_ledger')")).scalar():
+        return []
+    start = datetime.combine(from_date, datetime.min.time()).replace(tzinfo=IST).astimezone(dt_timezone.utc).replace(tzinfo=None)
+    end = datetime.combine(to_date + timedelta(days=1), datetime.min.time()).replace(tzinfo=IST).astimezone(dt_timezone.utc).replace(tzinfo=None)
+    entries = (
+        db.session.query(CafeLedger, User.name)
+        .outerjoin(User, User.id == CafeLedger.user_id)
+        .filter(CafeLedger.vendor_id == vendor_id, CafeLedger.kind.in_(list(CAFE_LEDGER_REPORT_KINDS)),
+                CafeLedger.amount != 0, CafeLedger.created_at >= start, CafeLedger.created_at < end)
+        .order_by(CafeLedger.created_at.desc())
+        .all()
+    )
+    rows = []
+    for entry, user_name in entries:
+        local = entry.created_at.replace(tzinfo=dt_timezone.utc).astimezone(IST).replace(tzinfo=None)
+        amount = round(int(entry.amount) / 100.0, 2)
+        booking_type, label = CAFE_LEDGER_REPORT_KINDS[entry.kind]
+        rows.append({
+            "id": f"wallet-{entry.id}", "bookingId": None, "source": "cafe_wallet", "label": label,
+            "slotDate": local.strftime("%Y-%m-%d"), "playDate": local.strftime("%Y-%m-%d"),
+            "slotTime": local.strftime("%I:%M %p"), "_sortStamp": local.strftime("%H:%M:%S"),
+            "userName": user_name or f"Gamer {entry.user_id}", "userId": entry.user_id,
+            "amount": amount, "originalAmount": amount, "discountedAmount": 0.0,
+            "modeOfPayment": entry.method or "cafe_wallet", "paymentUseCase": "cafe_wallet",
+            "bookingType": booking_type, "settlementStatus": "completed",
+            "bookedOn": local.strftime("%Y-%m-%d"), "sourceChannel": "cafe_wallet",
+            "staffId": entry.actor_id, "staffName": entry.actor_name, "staffRole": None,
+            "baseAmount": amount, "mealsAmount": 0.0, "controllerAmount": 0.0, "waiveOffAmount": 0.0,
+            "appFeeAmount": 0.0, "netAmount": amount, "taxableAmount": amount, "gstRate": 0.0,
+            "cgstAmount": 0.0, "sgstAmount": 0.0, "igstAmount": 0.0, "totalWithTax": amount,
+            "reason": entry.reason,
+        })
+    return rows
+
+
 @dashboard_service.route('/transactionReport/<int:vendor_id>/<string:to_date>/<string:from_date>', methods=['GET'])
 def get_transaction_report(to_date, from_date, vendor_id):
     try:
@@ -372,6 +433,8 @@ def get_transaction_report(to_date, from_date, vendor_id):
         else:
             from_date = datetime.strptime(from_date, "%Y%m%d").date()
 
+        # Rows are stamped in UTC; the cafe reads its day in IST. Fetch one
+        # extra UTC day so 00:00-05:30 IST payments land on the right date.
         rows = (
             db.session.query(Transaction, User.name.label("user_name"), Booking.access_code_id, Booking.game_id)
             .select_from(Transaction)
@@ -379,7 +442,7 @@ def get_transaction_report(to_date, from_date, vendor_id):
             .outerjoin(User, User.id == Transaction.user_id)
             .filter(
                 Transaction.vendor_id == vendor_id,
-                Transaction.booking_date.between(from_date, to_date),
+                Transaction.booking_date.between(from_date - timedelta(days=1), to_date),
             )
             .order_by(
                 Transaction.booking_date.desc(),
@@ -391,6 +454,9 @@ def get_transaction_report(to_date, from_date, vendor_id):
 
         result = []
         for txn, user_name, checkout_id, game_id in rows:
+            local_stamp = _transaction_local_stamp(txn)
+            if local_stamp is not None and not (from_date <= local_stamp.date() <= to_date):
+                continue
             base_amount = float(txn.base_amount or 0)
             meals_amount = float(txn.meals_amount or 0)
             controller_amount = float(txn.controller_amount or 0)
@@ -427,9 +493,10 @@ def get_transaction_report(to_date, from_date, vendor_id):
             result.append(({
                 "id": txn.id,
                 "bookingId": txn.booking_id,
-                "slotDate": txn.booking_date.strftime("%Y-%m-%d") if txn.booking_date else None,
+                "slotDate": local_stamp.strftime("%Y-%m-%d") if local_stamp else None,
                 "playDate": txn.booked_date.strftime("%Y-%m-%d") if txn.booked_date else None,
-                "slotTime": txn.booking_time.strftime("%I:%M %p") if txn.booking_time else None,
+                "slotTime": local_stamp.strftime("%I:%M %p") if local_stamp else None,
+                "_sortStamp": local_stamp.strftime("%H:%M:%S") if local_stamp else "",
                 "userName": user_name or txn.user_name,
                 "amount": txn.amount,
                 "originalAmount": txn.original_amount,
@@ -439,7 +506,7 @@ def get_transaction_report(to_date, from_date, vendor_id):
                 "bookingType": txn.booking_type,
                 "settlementStatus": txn.settlement_status,
                 "userId": txn.user_id,
-                "bookedOn": txn.booking_date,
+                "bookedOn": local_stamp.strftime("%Y-%m-%d") if local_stamp else None,
                 "sourceChannel": txn.source_channel,
                 "staffId": txn.initiated_by_staff_id,
                 "staffName": txn.initiated_by_staff_name,
@@ -458,7 +525,11 @@ def get_transaction_report(to_date, from_date, vendor_id):
                 "totalWithTax": total_with_tax,
             }, checkout_id, game_id))
 
-        return jsonify(_group_checkout_transactions(result)), 200
+        report = _group_checkout_transactions(result) + _cafe_wallet_report_rows(vendor_id, from_date, to_date)
+        report.sort(key=lambda row: (row.get("slotDate") or "", row.get("_sortStamp") or ""), reverse=True)
+        for row in report:
+            row.pop("_sortStamp", None)
+        return jsonify(report), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
