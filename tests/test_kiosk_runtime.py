@@ -95,6 +95,7 @@ class KioskTests(unittest.TestCase):
         self.calls = 0
         fake_routes = ModuleType('app.routes')
         fake_routes._invalidate_vendor_caches = Mock()
+        fake_routes._share_chain_access_code = Mock()
         fake_ws = ModuleType('app.services.websocket_service')
         fake_ws._emit_to_kiosk = Mock()
         fake_ws.socketio = Mock()
@@ -113,6 +114,7 @@ class KioskTests(unittest.TestCase):
             'app.services.session_extensions':fake_extensions})
         self.modules.start()
         self.ws = fake_ws
+        self.extensions = fake_extensions
         @self.app.errorhandler(security['KioskError'])
         def error(exc):
             db.session.rollback()
@@ -256,12 +258,12 @@ class KioskTests(unittest.TestCase):
             models[name] = model
         tree = ast.parse((ROOT/'app/routes.py').read_text())
         tree.body = [n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name in
-                     ('_booking_start_eligibility','_assign_console_to_multiple_bookings_core','kiosk_start_session')]
+                     ('_booking_start_eligibility','_assign_console_to_multiple_bookings_core','kiosk_start_session','_share_chain_access_code')]
         for fn in tree.body: fn.decorator_list=[]
         scope = dict(db=db,text=text,request=request,jsonify=jsonify,current_app=current_app,g=g,
                      datetime=datetime,date=date,timedelta=timedelta,IST=ZoneInfo('Asia/Kolkata'),dt_timezone=timezone,
                      _resolve_console_group_from_name=lambda *a,**k:'pc',_invalidate_vendor_caches=Mock(),
-                     KIOSK_GRACE_MIN=0,_emit_to_kiosk=Mock(),**models)
+                     KIOSK_GRACE_MIN=0,_emit_to_kiosk=Mock(),_ACCESS_CODE_ALPHABET='ABCDEFGHJKLMNPQRSTUVWXYZ23456789',**models)
         exec(compile(tree,'<production kiosk start>','exec'),scope)
         with self.app.test_request_context('/start',method='POST',json={'console_id':10,'access_code':'123456'},
                                           headers={'Authorization':'Bearer link-a'}):
@@ -386,6 +388,81 @@ class KioskTests(unittest.TestCase):
         self.assertEqual(runtime['expire_vendor'](1),0)
         self.assertFalse(db.session.execute(text('SELECT is_available FROM vendor_1_console_availability WHERE console_id=10')).scalar_one())
         self.assertEqual(runtime['booking_window'](1,5,10)['status'],'active')
+
+    def _follow_on(self, bid, status='confirmed', user=77, console=-1, start=None, minutes=30):
+        start = start or self.end
+        end = start + timedelta(minutes=minutes)
+        db.session.execute(text("INSERT INTO bookings(id,game_id,access_code_id,status,squad_details,user_id) VALUES(:b,100,NULL,:s,'{}',:u)"),
+                           {'b': bid, 's': status, 'u': user})
+        db.session.execute(text("INSERT INTO vendor_1_dashboard VALUES(:b,:u,'Player',100,:c,:day,:start,:end,'upcoming')"),
+                           {'b': bid, 'u': user, 'c': console, 'day': start.date(), 'start': start.time(), 'end': end.time()})
+        db.session.commit()
+        return end
+
+    def test_next_slot_bought_later_joins_running_session(self):
+        end = self._follow_on(6)
+        runtime['expire_vendor'](1)
+        row = db.session.execute(text("SELECT d.book_status, d.console_id, b.status, b.squad_details FROM vendor_1_dashboard d JOIN bookings b ON b.id=d.book_id WHERE d.book_id=6")).one()
+        self.assertEqual((row.book_status, row.console_id, row.status), ('current', 10, 'checked_in'))
+        self.assertEqual(row.squad_details['assigned_console_ids'], [10])
+        window = runtime['booking_window'](1, 5, 10)
+        self.assertEqual(window['booking_ids'], [5, 6])
+        _, expected_end = runtime['utc_window'](end.date(), self.end.time(), end.time())
+        self.assertEqual(window['end_time'], expected_end.isoformat())
+        self.assertGreater(window['seconds_remaining'], 2900)
+
+    def test_chain_of_follow_ons_and_restart_is_idempotent(self):
+        mid = self._follow_on(6)
+        self._follow_on(7, start=mid)
+        runtime['expire_vendor'](1)
+        runtime['expire_vendor'](1)
+        self.assertEqual(runtime['booking_window'](1, 5, 10)['booking_ids'], [5, 6, 7])
+
+    def test_follow_on_not_joined_when_unaccepted_elsewhere_or_other_gamer(self):
+        db.session.execute(text("INSERT INTO users VALUES(78,'Other')"))
+        db.session.commit()
+        self._follow_on(6, status='pending_acceptance')
+        self._follow_on(7, console=11)
+        self._follow_on(8, user=78)
+        self._follow_on(9, start=self.end + timedelta(minutes=5))  # gap: a new visit
+        runtime['expire_vendor'](1)
+        states = dict(db.session.execute(text("SELECT book_id, book_status FROM vendor_1_dashboard WHERE book_id>5")).all())
+        self.assertEqual(states, {6: 'upcoming', 7: 'upcoming', 8: 'upcoming', 9: 'upcoming'})
+        self.assertEqual(runtime['booking_window'](1, 5, 10)['booking_ids'], [5])
+
+    def test_stale_session_is_not_stretched(self):
+        old = self.start - timedelta(hours=3)
+        db.session.execute(text("UPDATE vendor_1_dashboard SET date=:d,start_time=:s,end_time=:e WHERE book_id=5"),
+                           {'d': old.date(), 's': old.time(), 'e': (old + timedelta(minutes=30)).time()})
+        db.session.commit()
+        self._follow_on(6, start=old + timedelta(minutes=30), minutes=240)
+        runtime['expire_vendor'](1)
+        self.assertEqual(db.session.execute(text("SELECT book_status FROM vendor_1_dashboard WHERE book_id=6")).scalar(), 'upcoming')
+
+    def test_follow_on_stretches_enrolled_pc_session(self):
+        from types import SimpleNamespace
+        end = self._follow_on(6)
+        db.session.execute(text('CREATE TABLE kiosk_runtime_sessions(id text, vendor_id integer, console_id integer, ended_at timestamp)'))
+        db.session.commit()
+        _, old_end = runtime['utc_window'](self.start.date(), self.start.time(), self.end.time())
+        naive = old_end.astimezone(timezone.utc).replace(tzinfo=None)
+        managed = SimpleNamespace(id='r1', paid_until=naive, reserved_until=naive, booking_ids=[5], stop_at=None,
+                                  status='overtime_pending', reason='staff_resolution_required', notice_boundary=naive)
+        query = Mock()
+        query.filter_by.return_value.populate_existing.return_value.with_for_update.return_value.first.return_value = managed
+        self.extensions.RuntimeSession = SimpleNamespace(query=query)
+        self.extensions.changed = Mock()
+        runtime['expire_vendor'](1)
+        _, expected = runtime['utc_window'](end.date(), self.end.time(), end.time())
+        expected = expected.astimezone(timezone.utc).replace(tzinfo=None)
+        self.assertEqual((managed.reserved_until, managed.paid_until, managed.booking_ids), (expected, expected, [5, 6]))
+        self.assertEqual((managed.status, managed.reason, managed.notice_boundary), ('active', None, None))
+        self.extensions.changed.assert_called_once_with(managed)
+        # A paid auto-continue already past the slot end is never overlapped.
+        managed.reserved_until = expected + timedelta(minutes=30)
+        self.extensions.changed.reset_mock()
+        runtime['_stretch_runtime'](1, 10, 77, expected, expected + timedelta(minutes=30), [7])
+        self.extensions.changed.assert_not_called()
 
     def test_link_token_and_scope(self):
         with self.app.test_request_context(headers={'Authorization':'Bearer link-a'}):

@@ -1862,8 +1862,16 @@ def _assign_console_to_multiple_bookings_core(console_id, additional_console_ids
                 first = rows[0]
                 first_allowed, _ = _booking_start_eligibility(first["date"], first["start_time"], first["end_time"])
                 same_user = len({int(r["row"].user_id) for r in rows if r["row"].user_id is not None}) == 1
-                same_day = len({r["date"] for r in rows}) == 1
-                if first_allowed and same_user and same_day:
+
+                def _span(r):
+                    begin = datetime.combine(r["date"], r["start_time"])
+                    finish = datetime.combine(r["date"], r["end_time"])
+                    return begin, finish + timedelta(days=1) if finish <= begin else finish
+
+                # Back-to-back slots form one session, also past midnight.
+                spans = [_span(r) for r in rows]
+                back_to_back = all(spans[i][0] <= spans[i - 1][1] for i in range(1, len(spans)))
+                if first_allowed and same_user and back_to_back:
                     not_eligible = []
         except Exception:
             pass
