@@ -374,6 +374,47 @@ def secure_start(fn=None, *, verify_only=False, phone=False):
     return wrapped
 
 
+def heal_console_availability(vendor_id):
+    """Free PCs whose busy flag outlived every session that could own them.
+
+    Several end paths (app cancellation, canonical-status sync on the landing
+    page, kiosk/QR reconcilers) close the booking without touching
+    CONSOLE_AVAILABILITY, which left stations "Occupied" with no session.
+    A console stays busy only while something live owns it: a current
+    dashboard booking (direct or squad-assigned), an active/reserved QR play
+    session, an open kiosk runtime session, or maintenance.
+    Caller holds vendor_lock and owns the transaction.
+    """
+    vendor_id = positive_id(vendor_id)
+    if db.engine.dialect.name != 'postgresql':
+        return []
+
+    def has(table):
+        return bool(db.session.execute(text('SELECT to_regclass(:t)'), {'t': table}).scalar())
+
+    qr_guard = """AND NOT EXISTS (SELECT 1 FROM cafe_play_sessions ps
+              WHERE ps.vendor_id=:vid AND ps.console_id=ca.console_id
+                AND (ps.state='active' OR (ps.state='reserved' AND ps.deadline>timezone('UTC', now()))))""" if has('cafe_play_sessions') else ''
+    runtime_guard = """AND NOT EXISTS (SELECT 1 FROM kiosk_runtime_sessions rs
+              WHERE rs.vendor_id=:vid AND rs.console_id=ca.console_id AND rs.ended_at IS NULL)""" if has('kiosk_runtime_sessions') else ''
+    rows = db.session.execute(text(f"""
+        UPDATE VENDOR_{vendor_id}_CONSOLE_AVAILABILITY ca SET is_available=TRUE
+        WHERE ca.is_available=FALSE
+          AND NOT EXISTS (SELECT 1 FROM maintenance_status ms WHERE ms.console_id=ca.console_id
+              AND lower(COALESCE(ms.available_status, '')) IN ('under maintenance', 'maintenance'))
+          AND NOT EXISTS (
+              SELECT 1 FROM VENDOR_{vendor_id}_DASHBOARD d LEFT JOIN bookings b ON b.id=d.book_id
+              WHERE d.book_status='current' AND (d.console_id=ca.console_id OR EXISTS (
+                  SELECT 1 FROM jsonb_array_elements_text(CASE
+                      WHEN jsonb_typeof(b.squad_details::jsonb->'assigned_console_ids')='array'
+                      THEN b.squad_details::jsonb->'assigned_console_ids' ELSE '[]'::jsonb END) a(cid)
+                  WHERE a.cid ~ '^[0-9]+$' AND a.cid::int=ca.console_id)))
+          {qr_guard}
+          {runtime_guard}
+        RETURNING ca.console_id
+    """), {'vid': vendor_id}).scalars().all()
+    return sorted(set(int(cid) for cid in rows))
+
 def expire_vendor(vendor_id):
     """Finalize elapsed/cancelled rows even with no connected kiosk."""
     vendor_id = positive_id(vendor_id)
@@ -404,13 +445,17 @@ def expire_vendor(vendor_id):
         db.session.execute(text("UPDATE bookings SET status='completed' WHERE id=ANY(:ids) AND status NOT IN ('cancelled','canceled')"), {'ids': expired})
         for cid in candidates - occupied:
             db.session.execute(text(f'UPDATE VENDOR_{vendor_id}_CONSOLE_AVAILABILITY SET is_available=TRUE WHERE console_id=:cid'), {'cid': cid})
+    healed = set(heal_console_availability(vendor_id)) - candidates
     db.session.commit()
-    if expired:
+    if expired or healed:
         from app.routes import _invalidate_vendor_caches
         from app.services.websocket_service import socketio, _emit_to_kiosk
         _invalidate_vendor_caches(vendor_id)
         for cid in candidates - occupied:
             _emit_to_kiosk(cid, 'session_expired', {'console_id': cid})
+            socketio.emit('console_availability', {'vendorId': vendor_id, 'console_id': cid, 'is_available': True}, room=f'vendor_{vendor_id}')
+        for cid in sorted(healed):
+            current_app.logger.warning('Freed stale busy flag vendor=%s console=%s', vendor_id, cid)
             socketio.emit('console_availability', {'vendorId': vendor_id, 'console_id': cid, 'is_available': True}, room=f'vendor_{vendor_id}')
     return len(expired)
 
