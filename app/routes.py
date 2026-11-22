@@ -1734,6 +1734,51 @@ def update_console_status(gameid, console_id, booking_id, vendor_id):
         current_app.logger.error("Failed update_console_status | error=%s", str(e))
         return jsonify({"error": str(e)}), 500
 
+_ACCESS_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+
+def _share_chain_access_code(booking_ids):
+    """Give back-to-back bookings of one gamer the same access code.
+
+    The console guard (cafe_guard_assignment) lets one PC hold several
+    'current' bookings only when they share an access code. A pay-at-cafe
+    slot booked or accepted separately has none, so starting 2:00 + 2:30
+    from the ticket failed with "Console already has a booking during this
+    interval". Bookings that already carry a different code are left alone.
+    """
+    import secrets
+    ids = sorted({int(b) for b in booking_ids or []})
+    if len(ids) < 2:
+        return None
+    rows = db.session.execute(text("""
+        SELECT id, user_id, game_id, access_code_id FROM bookings
+        WHERE id = ANY(:ids) ORDER BY id FOR UPDATE
+    """), {"ids": ids}).fetchall()
+    if len(rows) < 2 or len({(r.user_id, r.game_id) for r in rows}) != 1:
+        return None
+    missing = [int(r.id) for r in rows if r.access_code_id is None]
+    if not missing:
+        return None
+    code_id = next((int(r.access_code_id) for r in rows if r.access_code_id is not None), None)
+    for _ in range(5):
+        if code_id is not None:
+            break
+        code = "".join(secrets.choice(_ACCESS_CODE_ALPHABET) for _ in range(6))
+        try:
+            with db.session.begin_nested():
+                code_id = db.session.execute(text("""
+                    INSERT INTO access_booking_codes (access_code, created_at)
+                    VALUES (:code, timezone('UTC', now())) RETURNING id
+                """), {"code": code}).scalar()
+        except Exception:
+            code_id = None  # code collision; try another
+    if code_id is None:
+        return None
+    db.session.execute(text("UPDATE bookings SET access_code_id = :cid WHERE id = ANY(:ids)"),
+                       {"cid": code_id, "ids": missing})
+    return code_id
+
+
 def _assign_console_to_multiple_bookings_core(console_id, additional_console_ids, game_id, booking_ids, vendor_id):
     # Dynamic table names
     console_table_name = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
@@ -1906,6 +1951,7 @@ def _assign_console_to_multiple_bookings_core(console_id, additional_console_ids
             "console_id": selected_console_id,
         })
 
+    _share_chain_access_code(booking_ids)
     # ✅ Update multiple bookings to status 'current' and assign the console
     sql_update_bookings = text(f"""
         UPDATE {booking_table_name}
@@ -2281,6 +2327,7 @@ def kiosk_start_session():
                 current_app.logger.exception("Failed emitting current_slot from kiosk_start_session")
 
         if any(str(r.book_status).lower() == "current" for r in chosen_group):
+            _share_chain_access_code([int(r.book_id) for r in chosen_group])
             # If part of the same contiguous group has crossed its own start_time,
             # promote it to current so continuation stays consistent everywhere.
             promoted_ids = []
