@@ -7,6 +7,13 @@ from app.models.console import Console
 from .subscription_service import get_vendor_pc_limit
 
 def count_active_links(vendor_id):
+    """PC kiosk licences in use. Paired Console Lock TVs do not take PC seats."""
+    try:
+        from app.services.console_tv import ready, count_pc_links
+        if ready():
+            return count_pc_links(vendor_id)
+    except ImportError:
+        pass
     return db.session.query(func.count(ConsoleLinkSession.id)).filter_by(
         vendor_id=vendor_id, status='active'
     ).scalar()

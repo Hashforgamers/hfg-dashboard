@@ -41,6 +41,8 @@ def get_pcs(vendor_id):
                 .all()
             }
             active = len(active_console_ids)
+            from app.services.link_service import count_active_links
+            active = count_active_links(vendor_id)  # PC seats only; TVs excluded
         except SQLAlchemyError:
             current_app.logger.exception(
                 "Active link lookup failed for vendor_id=%s, using zero links", vendor_id

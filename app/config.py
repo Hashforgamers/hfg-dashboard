@@ -7,6 +7,12 @@ class Config:
     DEBUG = os.getenv("FLASK_DEBUG", "false").lower() == "true"
     CAFE_CHECKOUT_URL = os.getenv("CAFE_CHECKOUT_URL", "")
     CAFE_RECONCILER_ENABLED = os.getenv("CAFE_RECONCILER_ENABLED", "true").lower() == "true"
+    # Hash Console Lock (Smart TV). All optional; defaults shown.
+    CONSOLE_TV_PAIRING_TTL_SECONDS = int(os.getenv("CONSOLE_TV_PAIRING_TTL_SECONDS", "300"))
+    CONSOLE_TV_CLAIM_WINDOW_SECONDS = int(os.getenv("CONSOLE_TV_CLAIM_WINDOW_SECONDS", "120"))
+    CONSOLE_TV_COMMAND_TTL_SECONDS = int(os.getenv("CONSOLE_TV_COMMAND_TTL_SECONDS", "60"))
+    CONSOLE_TV_HEARTBEAT_SECONDS = int(os.getenv("CONSOLE_TV_HEARTBEAT_SECONDS", "15"))
+    CONSOLE_TV_OFFLINE_AFTER_SECONDS = int(os.getenv("CONSOLE_TV_OFFLINE_AFTER_SECONDS", "45"))
     MAIL_SERVER = os.getenv('MAIL_SERVER', '')
     MAIL_PORT = int(os.getenv('MAIL_PORT', '587'))
     MAIL_USE_TLS = os.getenv('MAIL_USE_TLS', 'true').lower() == 'true'

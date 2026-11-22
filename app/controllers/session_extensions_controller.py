@@ -62,9 +62,28 @@ def kiosk_capabilities(vendor_id):
     if service.settings(vendor_id)['kiosk_auto_extend']: caps.append('kiosk_auto_extend_v1')
     return caps
 
+def console_tv_link(link):
+    """The paired TV's link row when this bearer is a CONSOLE_TV; PC kiosks get None."""
+    try: from app.services import console_tv
+    except ImportError: return None
+    if not console_tv.ready() or console_tv.device_type_of(link.id)!=console_tv.CONSOLE_TV: return None
+    return console_tv.link_by_id(link.id)
+
 @bp_extensions.get('/api/kiosk/session')
 def current_session():
     check_ready();link=agent_link()
+    tv_link=console_tv_link(link)
+    if tv_link:
+        # Additive for TVs only: enrol a running booking, then add the timer contract.
+        from app.services import console_tv
+        console_tv.ensure_runtime(tv_link)
+        capabilities=kiosk_capabilities(link.vendor_id)+['console_tv_v1']
+        row=RuntimeSession.query.filter_by(link_id=link.id,ended_at=None).order_by(RuntimeSession.started_at.desc()).first()
+        if row: service.seen(row)
+        result=service.snapshot(row) if row else None;db.session.commit();service.dispatch()
+        state=console_tv.device_state(console_tv.link_by_id(link.id))
+        return jsonify(session=result,capabilities=capabilities,server_time=service.stamp(service.datetime.utcnow()),
+            timer=state['session'],display=state['display'],station=state['station'],pending_commands=state['pendingCommands'])
     row=RuntimeSession.query.filter_by(link_id=link.id,ended_at=None).order_by(RuntimeSession.started_at.desc()).first()
     if not row:
         return jsonify(session=None,capabilities=kiosk_capabilities(link.vendor_id),server_time=service.stamp(service.datetime.utcnow()))

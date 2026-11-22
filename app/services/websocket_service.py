@@ -236,6 +236,26 @@ def _emit_to_kiosk(kiosk_id: int, event: str, data: Dict[str, Any]):
             socketio.emit(event, data, room=f"kiosk_link_{row.id}")
     except Exception:
         _log_err("Kiosk emit failed console=%s", kiosk_id)
+    # A paired Console Lock TV receives the same decision via its own contract.
+    try:
+        from app.services.console_tv import on_legacy_kiosk_event
+        on_legacy_kiosk_event(kiosk_id, event, data)
+    except Exception:
+        _log_err("Console TV bridge failed console=%s", kiosk_id)
+
+
+def _console_tv_call(fn):
+    try:
+        from app.services import console_tv
+        link = console_tv.link_for_identity(_socket_identity())
+        return dict(fn(link, console_tv), ok=True)
+    except KioskError as exc:
+        db.session.rollback()
+        return {"ok": False, "code": exc.error_code}
+    except Exception:
+        db.session.rollback()
+        _log_err("Console TV socket event failed")
+        return {"ok": False, "code": "internal_error"}
 
 
 def _socket_identity():
@@ -631,7 +651,18 @@ def register_dashboard_events():
                 claimed = auth.get("console_id")
                 if claimed is not None and int(claimed) != identity["console_id"]:
                     return False
-                join_room(f"kiosk_link_{identity['id']}")
+                tv_device = False
+                try:
+                    from app.services.console_tv import device_type_of
+                    tv_device = device_type_of(identity["id"]) == "CONSOLE_TV"
+                except Exception:
+                    db.session.rollback()
+                if tv_device:
+                    # Console Lock TVs get only the versioned device contract.
+                    identity["device_type"] = "CONSOLE_TV"
+                    join_room(f"device_{identity['id']}")
+                else:
+                    join_room(f"kiosk_link_{identity['id']}")
             else:
                 identity = vendor_identity(auth.get("token"), permission="dashboard.view")
                 session["socket_token"] = auth.get("token")
@@ -640,8 +671,29 @@ def register_dashboard_events():
             return False
 
     @socketio.on("disconnect")
-    def _on_disconnect():
+    def _on_disconnect(reason=None):
         _log_info("Dashboard client disconnected")
+        identity = session.get("socket_identity") or {}
+        if identity.get("device_type") == "CONSOLE_TV":
+            from app.services.console_tv import record_disconnect
+            record_disconnect(identity)
+
+    # Console Lock TV -> server. Each handler re-validates the link and
+    # returns an acknowledgement payload (Socket.IO callback).
+    @socketio.on("device.heartbeat")
+    def _on_device_heartbeat(data=None):
+        return _console_tv_call(lambda link, tv: tv.heartbeat(link, data if isinstance(data, dict) else {}))
+
+    @socketio.on("device.control.result")
+    def _on_device_control_result(data=None):
+        def record(link, tv):
+            result, follow_up = tv.record_result(link, data if isinstance(data, dict) else {})
+            db.session.commit()
+            if follow_up:
+                tv.publish([(link, [(c["type"], c) for c in follow_up])])
+            tv.notify_vendor(link, "command_result")
+            return dict(result, followUpCommands=follow_up)
+        return _console_tv_call(record)
 
     # Local health check for dashboard clients
     @socketio.on("ping_health")
@@ -706,7 +758,10 @@ def register_dashboard_events():
             claimed = data.get("console_id", data.get("kiosk_id"))
             if claimed is not None and int(claimed) != identity["console_id"]:
                 raise KioskError("console_mismatch", 403)
-            join_room(f"kiosk_link_{identity['id']}")
+            if identity.get("device_type") == "CONSOLE_TV":
+                join_room(f"device_{identity['id']}")
+            else:
+                join_room(f"kiosk_link_{identity['id']}")
         except (KioskError, ValueError, TypeError):
             disconnect()
 

@@ -182,6 +182,8 @@ def create_app():
     from app.controllers.kiosk_controller import bp_kiosk, install_kiosk_errors
     app.register_blueprint(bp_kiosk)
     install_kiosk_errors(app)
+    from app.controllers.console_tv_controller import bp_console_tv
+    app.register_blueprint(bp_console_tv)
     from app.controllers.session_extensions_controller import bp_extensions
     app.register_blueprint(bp_extensions)
     from app.services.session_realtime import register_gamer_realtime

@@ -439,6 +439,9 @@ def tick():
     for rid in ids:
         try:
             row=lock_row(rid);now=datetime.utcnow()
+            if _console_tv_stop_due(row,now):
+                # Console TV stations stop at the authorized end (no metered overtime).
+                finish(row,row.reserved_until);db.session.commit();continue
             previous_charge=sum(p.charged for p in segments(row));previous_sequence=row.event_sequence
             meter_overrun(row,now)
             accrue(row,now)
@@ -533,9 +536,37 @@ def dispatch():
                 socketio.emit('slots.updated',{'vendor_id':row.vendor_id,'event_id':event.id,'server_time':payload['server_time']},room=f'public-cafe:{row.vendor_id}',namespace='/cafe-availability')
                 socketio.emit('booking_slots_updated',{'vendor_id':row.vendor_id,'console_id':row.console_id},room=f'vendor_{row.vendor_id}')
                 socketio.emit('console_availability',{'vendor_id':row.vendor_id,'console_id':row.console_id,'is_available':row.ended_at is not None},room=f'vendor_{row.vendor_id}')
+            tv_emits=_console_tv_events(row,event)
             event.published_at=datetime.utcnow();db.session.commit()
+            if tv_emits:_console_tv_publish(tv_emits)
         except Exception:
             db.session.rollback();current_app.logger.exception('Extension event dispatch failed event=%s',eid)
+
+
+def _console_tv_stop_due(row,now):
+    """PC kiosk rows always return False; TV rows end at reserved_until."""
+    try:
+        from app.services.console_tv import expiry_due
+        with db.session.begin_nested(): return expiry_due(row,now)
+    except Exception:
+        current_app.logger.exception('Console TV expiry check failed runtime=%s',row.id);return False
+
+
+def _console_tv_events(row,event):
+    """Versioned session/command events for a paired TV; never affects PC delivery."""
+    try:
+        from app.services.console_tv import on_runtime_event
+        with db.session.begin_nested(): return on_runtime_event(row,event)
+    except Exception:
+        current_app.logger.exception('Console TV event failed event=%s',event.id);return []
+
+
+def _console_tv_publish(emits):
+    try:
+        from app.services.console_tv import publish
+        publish(emits)
+    except Exception:
+        current_app.logger.exception('Console TV publish failed')
 
 
 def stop(row,body):
