@@ -292,27 +292,75 @@ def accrue(row,now=None,close=False):
     row.billed_at=now
     db.session.flush()
 
+# A kiosk that stops reporting is no longer playing: overtime stops this long after its last heartbeat.
+OFFLINE_GRACE=timedelta(minutes=5)
+
+def console_slot_rate(vendor_id,console_id):
+    """(price_paise, slot_seconds) from the console's pricing record and its configured slot length."""
+    from app.services.pricing_math import money, slot_window
+    from app.services.cafe_slot_reservations import _time
+    game=db.session.execute(text('''SELECT ag.id,ag.single_slot_price FROM available_games ag
+        JOIN available_game_console ac ON ac.available_game_id=ag.id
+        WHERE ac.console_id=:cid AND ag.vendor_id=:vid ORDER BY ag.id'''),{'cid':console_id,'vid':vendor_id}).first()
+    if not game or game.single_slot_price is None:return None
+    lengths={}
+    for item in db.session.execute(text('SELECT start_time,end_time FROM slots WHERE gaming_type_id=:gid'),{'gid':game.id}).all():
+        left,right=slot_window(datetime(2000,1,1).date(),_time(item.start_time),_time(item.end_time))
+        span=int((right-left).total_seconds())
+        if 0<span<=720*60:lengths[span]=lengths.get(span,0)+1
+    # The most common configured slot length is "one slot"; an hour when none is configured.
+    slot_seconds=max(lengths,key=lambda span:(lengths[span],-span)) if lengths else 3600
+    return int(money(game.single_slot_price)*100),slot_seconds
+
+def overtime_amount(row,start,end):
+    """Price play from start to end: the schedule-aware pricer first, the console's per-slot rate as fallback."""
+    from app.services.cafe_session_pricing import session_prices
+    seconds=max(1,math.ceil((end-start).total_seconds()));minutes=(seconds+59)//60
+    if minutes<=720:
+        local,_=local_window(start,start)
+        try:
+            prices=session_prices(SimpleNamespace(vendor_id=row.vendor_id,console_id=row.console_id),[{'minutes':minutes}],
+                now=local,check_capacity=False,startup_buffer_seconds=0,check_console=False,allow_short_duration=True)
+            if prices and prices[0]['amount'] is not None:
+                return (prices[0]['amount']*seconds+minutes*60-1)//(minutes*60)
+        except (ValueError,CafeError):
+            pass
+    # Long overtime or play past the configured schedule: no slot grid covers it, so
+    # bill the console's base per-slot rate, prorated to the second.
+    try:rate=console_slot_rate(row.vendor_id,row.console_id)
+    except ValueError:rate=None
+    if not rate:raise CafeError('Overtime pricing unavailable; staff must reconcile before settlement',409)
+    price,slot_seconds=rate
+    return (price*seconds+slot_seconds-1)//slot_seconds
+
 def meter_overrun(row,now):
     """Record actual play beyond a reservation without granting a conflicting slot."""
     if row.ended_at or row.stop_at or now<=row.reserved_until:return
+    if row.last_seen_at:now=min(now,row.last_seen_at+OFFLINE_GRACE)
     parts=segments(row)
     previous=next((p for p in reversed(parts) if p.is_overrun and not p.closed),None)
     start=previous.starts_at if previous else max([row.reserved_until]+[p.ends_at for p in parts])
     if now<=start:return
-    from app.services.cafe_session_pricing import session_prices
-    local,_=local_window(start,start)
-    seconds=max(1,math.ceil((now-start).total_seconds()));minutes=(seconds+59)//60
-    prices=session_prices(db.session.get(ConsoleLinkSession,row.link_id),[{'minutes':minutes}],
-        now=local,check_capacity=False,startup_buffer_seconds=0,check_console=False,allow_short_duration=True)
-    if not prices or prices[0]['amount'] is None:
-        raise CafeError('Overtime pricing unavailable; staff must reconcile before settlement',409)
-    amount=(prices[0]['amount']*seconds+minutes*60-1)//(minutes*60)
+    amount=overtime_amount(row,start,now)
     if previous:
-        previous.ends_at=now;previous.amount=max(previous.amount,amount)
+        previous.ends_at=max(previous.ends_at,now);previous.amount=max(previous.amount,amount)
     else:
         db.session.add(ExtensionSegment(id=uid(),runtime_id=row.id,starts_at=start,ends_at=now,amount=amount,
             funding=0,captured=0,charged=0,credit_due=0,credit_paid=0,closed=False,is_overrun=True))
     db.session.flush()
+
+def reprice_ended(row):
+    """Finish pricing a session that ended while overtime pricing was unavailable."""
+    if not row.ended_at:raise CafeError('End play before final pricing reconciliation',409)
+    ended,stop=row.ended_at,row.stop_at
+    try:
+        row.ended_at=None;row.stop_at=None
+        meter_overrun(row,ended);accrue(row,ended,close=True)
+    finally:
+        row.ended_at=ended;row.stop_at=stop
+    row.reason=None
+    row.status='ended_unsettled' if snapshot(row)['billing']['amount_due_paise']>0 else 'settled'
+    changed(row)
 
 def finish(row,at=None):
     if row.ended_at: return row
@@ -445,6 +493,7 @@ def tick():
             previous_charge=sum(p.charged for p in segments(row));previous_sequence=row.event_sequence
             meter_overrun(row,now)
             accrue(row,now)
+            if row.reason=='billing_unavailable':row.reason=None
             link=db.session.get(ConsoleLinkSession,row.link_id)
             if not link or link.status!='active':
                 finish(row,now);db.session.commit();continue

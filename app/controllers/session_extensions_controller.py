@@ -157,16 +157,7 @@ def settlement(vendor_id,runtime_id):
 @jwt_required()
 def reconcile_final_pricing(vendor_id,runtime_id):
     check_ready();staff_actor(vendor_id,'wallet.adjust');row=service.lock_row(runtime_id,vendor_id=vendor_id)
-    if not row.ended_at:raise CafeError('End play before final pricing reconciliation',409)
-    ended,stop=row.ended_at,row.stop_at
-    try:
-        row.ended_at=None;row.stop_at=None
-        service.meter_overrun(row,ended);service.accrue(row,ended,close=True)
-    finally:
-        row.ended_at=ended;row.stop_at=stop
-    row.reason=None
-    row.status='ended_unsettled' if service.snapshot(row)['billing']['amount_due_paise']>0 else 'settled'
-    service.changed(row)
+    service.reprice_ended(row)
     return answer(row)
 
 @bp_extensions.get('/api/cafe/<int:vendor_id>/extension-policy')
@@ -224,9 +215,20 @@ def gamer_extension_snapshot(runtime_id):
 def staff_snapshot(vendor_id,runtime_id):
     check_ready();staff_actor(vendor_id,'dashboard.view')
     row=service.lock_row(runtime_id,vendor_id=vendor_id)
-    if not row.ended_at:
-        before=sum(part.charged for part in service.segments(row))
-        service.meter_overrun(row,service.datetime.utcnow())
-        service.accrue(row)
-        if sum(part.charged for part in service.segments(row))!=before:service.changed(row,state_changed=False)
+    try:
+        with db.session.begin_nested():
+            if not row.ended_at:
+                before=sum(part.charged for part in service.segments(row))
+                service.meter_overrun(row,service.datetime.utcnow())
+                service.accrue(row)
+                if sum(part.charged for part in service.segments(row))!=before:service.changed(row,state_changed=False)
+            elif row.reason=='billing_unavailable':
+                # Ended while pricing failed: price it now so checkout shows a real total.
+                service.reprice_ended(row)
+    except CafeError as exc:
+        # Never leave the desk on a spinner: show what is known and why it is incomplete.
+        result=service.snapshot(row);db.session.commit()
+        result['billing']['requires_reconciliation']=True;result['billing']['is_final']=False
+        result['billing']['pricing_error']=exc.message
+        return jsonify(result)
     return answer(row)
