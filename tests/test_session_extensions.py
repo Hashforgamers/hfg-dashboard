@@ -18,6 +18,11 @@ def active(e,balance=20000):
     row=engine().attach(e.db.session.get(e.Link,1),{'kind':'self_qr','id':qr.id});e.db.session.commit()
     return row,qr
 
+def drained(e):
+    # Running session whose wallet is empty, so overtime lands on the desk bill.
+    row,qr=active(e);w=e.db.session.get(e.m.CafeWallet,(1,1));w.balance=0;e.db.session.commit()
+    return row,qr
+
 def extend(e,row,consent=True):
     c=engine();q,quote=c.quote(row);e.db.session.commit()
     body={'quote_id':q.id,'revision':row.revision,'idempotency_key':'extension-continue-key','credit_consent':consent}
@@ -426,6 +431,7 @@ def test_elapsed_boundary_keeps_pc_claim_and_meters_until_explicit_stop(env,monk
     with e.app.app_context():
         c=engine();row,qr=active(e);w=e.db.session.get(e.m.CafeWallet,(1,1));w.balance=0;e.db.session.commit()
         boundary=row.reserved_until;now=boundary+timedelta(minutes=1)
+        row.last_seen_at=boundary+timedelta(minutes=2);e.db.session.commit()  # kiosk heartbeat still arriving
         class Clock(datetime):
             @classmethod
             def utcnow(cls):return now
@@ -473,13 +479,64 @@ def test_pricing_failure_does_not_trap_gamer_or_allow_false_settlement(env,monke
         pricing=sys.modules['app.services.cafe_session_pricing']
         def unavailable(*a,**kw):raise e.s.CafeError('Price unavailable',409)
         monkeypatch.setattr(pricing,'session_prices',unavailable)
-        c.finish(row,end);e.db.session.commit()
+        monkeypatch.setattr(c,'console_slot_rate',lambda *a:None)
+        row.last_seen_at=end;c.finish(row,end);e.db.session.commit()
         assert row.ended_at==end and row.console_claim is None
         state=c.snapshot(row)
         assert state['billing']['requires_reconciliation'] and not state['billing']['is_final']
         assert state['billing']['payment_status']=='reconciliation_required'
         with pytest.raises(e.s.CafeError,match='Reconcile'):
             c.receipt(row,{}, {'id':'owner','name':'Owner'})
+
+
+def test_overtime_falls_back_to_console_slot_rate(env,monkeypatch):
+    e=env
+    with e.app.app_context():
+        c=engine();row,qr=drained(e);end=row.reserved_until+timedelta(minutes=1)
+        pricing=sys.modules['app.services.cafe_session_pricing']
+        def unavailable(*a,**kw):raise ValueError('Console schedule does not cover this session')
+        monkeypatch.setattr(pricing,'session_prices',unavailable)
+        row.last_seen_at=end;c.finish(row,end);e.db.session.commit()
+        state=c.snapshot(row)
+        # Rs 50 per 30-minute slot, one minute of overtime, rounded up to the paisa.
+        assert not state['billing']['requires_reconciliation'] and state['billing']['is_final']
+        assert state['billing']['total_paise']==167
+
+
+def test_overtime_longer_than_twelve_hours_is_priced(env):
+    e=env
+    with e.app.app_context():
+        c=engine();row,qr=drained(e);end=row.reserved_until+timedelta(hours=13)
+        row.last_seen_at=end;c.finish(row,end);e.db.session.commit()
+        state=c.snapshot(row)
+        assert not state['billing']['requires_reconciliation']
+        assert state['billing']['total_paise']==5000*26
+
+
+def test_overtime_stops_when_kiosk_stops_reporting(env):
+    e=env
+    with e.app.app_context():
+        c=engine();row,qr=drained(e);boundary=row.reserved_until
+        row.last_seen_at=boundary;c.finish(row,boundary+timedelta(hours=81));e.db.session.commit()
+        state=c.snapshot(row)
+        assert not state['billing']['requires_reconciliation']
+        assert state['billing']['total_paise']==833  # five minutes of grace after the last heartbeat
+
+
+def test_staff_snapshot_reprices_session_that_ended_without_pricing(env,monkeypatch):
+    e=env
+    with e.app.app_context():
+        c=engine();row,qr=drained(e);end=row.reserved_until+timedelta(minutes=1)
+        monkeypatch.setattr(c,'console_slot_rate',lambda *a:None)
+        pricing=sys.modules['app.services.cafe_session_pricing']
+        original=pricing.session_prices
+        monkeypatch.setattr(pricing,'session_prices',lambda *a,**kw:(_ for _ in ()).throw(ValueError('down')))
+        row.last_seen_at=end;c.finish(row,end);e.db.session.commit()
+        assert c.snapshot(row)['billing']['requires_reconciliation']
+        monkeypatch.setattr(pricing,'session_prices',original)
+        result=e.app.test_client().get(f'/api/cafe/1/extensions/{row.id}',headers=auth(staff_token(e,'owner')))
+        assert result.status_code==200,result.json
+        assert not result.json['billing']['requires_reconciliation'] and result.json['billing']['amount_due_paise']>0
 
 
 def test_booking_snapshot_separates_payment_from_pc_confirmation(env):
