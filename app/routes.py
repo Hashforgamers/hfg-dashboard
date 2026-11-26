@@ -3771,6 +3771,124 @@ def get_your_gamers(vendor_id):
         current_app.logger.error(f"Error generating Know Your Gamer: {e}")
         return jsonify({"message": "Internal server error", "error": str(e)}), 500
 
+@dashboard_service.route('/vendor/<int:vendor_id>/knowYourGamer/<int:user_id>', methods=['GET'])
+def get_gamer_profile(vendor_id, user_id):
+    """One gamer's profile and full booking/play history at this cafe."""
+    try:
+        user_obj = User.query.get(user_id)
+        if not user_obj:
+            return jsonify({"message": "Gamer not found"}), 404
+
+        transactions = (
+            Transaction.query
+            .filter(Transaction.vendor_id == vendor_id, Transaction.user_id == user_id)
+            .order_by(Transaction.booked_date.desc(), Transaction.booking_time.desc(), Transaction.id.desc())
+            .all()
+        )
+        if not transactions:
+            return jsonify({"message": "This gamer has no history at this cafe"}), 404
+
+        booking_ids = [t.booking_id for t in transactions if t.booking_id]
+        bookings = {b.id: b for b in Booking.query.filter(Booking.id.in_(booking_ids)).all()} if booking_ids else {}
+        slot_ids = {b.slot_id for b in bookings.values() if b.slot_id}
+        slots = {s.id: s for s in Slot.query.filter(Slot.id.in_(slot_ids)).all()} if slot_ids else {}
+        game_ids = {b.game_id for b in bookings.values() if b.game_id}
+        games = {g.id: g for g in AvailableGame.query.filter(AvailableGame.id.in_(game_ids)).all()} if game_ids else {}
+
+        promo_dict = {}
+        try:
+            promo_rows = db.session.execute(text(f"""
+                SELECT transaction_id, discount_applied
+                FROM VENDOR_{vendor_id}_PROMO_DETAIL
+                WHERE transaction_id = ANY(:ids)
+            """), {"ids": [t.id for t in transactions]}).fetchall()
+            promo_dict = {row.transaction_id: float(row.discount_applied or 0) for row in promo_rows}
+        except Exception:
+            db.session.rollback()
+
+        def _fmt_time(value):
+            return value.strftime("%H:%M") if value else None
+
+        history = []
+        total_amount = 0.0
+        total_discount = 0.0
+        total_minutes = 0.0
+        visit_days = set()
+        game_counts = {}
+        for t in transactions:
+            booking = bookings.get(t.booking_id) if t.booking_id else None
+            slot = slots.get(booking.slot_id) if booking else None
+            game = games.get(booking.game_id) if booking else None
+            minutes = None
+            if slot and slot.start_time and slot.end_time:
+                start_dt = datetime.combine(date.today(), slot.start_time)
+                end_dt = datetime.combine(date.today(), slot.end_time)
+                if end_dt <= start_dt:
+                    end_dt += timedelta(days=1)
+                minutes = round((end_dt - start_dt).total_seconds() / 60)
+                total_minutes += minutes
+            amount = float(t.amount or 0)
+            discount = promo_dict.get(t.id, 0.0)
+            total_amount += amount
+            total_discount += discount
+            if t.booked_date:
+                visit_days.add(t.booked_date)
+            game_name = game.game_name if game else None
+            if game_name:
+                game_counts[game_name] = game_counts.get(game_name, 0) + 1
+            history.append({
+                "transaction_id": t.id,
+                "booking_id": t.booking_id,
+                "date": t.booked_date.isoformat() if t.booked_date else None,
+                "start_time": _fmt_time(slot.start_time) if slot else None,
+                "end_time": _fmt_time(slot.end_time) if slot else None,
+                "duration_minutes": minutes,
+                "console_type": game_name,
+                "status": booking.status if booking else ("imported" if t.source_channel == "excel_import" else None),
+                "amount": round(amount, 2),
+                "meals_amount": round(float(t.meals_amount or 0), 2),
+                "discount": round(discount, 2),
+                "payment_mode": t.mode_of_payment,
+                "booking_type": t.booking_type,
+                "source": t.source_channel,
+                "settlement_status": t.settlement_status,
+                "staff_name": t.initiated_by_staff_name,
+            })
+
+        sessions = len(history)
+        if sessions > 10:
+            tier = "Platinum"
+        elif sessions > 5:
+            tier = "Gold"
+        else:
+            tier = "Silver"
+        contact = user_obj.contact_info
+        return jsonify({
+            "id": user_obj.id,
+            "name": user_obj.name,
+            "game_username": user_obj.game_username,
+            "avatar_path": user_obj.avatar_path,
+            "phone": contact.phone if contact else None,
+            "email": contact.email if contact else None,
+            "membershipTier": tier,
+            "summary": {
+                "sessions": sessions,
+                "visits": len(visit_days),
+                "total_amount": round(total_amount, 2),
+                "total_discount": round(total_discount, 2),
+                "net_revenue": round(total_amount - total_discount, 2),
+                "average_per_session": round(total_amount / sessions, 2) if sessions else 0,
+                "hours_played": round(total_minutes / 60, 1),
+                "first_visit": min(visit_days).isoformat() if visit_days else None,
+                "last_visit": max(visit_days).isoformat() if visit_days else None,
+                "favourite_console": max(game_counts, key=game_counts.get) if game_counts else None,
+            },
+            "history": history,
+        }), 200
+    except Exception as e:
+        current_app.logger.exception("get_gamer_profile failed vendor_id=%s user_id=%s", vendor_id, user_id)
+        return jsonify({"message": "Internal server error"}), 500
+
 @dashboard_service.route('/vendor/<int:vendor_id>/knowYourGamer/stats', methods=['GET'])
 def get_your_gamers_stats(vendor_id):
     try:
