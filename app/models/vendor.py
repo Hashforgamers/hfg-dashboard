@@ -144,6 +144,7 @@ class Vendor(db.Model):
     images = relationship(
         'Image',
         back_populates='vendor',
+        order_by='Image.id',
         cascade="all, delete-orphan"
     )
 
