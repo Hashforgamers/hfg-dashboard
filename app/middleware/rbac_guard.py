@@ -23,6 +23,7 @@ RBAC_ROUTE_RULES = [
 
     ("GET", r"^/api/vendor/(?P<vendor_id>\d+)/knowYourGamer$", "gamers.view"),
     ("GET", r"^/api/vendor/(?P<vendor_id>\d+)/knowYourGamer/stats$", "gamers.view"),
+    ("GET", r"^/api/vendor/(?P<vendor_id>\d+)/knowYourGamer/\d+$", "gamers.view"),
 
     ("GET", r"^/api/vendor/(?P<vendor_id>\d+)/extras/categories$", "extras.manage"),
     ("POST", r"^/api/vendor/(?P<vendor_id>\d+)/extras/category$", "extras.manage"),
