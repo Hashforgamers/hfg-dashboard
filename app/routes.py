@@ -3572,7 +3572,9 @@ def get_vendor_dashboard(vendor_id):
             "businessType": "Gaming Cafe",
             "phone": vendor.contact_info.phone if vendor.contact_info else "",
             "website": vendor.website.url if vendor.website else "",
-            "address": vendor.physical_address.addressLine1 if vendor.physical_address else ""
+            "address": vendor.physical_address.addressLine1 if vendor.physical_address else "",
+            "latitude": vendor.physical_address.latitude if vendor.physical_address else None,
+            "longitude": vendor.physical_address.longitude if vendor.physical_address else None
         },
         "operatingHours": operating_hours,
         "billingDetails": {
@@ -4884,6 +4886,20 @@ def update_business_details(vendor_id):
                 if "country" in data:
                     physical_address.country = data["country"]
 
+        # --- Map location (fixes coordinates captured wrongly at onboarding) ---
+        if "latitude" in data or "longitude" in data:
+            try:
+                lat = float(data.get("latitude"))
+                lng = float(data.get("longitude"))
+            except (TypeError, ValueError):
+                return jsonify(success=False, message="Send both latitude and longitude as numbers"), 400
+            if not (-90 <= lat <= 90 and -180 <= lng <= 180) or (lat == 0 and lng == 0):
+                return jsonify(success=False, message="Those coordinates are not a valid location"), 400
+            if not vendor.physical_address:
+                return jsonify(success=False, message="Add the cafe address before setting its map location"), 400
+            vendor.physical_address.latitude = f"{lat:.6f}"
+            vendor.physical_address.longitude = f"{lng:.6f}"
+
         db.session.commit()
         _invalidate_vendor_caches(vendor_id)
 
@@ -4903,7 +4919,9 @@ def update_business_details(vendor_id):
                     'line1': vendor.physical_address.addressLine1 if vendor.physical_address else None,
                     'pincode': vendor.physical_address.pincode if vendor.physical_address else None,
                     'state': vendor.physical_address.state if vendor.physical_address else None,
-                    'country': vendor.physical_address.country if vendor.physical_address else None
+                    'country': vendor.physical_address.country if vendor.physical_address else None,
+                    'latitude': vendor.physical_address.latitude if vendor.physical_address else None,
+                    'longitude': vendor.physical_address.longitude if vendor.physical_address else None
                 } if vendor.physical_address else None
             }
         }), 200
