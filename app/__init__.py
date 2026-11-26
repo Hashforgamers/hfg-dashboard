@@ -172,6 +172,8 @@ def create_app():
     app.register_blueprint(admin_games_bp)
     app.register_blueprint(pricing_blueprint, url_prefix="/api")
     app.register_blueprint(bp_access)
+    from app.controllers.marketplace_buyer_controller import bp_marketplace_buyer
+    app.register_blueprint(bp_marketplace_buyer)
     register_commands(app)
     from app.controllers.cafe_wallet_controller import bp_cafe, register_cafe_runtime
     app.register_blueprint(bp_cafe)
