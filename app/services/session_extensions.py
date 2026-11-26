@@ -454,23 +454,28 @@ def receipt(row,body,actor):
         if old.fingerprint!=fp or old.actor_id!=actor['id']: raise CafeError('Idempotency conflict',409)
         return old
     if not row.ended_at or body.get('revision')!=row.revision: raise CafeError('Refresh final settlement summary',409)
-    if method not in ('cash','card','cafe_upi','upi','waiver'): raise CafeError('Choose a supported collection method')
+    if method not in ('cash','card','cafe_upi','upi','waiver','booking_bill'): raise CafeError('Choose a supported collection method')
+    # booking_bill moves the PC extra time onto the booking's own bill, which is then
+    # collected there (monthly credit or Hash UPI QR). No money changes hands here.
+    transfer=method=='booking_bill'
+    if transfer and row.source_kind!='booking': raise CafeError('Only booking sessions can move PC time to the booking bill')
     shift=CafeShift.query.filter_by(open_key=f"{row.vendor_id}:{actor['id']}").first()
-    if method!='waiver' and not shift: raise CafeError('Open your shift before collecting payment',409)
+    if method not in ('waiver','booking_bill') and not shift: raise CafeError('Open your shift before collecting payment',409)
     if method=='waiver' and not 3<=len(reason)<=500: raise CafeError('A waiver reason of 3–500 characters is required')
     due=sum(p.credit_due-p.credit_paid for p in segments(row))
     if amount>due: raise CafeError('Collection exceeds remaining due',409)
+    if transfer and amount!=due: raise CafeError('Move the full PC extra time to the booking bill',409)
     remaining=amount
     for part in segments(row):
         allocated=min(remaining,part.credit_due-part.credit_paid);part.credit_paid+=allocated;remaining-=allocated
-        if allocated: db.session.add(SessionCreditEntry(id=uid(),runtime_id=row.id,segment_id=part.id,amount=-allocated,kind='waiver' if method=='waiver' else 'payment',
+        if allocated: db.session.add(SessionCreditEntry(id=uid(),runtime_id=row.id,segment_id=part.id,amount=-allocated,kind='waiver' if method=='waiver' else 'transfer' if transfer else 'payment',
             idempotency_key='payment:'+fingerprint([idem,part.id])[:64]))
     w=runtime_wallet(row)
     result=SessionReceipt(id=uid(),runtime_id=row.id,vendor_id=row.vendor_id,amount=amount,method=method,
         actor_id=actor['id'],idempotency_key=idem,fingerprint=fp)
     db.session.add(result)
-    ledger(w,'credit_waiver' if method=='waiver' else 'session_collection',0 if method=='waiver' else amount,actor,idem,fp,method=method,shift_id=shift.id if shift else None,
-        session_id=row.source_id,reason=reason if method=='waiver' else 'Session extension collection')
+    ledger(w,'credit_waiver' if method=='waiver' else 'session_collection',0 if method in ('waiver','booking_bill') else amount,actor,idem,fp,method=method,shift_id=shift.id if shift else None,
+        session_id=row.source_id,reason=reason if method=='waiver' else 'PC extra time moved to booking bill' if transfer else 'Session extension collection')
     if due==amount: row.status='settled'
     if row.source_kind=='self_qr':
         qr=db.session.get(CafePlaySession,row.source_id)
