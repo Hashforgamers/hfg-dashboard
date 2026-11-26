@@ -97,6 +97,11 @@ def booking_window(vendor_id, booking_id, console_id):
             result.update(runtime=state,end_time=state['reserved_until'],stop_at=state['stop_at'],
                 auto_lock_at_end=False,play_allowed=state['play_allowed'],status='active' if state['play_allowed'] else 'expired')
             result['seconds_remaining']=max(0,int((managed.reserved_until-datetime.utcnow()).total_seconds())) if state['play_allowed'] else 0
+    from app.services.flex_bookings import flex_windows
+    flex=flex_windows(result['booking_ids']).get(booking_id)
+    if flex:
+        # Optional, additive: legacy kiosk builds ignore it; times above already follow the flex window.
+        result.update(timing_mode='flex',start_at=flex['start_at'],end_at=flex['end_at'])
     from app.services.pc_commands import delivery
     result['delivery']=delivery(vendor_id,console_id,booking_id)
     result['session_ref']={'kind':'booking','id':str(booking_id)}

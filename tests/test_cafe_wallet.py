@@ -123,6 +123,7 @@ def env(monkeypatch):
     from unittest.mock import Mock
     socket.socketio=Mock();monkeypatch.setitem(sys.modules,socket.__name__,socket)
     app.register_blueprint(controller.bp_cafe)
+    load('app.services.flex_bookings','app/services/flex_bookings.py')
     load('app.services.kiosk_security','app/services/kiosk_security.py')
     load('app.services.pc_commands','app/services/pc_commands.py')
     load('app.services.kiosk_runtime','app/services/kiosk_runtime.py')
