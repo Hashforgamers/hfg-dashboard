@@ -176,7 +176,9 @@ def next_price(row):
     if not prices or prices[0]['amount'] is None: raise CafeError(prices[0].get('unavailable_reason','Extension price unavailable') if prices else 'Extension price unavailable',409)
     # Prorate the final seconds rather than extending through the next grid boundary.
     amount=(prices[0]['amount']*seconds+minutes*60-1)//(minutes*60)
-    return start,start+(right-local),amount
+    end=start+(right-local)
+    # Same rate-card rule as quoted_amount, so grant() sees an identical price.
+    return start,end,rate_card_capped(row,start,end,amount)
 
 def quote(row):
     if row.ended_at: raise CafeError('Session ended',409)
@@ -312,7 +314,24 @@ def console_slot_rate(vendor_id,console_id):
     slot_seconds=max(lengths,key=lambda span:(lengths[span],-span)) if lengths else 3600
     return int(money(game.single_slot_price)*100),slot_seconds
 
+def rate_card_capped(row,start,end,amount):
+    """The cafe's rate-card price for this stretch when it is lower than the
+    slot-rate amount (None when slot pricing failed). It is never used to
+    raise a price, so this can only lower what a gamer pays for extra time."""
+    from app.services.rate_card_pricing import extra_play_paise
+    card=extra_play_paise(row,start,end)
+    if card is None:return amount
+    return card if amount is None else min(amount,card)
+
 def overtime_amount(row,start,end):
+    """Price play from start to end: the slot-rate price, lowered to the cafe's rate card when that is cheaper."""
+    try:amount=slot_overtime_amount(row,start,end);error=None
+    except CafeError as exc:amount,error=None,exc
+    amount=rate_card_capped(row,start,end,amount)
+    if amount is None:raise error
+    return amount
+
+def slot_overtime_amount(row,start,end):
     """Price play from start to end: the schedule-aware pricer first, the console's per-slot rate as fallback."""
     from app.services.cafe_session_pricing import session_prices
     seconds=max(1,math.ceil((end-start).total_seconds()));minutes=(seconds+59)//60
@@ -721,7 +740,8 @@ def quoted_amount(row,q):
     prices=session_prices(db.session.get(ConsoleLinkSession,row.link_id),[{'minutes':minutes}],now=local.replace(second=0,microsecond=0),
         check_capacity=False,startup_buffer_seconds=0,check_console=False,allow_short_duration=True)
     value=prices[0]['amount'] if prices else None
-    return None if value is None else (value*seconds+minutes*60-1)//(minutes*60)
+    if value is None:return None
+    return rate_card_capped(row,q.starts_at,q.ends_at,(value*seconds+minutes*60-1)//(minutes*60))
 
 
 def seen(row):

@@ -111,6 +111,7 @@ def env(monkeypatch):
     load('app.services.slot_capacity','app/services/slot_capacity.py')
     load('app.services.cafe_slot_reservations','app/services/cafe_slot_reservations.py')
     load('app.services.cafe_session_pricing','app/services/cafe_session_pricing.py')
+    load('app.services.rate_card_pricing','app/services/rate_card_pricing.py')
     methods=load('app.services.payment_methods','app/services/payment_methods.py')
     service=load('app.services.cafe_wallet_service','app/services/cafe_wallet_service.py')
     load('app.services.cafe_continuation_service','app/services/cafe_continuation_service.py')
