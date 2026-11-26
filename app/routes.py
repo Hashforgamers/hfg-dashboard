@@ -3072,6 +3072,8 @@ def get_landing_page_vendor(vendor_id):
             squad_members_by_booking = defaultdict(list)
         
         managed_by_booking={}
+        from app.services.flex_bookings import flex_windows
+        flex_by_booking = flex_windows([row.book_id for row in result])
         from app.services.session_extensions import ready as extensions_ready, RuntimeSession, snapshot as extension_snapshot
         if extensions_ready():
             # Keep a recently ended kiosk run attached: its clock stopped at the PC,
@@ -3202,6 +3204,11 @@ def get_landing_page_vendor(vendor_id):
                 "squadDetails": squad_details,
             }
 
+            flex_window = flex_by_booking.get(int(row.book_id))
+            if flex_window:
+                # Additive keys only; times above already come from the flex window on the dashboard row.
+                booking_data.update(flex_window)
+                slot_data.update(flex_window)
             runtime_by_console=managed_by_booking.get(int(row.book_id),{})
             managed=runtime_by_console.get(str(row.console_id))
             slot_data['runtimeByConsole']=runtime_by_console

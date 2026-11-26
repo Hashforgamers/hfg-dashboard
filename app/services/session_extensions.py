@@ -211,7 +211,10 @@ def grant(row,q,owner=False):
         ensure_console_window(link,start,end,exclude_bookings=row.booking_ids)
         slots=scheduled_slots(link,start,end,lock=True)
     except ValueError as exc: raise CafeError(str(exc),409) from exc
-    claims=CafeSlotReservation.query.filter(CafeSlotReservation.session_id.in_([row.id,row.source_id]),CafeSlotReservation.released_at.is_(None)).all()
+    # Flex-start bookings already hold their overlapped slots under flex:<booking_id>.
+    from app.services.flex_bookings import hold_keys
+    owners=[row.id,row.source_id]+(hold_keys(row.booking_ids) if row.source_kind=='booking' else [])
+    claims=CafeSlotReservation.query.filter(CafeSlotReservation.session_id.in_(owners),CafeSlotReservation.released_at.is_(None)).all()
     held={(c.date,c.slot_id) for c in claims}
     new=[item for item in slots if (item['date'],item['slot_id']) not in held]
     config=settings(row.vendor_id)
@@ -758,6 +761,10 @@ def release_base_booking(row,booking,details,assigned,released):
     """One base capacity release per booking/device, shared with cancellation paths."""
     from app.models.session_extension import BaseSlotRelease
     from app.services.slot_capacity import booking_units,release_slot
+    if assigned<=released:
+        # A flex window's other overlapped slots go back once every station is free.
+        from app.services.flex_bookings import release_flex_holds
+        release_flex_holds(row.vendor_id,booking.id)
     if db.session.get(BaseSlotRelease,(booking.id,row.console_id)) or not booking.slot_id:return
     baseline=dict(details);baseline.pop('remaining_slot_units',None)
     total=int(details.get('initial_slot_units',booking_units(baseline)))
