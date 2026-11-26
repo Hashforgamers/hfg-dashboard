@@ -647,3 +647,128 @@ def test_kiosk_capability_follows_owner_opt_in(env):
         second=client.get('/api/kiosk/session',headers=auth('agent-secret'))
         assert 'kiosk_auto_extend_v1' in second.json['capabilities']
         assert engine().settings(1)['kiosk_auto_extend'] is True
+
+
+# ---- extra play priced from the cafe's desk rate card ---------------------------------
+import json
+
+
+def tiered(*rules):
+    return [dict(amount=str(a), min_minutes=lo, max_minutes=hi, min_players=1, max_players=1000,
+                 unit_minutes=60, per_player=False) for a, lo, hi in rules]
+
+
+PC_TIERS = tiered((80, 1, 119), (60, 120, 180), (20, 181, None))
+
+
+def rate_card(e, rules, mode='variants', consoles=None, variant='', profile='pc', name='PC hours'):
+    e.db.session.execute(text('''CREATE TABLE IF NOT EXISTS desk_rate_cards (vendor_id integer, game_id integer,
+        profile varchar, rates jsonb, definition jsonb, is_active boolean DEFAULT true, archived boolean DEFAULT false,
+        revision integer DEFAULT 1)'''))
+    e.db.session.execute(text('CREATE TABLE IF NOT EXISTS desk_pricing_settings (vendor_id integer, game_id integer, mode varchar)'))
+    e.db.session.execute(text('DELETE FROM desk_pricing_settings'))
+    e.db.session.execute(text("INSERT INTO desk_pricing_settings VALUES (1,100,:m)"), {'m': mode})
+    e.db.session.execute(text('''INSERT INTO desk_rate_cards(vendor_id,game_id,profile,definition)
+        VALUES (1,100,:p,CAST(:d AS jsonb))'''), {'p': profile, 'd': json.dumps(dict(
+            name=name, model_name='m', game_variant=variant, console_ids=consoles or [], rules=rules))})
+    e.db.session.commit()
+
+
+def booked_hour(e, row):
+    # One hour booked/reserved before the boundary, so the tiers are predictable.
+    row.started_at = row.reserved_until - timedelta(hours=1); e.db.session.commit()
+
+
+def overrun_total(e, row, minutes=None, hours=None):
+    c = engine(); end = row.reserved_until + timedelta(minutes=minutes or 0, hours=hours or 0)
+    row.last_seen_at = end; c.finish(row, end); e.db.session.commit()
+    state = c.snapshot(row)
+    assert not state['billing']['requires_reconciliation']
+    return state['billing']['total_paise']
+
+
+def test_kiosk_overrun_uses_rate_card_tier(env):
+    e = env
+    with e.app.app_context():
+        row, qr = drained(e); booked_hour(e, row); rate_card(e, PC_TIERS)
+        # 61 min at Rs 80/h = 81.33 minus the booked hour's Rs 80 -> Rs 1.33 (slot rate: Rs 1.67).
+        assert overrun_total(e, row, minutes=1) == 133
+
+
+def test_kiosk_long_overrun_is_now_much_lower(env):
+    e = env
+    with e.app.app_context():
+        row, qr = drained(e); booked_hour(e, row); rate_card(e, PC_TIERS)
+        # Slot rate charged 13h x Rs 100/h = Rs 1,300. The card's 181+ minute tier:
+        # 14h x Rs 20 = Rs 280, minus the booked hour (Rs 80) = Rs 200.
+        assert overrun_total(e, row, hours=13) == 20000
+
+
+def test_kiosk_rate_card_never_raises_the_price(env):
+    e = env
+    with e.app.app_context():
+        row, qr = drained(e); booked_hour(e, row); rate_card(e, tiered((500, 1, None)))
+        assert overrun_total(e, row, minutes=1) == 167
+
+
+def test_kiosk_card_mapped_to_another_console_is_ignored(env):
+    e = env
+    with e.app.app_context():
+        row, qr = drained(e); booked_hour(e, row); rate_card(e, PC_TIERS, consoles=[2])
+        assert overrun_total(e, row, minutes=1) == 167
+
+
+def test_kiosk_slot_mode_standard_card_is_ignored(env):
+    e = env
+    with e.app.app_context():
+        row, qr = drained(e); booked_hour(e, row); rate_card(e, PC_TIERS, mode='slot')
+        assert overrun_total(e, row, minutes=1) == 167
+
+
+def test_kiosk_game_title_card_applies_even_in_slot_mode(env):
+    e = env
+    with e.app.app_context():
+        row, qr = drained(e); booked_hour(e, row)
+        # A title card only applies to sessions priced for that title; a QR
+        # session names no title, so the standard slot rate stays.
+        rate_card(e, PC_TIERS, mode='slot', variant='GTA6', profile='gta')
+        assert overrun_total(e, row, minutes=1) == 167
+
+
+def test_kiosk_extension_quote_and_grant_use_rate_card(env):
+    e = env
+    with e.app.app_context():
+        row, qr = active(e); booked_hour(e, row); rate_card(e, PC_TIERS)
+        c = engine(); q, quote = c.quote(row); e.db.session.commit()
+        minutes = (q.ends_at - q.starts_at).total_seconds() / 60
+        assert minutes == 30
+        # 60 + 30 = 90 min at Rs 80/h = Rs 120, minus Rs 80 booked -> Rs 40 (slot rate Rs 50).
+        assert quote['price_paise'] == 4000
+        assert c.quoted_amount(row, q) == 4000
+        body = {'quote_id': q.id, 'revision': row.revision, 'idempotency_key': 'rate-card-extension', 'credit_consent': True}
+        c.continue_session(row, q.id, body); e.db.session.commit()
+        assert q.status == 'granted' and c.segments(row)[0].amount == 4000
+
+
+def test_rate_card_copy_matches_hfg_booking():
+    """The kiosk copy must price exactly like hfg-booking's source of truth."""
+    import importlib.util, pathlib
+    root = pathlib.Path(__file__).resolve().parents[1]
+    source = root.parent / 'hfg-booking' / 'services' / 'extra_play_pricing.py'
+    if not source.exists():
+        pytest.skip('hfg-booking checkout not next to this repo')
+    sys.path.insert(0, str(source.parents[1]))
+    try:
+        booking = importlib.import_module('services.extra_play_pricing')
+    finally:
+        sys.path.pop(0)
+    spec = importlib.util.spec_from_file_location('rate_card_copy', root / 'app/services/rate_card_pricing.py')
+    copy = importlib.util.module_from_spec(spec); spec.loader.exec_module(copy)
+    definition = dict(name='x', model_name='m', game_variant='', console_ids=[], rules=PC_TIERS)
+    each = dict(definition, rules=[dict(r, per_player=True) for r in PC_TIERS])
+    for d in (definition, each):
+        for booked, extra, players in ((60, 60, 1), (60, 1, 1), (0, 30, 2), (119.5, 3, 3), (200, 600, 4)):
+            assert copy.marginal_extra(d, booked, extra, players) == booking.marginal_extra(d, booked, extra, players)
+    for profile, rates in (('pc', [60, 50, 40]), ('ps55', [100, 150]), ('racing', [200, 300])):
+        legacy = booking.legacy_definition(profile, rates)
+        assert copy.legacy_definition(profile, rates)['rules'] == legacy['rules']
