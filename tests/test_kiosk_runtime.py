@@ -105,13 +105,15 @@ class KioskTests(unittest.TestCase):
         fake_runtime.__dict__.update(runtime)
         fake_commands=ModuleType('app.services.pc_commands')
         fake_commands.__dict__.update(load('app/services/pc_commands.py',db=db,KioskError=security['KioskError']))
+        fake_flex=ModuleType('app.services.flex_bookings')
+        fake_flex.__dict__.update(load('app/services/flex_bookings.py',db=db))
         fake_extensions=ModuleType('app.services.session_extensions')
         fake_extensions.ready=lambda:False
         fake_extensions.attach=Mock()
         self.modules = patch.dict(sys.modules, {'app.routes': fake_routes,
             'app.services.websocket_service': fake_ws, 'app.services.kiosk_runtime': fake_runtime,
             'app.services.kiosk_security': fake_security,'app.services.pc_commands':fake_commands,
-            'app.services.session_extensions':fake_extensions})
+            'app.services.session_extensions':fake_extensions,'app.services.flex_bookings':fake_flex})
         self.modules.start()
         self.ws = fake_ws
         self.extensions = fake_extensions
