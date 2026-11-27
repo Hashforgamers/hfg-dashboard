@@ -753,9 +753,12 @@ def get_consoles(vendor_id):
             current_app.logger.exception("Stale console heal failed vendor=%s", vendor_id)
         availability_table = f"VENDOR_{vendor_id}_CONSOLE_AVAILABILITY"
         booking_table = f"VENDOR_{vendor_id}_DASHBOARD"
+        from app.services.station_map import map_columns_ready
+        map_columns = "c.map_x, c.map_y," if map_columns_ready(db.session) else "NULL AS map_x, NULL AS map_y,"
         sql_query = text(f"""
             SELECT
                 c.id,
+                {map_columns}
                 c.console_type,
                 c.model_number,
                 c.console_number,
@@ -943,6 +946,9 @@ def get_consoles(vendor_id):
                 "kioskLinked": bool(row.link_session_id) if row.link_session_id is not None else False,
                 "kioskId": row.kiosk_id,
                 "kioskLinkSessionId": row.link_session_id,
+                # Additive: floor-map cell, null when the station is auto-placed.
+                "mapX": row.map_x,
+                "mapY": row.map_y,
             })
 
         with _vendor_consoles_cache_lock:
@@ -958,6 +964,40 @@ def get_consoles(vendor_id):
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@dashboard_service.route('/vendor/<int:vendor_id>/station-map', methods=['GET'])
+def get_station_map(vendor_id):
+    from app.services.station_map import load_layout
+    try:
+        return jsonify(success=True, **load_layout(db.session, vendor_id)), 200
+    except SQLAlchemyError:
+        db.session.rollback()
+        current_app.logger.exception("Station map read failed vendor=%s", vendor_id)
+        return jsonify(success=False, error="Station map is unavailable"), 503
+
+
+@dashboard_service.route('/vendor/<int:vendor_id>/station-map', methods=['PUT'])
+def save_station_map(vendor_id):
+    """Bulk-save station cells (and optionally zone labels) for one cafe."""
+    from app.services.station_map import StationMapError, save_layout
+    try:
+        layout = save_layout(db.session, vendor_id, request.get_json(silent=True))
+        db.session.commit()
+    except StationMapError as error:
+        db.session.rollback()
+        return jsonify(success=False, error=str(error)), 400
+    except SQLAlchemyError:
+        db.session.rollback()
+        current_app.logger.exception("Station map save failed vendor=%s", vendor_id)
+        return jsonify(success=False, error="Could not save the station map"), 500
+    _invalidate_vendor_caches(vendor_id)
+    try:
+        # Additive event: other open dashboards reload the map.
+        socketio.emit("station_map_updated", {"vendor_id": int(vendor_id)}, room=f"vendor_{int(vendor_id)}")
+    except Exception:
+        current_app.logger.warning("station_map_updated emit failed for vendor %s", vendor_id)
+    return jsonify(success=True, **layout), 200
 
 
 @dashboard_service.route('/console-types', methods=['GET'])

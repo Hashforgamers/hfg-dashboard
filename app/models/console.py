@@ -16,6 +16,9 @@ class Console(db.Model):
     console_type = Column(String(50), nullable=False)  # 'pc', 'ps5', etc.
     release_date = Column(Date, nullable=True)
     description = Column(String(500), nullable=True)
+    # consoles.map_x / map_y (station floor map, sql/20261127_station_map_layout.sql) are
+    # read and written with plain SQL in app/services/station_map.py and deliberately not
+    # mapped here, so ORM console queries keep working on a database without the migration.
 
     vendor = relationship('Vendor', back_populates='consoles')  # NEW
 
