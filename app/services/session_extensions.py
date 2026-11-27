@@ -353,7 +353,33 @@ def slot_overtime_amount(row,start,end):
     except ValueError:rate=None
     if not rate:raise CafeError('Overtime pricing unavailable; staff must reconcile before settlement',409)
     price,slot_seconds=rate
+    offers=console_offers(row.vendor_id,row.console_id)
+    if offers:
+        # Offers still lower extra time played past the slot grid (IST wall clock).
+        from decimal import Decimal
+        from app.services.pricing_math import interval_amount
+        local_start,local_end=local_window(start,start+timedelta(seconds=seconds))
+        exact=interval_amount(Decimal(price)/100,offers,local_start,local_end,slot_seconds)*100
+        return int(math.ceil(exact))
     return (price*seconds+slot_seconds-1)//slot_seconds
+
+def console_offers(vendor_id,console_id):
+    """Active console offers for the console's pricing record ([] when unavailable)."""
+    try:
+        rows=db.session.execute(text('''SELECT o.start_date,o.start_time,o.end_date,o.end_time,o.offered_price,o.is_active
+            FROM console_pricing_offers o JOIN available_game_console ac ON ac.available_game_id=o.available_game_id
+            WHERE ac.console_id=:cid AND o.vendor_id=:vid AND o.is_active=true'''),{'cid':console_id,'vid':vendor_id}).all()
+    except Exception:
+        return []
+    from app.services.cafe_slot_reservations import _time
+    result=[]
+    for r in rows:
+        v=dict(r._mapping)
+        for k in ('start_date','end_date'):
+            if isinstance(v[k],str):v[k]=datetime.fromisoformat(v[k]).date()
+        for k in ('start_time','end_time'):v[k]=_time(v[k])
+        result.append(SimpleNamespace(**v))
+    return result
 
 def meter_overrun(row,now):
     """Record actual play beyond a reservation without granting a conflicting slot."""

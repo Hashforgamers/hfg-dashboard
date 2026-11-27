@@ -503,6 +503,26 @@ def test_overtime_falls_back_to_console_slot_rate(env,monkeypatch):
         assert state['billing']['total_paise']==167
 
 
+def test_overtime_fallback_applies_an_offer_running_during_the_extra_time(env,monkeypatch):
+    """Booking pricing audit: offers lower kiosk extra time even past the slot grid."""
+    e=env
+    with e.app.app_context():
+        c=engine();row,qr=drained(e);end=row.reserved_until+timedelta(minutes=1)
+        pricing=sys.modules['app.services.cafe_session_pricing']
+        def unavailable(*a,**kw):raise ValueError('Console schedule does not cover this session')
+        monkeypatch.setattr(pricing,'session_prices',unavailable)
+        from zoneinfo import ZoneInfo
+        local=row.reserved_until.replace(tzinfo=ZoneInfo('UTC')).astimezone(ZoneInfo('Asia/Kolkata')).replace(tzinfo=None)
+        left,right=local-timedelta(hours=1),local+timedelta(hours=1)
+        e.db.session.execute(text("""INSERT INTO console_pricing_offers(vendor_id,available_game_id,default_price,offered_price,
+            start_date,start_time,end_date,end_time,offer_name,is_active) VALUES (1,100,50,20,:sd,:st,:ed,:et,'Late',true)"""),
+            dict(sd=left.date(),st=left.time(),ed=right.date(),et=right.time()))
+        row.last_seen_at=end;c.finish(row,end);e.db.session.commit()
+        state=c.snapshot(row)
+        # Rs 20 offer per 30-minute slot, one minute: 66.67 -> 67 paise (Rs 50 base gave 167).
+        assert state['billing']['total_paise']==67
+
+
 def test_overtime_longer_than_twelve_hours_is_priced(env):
     e=env
     with e.app.app_context():
