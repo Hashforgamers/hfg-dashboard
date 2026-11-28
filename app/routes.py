@@ -968,19 +968,21 @@ def get_consoles(vendor_id):
 
 @dashboard_service.route('/vendor/<int:vendor_id>/station-map', methods=['GET'])
 def get_station_map(vendor_id):
-    from app.services.station_map import load_layout
+    from app.services.station_map import NOT_MIGRATED_ERROR, load_layout, schema_ready
     try:
         return jsonify(success=True, **load_layout(db.session, vendor_id)), 200
     except SQLAlchemyError:
         db.session.rollback()
         current_app.logger.exception("Station map read failed vendor=%s", vendor_id)
+        if not schema_ready(db.session):
+            return jsonify(success=False, error=NOT_MIGRATED_ERROR, code="station_map_not_migrated"), 503
         return jsonify(success=False, error="Station map is unavailable"), 503
 
 
 @dashboard_service.route('/vendor/<int:vendor_id>/station-map', methods=['PUT'])
 def save_station_map(vendor_id):
     """Bulk-save station cells (and optionally zone labels) for one cafe."""
-    from app.services.station_map import StationMapError, save_layout
+    from app.services.station_map import NOT_MIGRATED_ERROR, StationMapError, save_layout, schema_ready
     try:
         layout = save_layout(db.session, vendor_id, request.get_json(silent=True))
         db.session.commit()
@@ -990,6 +992,8 @@ def save_station_map(vendor_id):
     except SQLAlchemyError:
         db.session.rollback()
         current_app.logger.exception("Station map save failed vendor=%s", vendor_id)
+        if not schema_ready(db.session):
+            return jsonify(success=False, error=NOT_MIGRATED_ERROR, code="station_map_not_migrated"), 503
         return jsonify(success=False, error="Could not save the station map"), 500
     _invalidate_vendor_caches(vendor_id)
     try:

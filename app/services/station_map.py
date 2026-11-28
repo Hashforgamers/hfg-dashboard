@@ -165,3 +165,17 @@ def map_columns_ready(session):
     except Exception:
         return False
     return _columns_ready
+
+
+def schema_ready(session):
+    """True when the station-map migration (consoles.map_x/map_y, vendor_station_maps) has run."""
+    try:
+        from sqlalchemy import inspect
+        inspector = inspect(session.get_bind())
+        names = {c["name"] for c in inspector.get_columns("consoles")}
+        return {"map_x", "map_y"} <= names and inspector.has_table("vendor_station_maps")
+    except Exception:
+        return False
+
+
+NOT_MIGRATED_ERROR = "Floor map needs a database update on the server (sql/20261127_station_map_layout.sql)"

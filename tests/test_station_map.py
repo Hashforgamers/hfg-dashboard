@@ -44,6 +44,7 @@ def api():
         socketio=SimpleNamespace(emit=lambda event, data, room=None: emitted.append((event, data, room))),
         load_layout=station_map.load_layout, save_layout=station_map.save_layout,
         StationMapError=station_map.StationMapError,
+        schema_ready=station_map.schema_ready, NOT_MIGRATED_ERROR=station_map.NOT_MIGRATED_ERROR,
     )
     exec(compile(ast.fix_missing_locations(ast.Module(body=routes, type_ignores=[])), "routes.py", "exec"), scope)
     app.add_url_rule("/vendor/<int:vendor_id>/station-map", view_func=scope["get_station_map"], methods=["GET"])
@@ -149,3 +150,13 @@ def test_migration_is_additive_and_idempotent():
     assert "ADD COLUMN IF NOT EXISTS map_x integer" in sql and "ADD COLUMN IF NOT EXISTS map_y integer" in sql
     assert "CREATE TABLE IF NOT EXISTS vendor_station_maps" in sql
     assert "DROP COLUMN" not in sql.upper()
+
+
+def test_save_before_migration_says_so(api):
+    api.db.session.execute(text("DROP TABLE vendor_station_maps"))
+    api.db.session.commit()
+    res = api.client.put("/vendor/1/station-map", json={"positions": [{"console_id": 1, "x": 0, "y": 0}], "zones": [{"label": "PC", "x": 0, "y": 0, "w": 3}]})
+    assert res.status_code == 503
+    assert res.get_json()["code"] == "station_map_not_migrated"
+    assert "20261127_station_map_layout.sql" in res.get_json()["error"]
+    assert api.emitted == []
