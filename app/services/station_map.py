@@ -20,9 +20,15 @@ class StationMapError(ValueError):
     pass
 
 
-def _cell(value, field):
-    if isinstance(value, bool) or not isinstance(value, int):
+def _number(value, field):
+    """A grid coordinate as an int; 3.0 / 2.6 from a client are rounded, not rejected."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value != value or value in (float("inf"), float("-inf")):
         raise StationMapError(f"{field} must be a whole number")
+    return int(round(value))
+
+
+def _cell(value, field):
+    value = _number(value, field)
     if not 0 <= value < GRID_MAX:
         raise StationMapError(f"{field} must be between 0 and {GRID_MAX - 1}")
     return value
@@ -58,11 +64,7 @@ def normalize_layout(payload):
             continue
         if x is None or y is None:
             raise StationMapError("x and y must both be set or both be null")
-        cell = (_cell(x, "x"), _cell(y, "y"))
-        if cell in taken:
-            raise StationMapError(f"Stations {taken[cell]} and {console_id} share the same cell")
-        taken[cell] = console_id
-        positions.append({"console_id": console_id, "x": cell[0], "y": cell[1]})
+        positions.append({"console_id": console_id, "x": _number(x, "x"), "y": _number(y, "y")})
 
     zones = None
     if "zones" in payload:
@@ -81,10 +83,28 @@ def normalize_layout(payload):
             if len(label) > MAX_ZONE_LABEL:
                 raise StationMapError(f"Zone label must be at most {MAX_ZONE_LABEL} characters")
             width = zone.get("w", 1)
-            if isinstance(width, bool) or not isinstance(width, int) or not 1 <= width <= 24:
-                raise StationMapError("Zone width must be between 1 and 24 cells")
-            zones.append({"label": label, "x": _cell(zone.get("x"), "zone x"),
-                          "y": _cell(zone.get("y"), "zone y"), "w": width})
+            width = min(max(_number(width, "Zone width"), 1), 24)
+            zones.append({"label": label, "x": _number(zone.get("x"), "zone x"),
+                          "y": _number(zone.get("y"), "zone y"), "w": width})
+
+    # A floor drawn partly above row 0 / left of column 0 (e.g. a label row at
+    # y = -1) moves down/right as a whole instead of failing the save.
+    xs = [p["x"] for p in positions if p["x"] is not None] + [z["x"] for z in zones or []]
+    ys = [p["y"] for p in positions if p["y"] is not None] + [z["y"] for z in zones or []]
+    dx = -min(xs) if xs and min(xs) < 0 else 0
+    dy = -min(ys) if ys and min(ys) < 0 else 0
+    for p in positions:
+        if p["x"] is None:
+            continue
+        p["x"], p["y"] = _cell(p["x"] + dx, "x"), _cell(p["y"] + dy, "y")
+        cell = (p["x"], p["y"])
+        if cell in taken:
+            raise StationMapError(f"Stations {taken[cell]} and {p['console_id']} share the same cell")
+        taken[cell] = p["console_id"]
+    for z in zones or []:
+        # Labels are decoration: keep them inside the grid rather than reject.
+        z["x"] = min(max(z["x"] + dx, 0), GRID_MAX - 1)
+        z["y"] = min(max(z["y"] + dy, 0), GRID_MAX - 1)
     return {"positions": positions, "zones": zones}
 
 

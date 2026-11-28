@@ -111,12 +111,12 @@ def test_moving_onto_an_occupied_cell_is_rejected(api):
 
 @pytest.mark.parametrize("body", [
     None, [], {"positions": "x"}, {"positions": [{"console_id": 1, "x": 0}]},
-    {"positions": [{"console_id": 1, "x": -1, "y": 0}]}, {"positions": [{"console_id": 1, "x": 200, "y": 0}]},
-    {"positions": [{"console_id": 1, "x": 1.5, "y": 0}]}, {"positions": [{"console_id": True, "x": 0, "y": 0}]},
+    {"positions": [{"console_id": 1, "x": 200, "y": 0}]}, {"positions": [{"console_id": 1, "x": "1", "y": 0}]},
+    {"positions": [{"console_id": True, "x": 0, "y": 0}]}, {"zones": [{"label": "A", "x": "0", "y": 0}]},
     {"positions": [{"console_id": 1, "x": 0, "y": 0}, {"console_id": 1, "x": 1, "y": 0}]},
     {"positions": [{"console_id": 1, "x": 0, "y": 0}, {"console_id": 2, "x": 0, "y": 0}]},
     {"zones": [{"label": "", "x": 0, "y": 0}]}, {"zones": [{"label": "x" * 41, "x": 0, "y": 0}]},
-    {"zones": [{"label": "A", "x": 0, "y": 0, "w": 0}]}, {"zones": "PC"},
+    {"zones": "PC"},
 ])
 def test_invalid_bodies_are_rejected(api, body):
     res = api.client.put("/vendor/1/station-map", json=body)
@@ -160,3 +160,40 @@ def test_save_before_migration_says_so(api):
     assert res.get_json()["code"] == "station_map_not_migrated"
     assert "20261127_station_map_layout.sql" in res.get_json()["error"]
     assert api.emitted == []
+
+
+# Live bug 2026-11-28: a cafe with no saved cells sent its first auto zone label at
+# y = -1 and the whole save failed with "zone y must be between 0 and 199".
+LIVE_FIRST_SAVE = {
+    "positions": [{"console_id": 1, "x": 0, "y": 0}, {"console_id": 2, "x": 1, "y": 0}, {"console_id": 3, "x": 0, "y": 3}],
+    "zones": [{"label": "PC", "x": 0, "y": -1, "w": 6}, {"label": "PS5", "x": 0, "y": 2, "w": 6}],
+}
+
+
+def test_label_above_row_zero_shifts_the_floor_instead_of_failing(api):
+    res = api.client.put("/vendor/1/station-map", json=LIVE_FIRST_SAVE)
+    assert res.status_code == 200, res.json
+    assert cells(api) == {1: (0, 1), 2: (1, 1), 3: (0, 4)}
+    assert [(z["label"], z["y"]) for z in res.json["zones"]] == [("PC", 0), ("PS5", 3)]
+    assert ("station_map_updated", {"vendor_id": 1}, "vendor_1") in api.emitted
+
+
+def test_loose_numbers_are_rounded_and_labels_kept_in_the_grid(api):
+    res = api.client.put("/vendor/1/station-map", json={
+        "positions": [{"console_id": 1, "x": 1.6, "y": 0.0}],
+        "zones": [{"label": "Far", "x": 250, "y": 2.4, "w": 99}, {"label": "Thin", "x": 0, "y": 5, "w": 0}],
+    })
+    assert res.status_code == 200, res.json
+    assert cells(api)[1] == (2, 0)
+    assert [(z["x"], z["y"], z["w"]) for z in res.json["zones"]] == [(199, 2, 24), (0, 5, 1)]
+
+
+def test_shift_still_refuses_two_stations_on_one_cell(api):
+    api.client.put("/vendor/1/station-map", json={"positions": [{"console_id": 2, "x": 0, "y": 1}]})
+    res = api.client.put("/vendor/1/station-map", json={"positions": [{"console_id": 1, "x": 0, "y": -1}],
+                                                         "zones": [{"label": "PC", "x": 0, "y": 0}]})
+    # 1 lands on (0, 0) after the shift; station 2 keeps (0, 1): no clash, saved.
+    assert res.status_code == 200, res.json
+    clash = api.client.put("/vendor/1/station-map", json={"positions": [{"console_id": 3, "x": 0, "y": -2}]})
+    # Station 3 would land on (0, 0), which station 1 holds.
+    assert clash.status_code == 400
