@@ -12,6 +12,8 @@ RBAC_ROUTE_RULES = [
     ("POST", r"^/api/addConsole$", "gaming.manage"),
     ("DELETE", r"^/api/console/(?P<vendor_id>\d+)/\d+$", "gaming.manage"),
     ("PUT", r"^/api/console/update/vendor/(?P<vendor_id>\d+)$", "gaming.manage"),
+    ("GET", r"^/api/vendor/(?P<vendor_id>\d+)/station-map$", "dashboard.view"),
+    ("PUT", r"^/api/vendor/(?P<vendor_id>\d+)/station-map$", "gaming.manage"),
 
     ("GET", r"^/api/vendor/(?P<vendor_id>\d+)/dashboard$", "dashboard.view"),
     ("GET", r"^/api/getLandingPage/vendor/(?P<vendor_id>\d+)$", "dashboard.view"),
